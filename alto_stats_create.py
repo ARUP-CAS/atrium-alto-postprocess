@@ -16,6 +16,7 @@ def parse_alto_tools_stats_line(line):
     """
     m = re.match(r"# of <(\w+)> elements:\s+(\d+)", line.strip())
     if not m:
+        print(line)
         return None
     element, count = m.groups()
     element = element.lower()
@@ -106,6 +107,16 @@ def main():
             else:
                 df.to_csv(args.output, index=False, header=False, mode="a")
             print(f"Processed {len(stats)} from {subdir}")
+            
+    stats = process_alto_files_with_alto_tools(args.input_folder)
+    if stats:
+        df = pd.DataFrame(stats)
+        if first:
+            df.to_csv(args.output, index=False, header=True)
+            first = False
+        else:
+            df.to_csv(args.output, index=False, header=False, mode="a")
+        print(f"Processed {len(stats)} from {args.input_folder}")
 
     print("Done.")
 

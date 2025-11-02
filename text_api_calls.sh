@@ -1,62 +1,52 @@
 #!/usr/bin/env bash
 # process_lindat_csv_simple.sh (with integrated configuration and progress monitoring)
 #
+# Modified logic: UDPipe outputs CoNLL-U, then NameTag processes CoNLL-U → conllu-ne
+#
 # Usage:
 #   ./text_api_calls.sh input.csv [OUTDIR_NAMETAG] [OUTDIR_UDPIPE]
 #   tail -n +START input.csv | ./text_api_calls.sh - [OUTDIR_NAMETAG] [OUTDIR_UDPIPE]
 #
 # Now automatically injects the CSV header if missing when reading from stdin.
-
 set -euo pipefail
-
 # ========== CONFIGURATION (from api_config.txt) ==========
-
 # API endpoints
 UDPIPE_URL="https://lindat.mff.cuni.cz/services/udpipe/api/process"
 NAMETAG_URL="https://lindat.mff.cuni.cz/services/nametag/api/recognize"
-
 # Default models
 DEFAULT_UDPIPE_MODEL="czech-pdt-ud-2.15-241121"
 DEFAULT_UDPIPE_PARSER="czech-pdt-ud-2.15-241121"
 DEFAULT_UDPIPE_TAGGER="czech-pdt-ud-2.15-241121"
 DEFAULT_NAMETAG_MODEL="nametag3-multilingual-onto-250203"
-
 # Common settings
 COMMON_LANG="CES"
-NAMETAG_OUTPUT_FILE_FORMAT="txt"
-UDPIPE_OUTPUT_FILE_FORMAT="txt"
-NAMETAG_OUTPUT_FORMAT="vertical"
-
+NAMETAG_OUTPUT_FILE_FORMAT="conllu"
+UDPIPE_OUTPUT_FILE_FORMAT="conllu"
+NAMETAG_OUTPUT_FORMAT="conllu-ne"
 # HTTP settings
 TIMEOUT=60
 MAX_RETRIES=5
 BACKOFF_FACTOR=1.0
 RATE_LIMIT_PER_SEC=5.0
 WORD_CHUNK_LIMIT=990
-
 # CSV settings
 TEXT_COLUMN="text"
 FILE_COLUMN="file"
 PAGE_COLUMN="page"
 LANGUAGE_COLUMN="lang"
 MAX_ROWS_TO_PROCESS=450000
-
 # Processing options
 CHUNK_TEXT=true
 MAX_TEXT_LENGTH=10000
 SKIP_EMPTY_TEXT=true
-
 # Progress monitoring settings
 PROGRESS_INTERVAL=500  # Report progress every N rows
 DETAILED_PROGRESS_INTERVAL=1000  # Detailed progress every N rows
-
 # ========== END CONFIGURATION ==========
-
 # Progress monitoring functions
 get_timestamp() {
     date '+%Y-%m-%d %H:%M:%S'
 }
-
 format_duration() {
     local seconds=$1
     local hours=$((seconds / 3600))
@@ -71,7 +61,6 @@ format_duration() {
         printf "%ds" $secs
     fi
 }
-
 estimate_time_remaining() {
     local processed=$1
     local total=$2
@@ -92,7 +81,6 @@ estimate_time_remaining() {
         echo "calculating..."
     fi
 }
-
 print_progress() {
     local processed=$1
     local total=$2
@@ -116,7 +104,6 @@ print_progress() {
     printf 'ETA: %s\n' "$eta"
     printf '=====================================\n\n'
 }
-
 print_simple_progress() {
     local processed=$1
     local elapsed=$2
@@ -127,7 +114,6 @@ print_simple_progress() {
     printf '[%s] + + + Processed %d rows (%s/sec) + + + Current: %s:%s\n' \
            "$(get_timestamp)" "$processed" "$rate" "$current_file" "$current_page"
 }
-
 # Check if bc is available for calculations
 if ! command -v bc >/dev/null 2>&1; then
     echo "Warning: 'bc' not found. Time estimates will be simplified." >&2
@@ -161,18 +147,15 @@ if ! command -v bc >/dev/null 2>&1; then
                "$(get_timestamp)" "$processed" "$current_file" "$current_page"
     }
 fi
-
 stdin_is_pipe=false
 if [ ! -t 0 ]; then
   stdin_is_pipe=true
 fi
-
 if [ "$#" -eq 0 ] && [ "$stdin_is_pipe" = false ]; then
   echo "Usage: $0 input.csv [OUTDIR_NAMETAG] [OUTDIR_UDPIPE]"
   echo "   or: tail -n +START input.csv | $0 - [OUTDIR_NAMETAG] [OUTDIR_UDPIPE]"
   exit 1
 fi
-
 if [ "$#" -ge 1 ] && [ "$1" = "-" ]; then
   INPUT_FROM_STDIN=true
   shift
@@ -183,12 +166,9 @@ elif [ "$#" -ge 1 ]; then
 else
   INPUT_FROM_STDIN=true
 fi
-
 OUTDIR_NT="${1:-../NameTag}"; shift || true
 OUTDIR_UD="${1:-../UDPipe}"; shift || true
-
 mkdir -p "$OUTDIR_NT/onepagers" "$OUTDIR_UD/onepagers"
-
 # Model selection based on language with fallback to defaults
 choose_udpipe_model() {
   local lang="$1"
@@ -201,7 +181,6 @@ choose_udpipe_model() {
     *) echo "$DEFAULT_UDPIPE_MODEL" ;;
   esac
 }
-
 choose_nametag_model() {
   local lang="$1"
   local lc=$(printf '%.3s' "$lang" | tr '[:upper:]' '[:lower:]')
@@ -210,22 +189,17 @@ choose_nametag_model() {
     *) echo "$DEFAULT_NAMETAG_MODEL" ;;
   esac
 }
-
 # Rate limiting function
 rate_limit() {
   local delay=$(python3 -c "print(1.0 / $RATE_LIMIT_PER_SEC)" 2>/dev/null || echo "0.2")
   sleep "$delay"
 }
-
 PYFILE="$(mktemp --suffix=_csv_reader.py)"
 trap 'rm -f "$PYFILE"' EXIT
-
 cat > "$PYFILE" <<'PY'
 #!/usr/bin/env python3
 import sys, csv, os
-
 EXPECTED_HEADER = "file,page,lang,is_text_good,text\n"
-
 def ensure_header(stream):
     first = stream.readline()
     if not first:
@@ -234,7 +208,6 @@ def ensure_header(stream):
         return [first] + list(stream)
     else:
         return [EXPECTED_HEADER, first] + list(stream)
-
 def csv_reader_stream(f):
     rdr = csv.DictReader(f)
     row_count = 0
@@ -257,7 +230,6 @@ def csv_reader_stream(f):
             sys.stdout.write(f"{fn}\t{pg}\t{lg}\t{tx}\n")
         except BrokenPipeError:
             sys.exit(0)
-
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] != '-':
         with open(sys.argv[1], encoding='utf-8', newline='') as f:
@@ -265,12 +237,10 @@ def main():
     else:
         lines = ensure_header(sys.stdin)
         csv_reader_stream(lines)
-
 if __name__ == '__main__':
     main()
 PY
 chmod +x "$PYFILE"
-
 # Function to parse JSON response with better error handling
 parse_api_response() {
     local response_file="$1"
@@ -302,7 +272,6 @@ except Exception as e:
     sys.exit(1)
 "
 }
-
 # Retry function with exponential backoff
 api_call_with_retry() {
     local api_name="$1"
@@ -349,30 +318,26 @@ api_call_with_retry() {
     
     return 1
 }
-
 # Export environment variables for Python script
 export MAX_ROWS_TO_PROCESS FILE_COLUMN PAGE_COLUMN LANGUAGE_COLUMN TEXT_COLUMN
 export SKIP_EMPTY_TEXT MAX_TEXT_LENGTH
-
 if [ "$INPUT_FROM_STDIN" = true ]; then
   exec_cmd=(python3 "$PYFILE" -)
 else
   exec_cmd=(python3 "$PYFILE" "$INPUT_CSV")
 fi
-
 # Initialize progress tracking
 processed_count=0
 start_time=$(date +%s)
 total_estimated=$MAX_ROWS_TO_PROCESS
-
 printf '\n🚀 STARTING PROCESSING [%s] 🚀\n' "$(get_timestamp)"
 printf 'Configuration:\n'
 printf '  - Max rows: %d\n' "$MAX_ROWS_TO_PROCESS"
 printf '  - Rate limit: %s calls/sec\n' "$RATE_LIMIT_PER_SEC"
 printf '  - Output dirs: NT=%s, UD=%s\n' "$OUTDIR_NT" "$OUTDIR_UD"
 printf '  - Progress updates every %d rows\n' "$PROGRESS_INTERVAL"
+printf '  - Pipeline: text → UDPipe (CoNLL-U) → NameTag (conllu-ne)\n'
 printf '========================================\n\n'
-
 "${exec_cmd[@]}" | while IFS=$'\t' read -r file page lang text; do
   file=$(printf '%s' "$file" | tr -d '\r\n')
   page=$(printf '%s' "$page" | tr -d '\r\n')
@@ -390,7 +355,6 @@ printf '========================================\n\n'
       print_simple_progress $processed_count $elapsed "$file" "$page"
     fi
   fi
-
   if [ "$page" = "1" ] || [ "$page" = "01" ]; then
     nt_dir="$OUTDIR_NT/onepagers"
     ud_dir="$OUTDIR_UD/onepagers"
@@ -399,18 +363,13 @@ printf '========================================\n\n'
     ud_dir="$OUTDIR_UD/$file"
     mkdir -p "$nt_dir" "$ud_dir"
   fi
-
   ud_out="$ud_dir/$file-$page.$UDPIPE_OUTPUT_FILE_FORMAT"
   nt_out="$nt_dir/$file-$page.$NAMETAG_OUTPUT_FILE_FORMAT"
-
   if [ -z "$text" ] && [ "$SKIP_EMPTY_TEXT" = "true" ]; then
-    # printf '[SKIP] [%s] empty text for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
     continue
   fi
-
   UDPIPE_MODEL=$(choose_udpipe_model "$lang")
   NAMETAG_MODEL=$(choose_nametag_model "$lang")
-
   # Create tmp dir per row (unique and safe)
   tmpd=$(mktemp -d) || { printf '[ERR] [%s] mktemp failed for %s page=%s\n' "$(get_timestamp)" "$file" "$page"; continue; }
   
@@ -420,22 +379,18 @@ printf '========================================\n\n'
       rm -rf "$tmpd"
     fi
   }
-
   # Save input text to a stable file for all tools to use
   tmpf="$tmpd/input.txt"
   printf '%s' "$text" > "$tmpf"
-
   # Basic sanity checks
   if [ ! -s "$tmpf" ]; then
     printf '[ERR] [%s] text empty for %s page=%s (length=%s)\n' "$(get_timestamp)" "$file" "$page" "$(wc -c < "$tmpf" 2>/dev/null || echo 0)"
     cleanup_tmpd
     continue
   fi
-
-  # --- UDPipe ---
+  # --- STEP 1: UDPipe (text → CoNLL-U) ---
   if [ ! -f "$ud_out" ]; then
     printf '[UDPIPE] model=%s file=%s page=%s\n' "$UDPIPE_MODEL" "$file" "$page"
-
     # Chunk input by reading the stable tmpf (avoid piping issues)
     if ! python3 - "$tmpf" "$tmpd" "$WORD_CHUNK_LIMIT" <<'PY'
 import sys, os, re
@@ -478,29 +433,27 @@ PY
       cleanup_tmpd
       continue
     fi
-
     # Confirm chunks exist
     if ! ls "$tmpd"/chunk*.txt >/dev/null 2>&1; then
       printf '[ERR] [%s] no chunks produced for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
       cleanup_tmpd
       continue
     fi
-
     rm -f "$ud_out"
     success=true
-
-    # Process each chunk and accumulate results
+    # Process each chunk and accumulate results in CoNLL-U format
     for cf in "$tmpd"/chunk*.txt; do
       [ -s "$cf" ] || continue
       response_file="$tmpd/udpipe_response_$(basename "$cf").json"
       
+      # Call UDPipe with conllu output format
       if api_call_with_retry "UDPipe" "$UDPIPE_URL" "$response_file" \
-         -F "data=@${cf}" -F "input=horizontal" -F "model=${UDPIPE_MODEL}" -F "parser=" -F "tagger=" -F "tokenizer="; then
+         -F "data=@${cf}" -F "input=horizontal" -F "output=conllu" \
+         -F "model=${UDPIPE_MODEL}" -F "parser=" -F "tagger=" -F "tokenizer="; then
         
         # Parse and append result
         if parse_api_response "$response_file" "UDPipe" >> "$ud_out"; then
           continue
-          # printf '[CHUNK] [%s] UDPipe processed chunk: %s\n' "$(get_timestamp)" "$(basename "$cf")"
         elif [ $? -eq 2 ]; then
           # Empty result - skip silently
           printf '[SKIP] [%s] UDPipe returned empty result for chunk: %s\n' "$(get_timestamp)" "$(basename "$cf")"
@@ -517,30 +470,32 @@ PY
       
       rate_limit
     done
-
     if [ "$success" = true ] && [ -f "$ud_out" ] && [ -s "$ud_out" ]; then
-      printf '[WRITE] [%s] UD output: %s\n' "$(get_timestamp)" "$ud_out"
+      printf '[WRITE] [%s] UD CoNLL-U output: %s\n' "$(get_timestamp)" "$ud_out"
     else
       printf '[ERR] [%s] UDPipe processing failed for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
       rm -f "$ud_out"
+      cleanup_tmpd
+      continue
     fi
-
-  else
-    # printf '[SKIP] [%s] UD output exists: %s\n' "$(get_timestamp)" "$ud_out"
-    continue
   fi
-
-  # --- NameTag ---
-  # Reuse tmpf (the stable input file) so NameTag sees the exact same text
+  # --- STEP 2: NameTag (CoNLL-U → conllu-ne) ---
+  # NameTag now processes the UDPipe CoNLL-U output instead of raw text
   if [ ! -f "$nt_out" ]; then
-    printf '[NAMETAG] model=%s file=%s page=%s\n' "$NAMETAG_MODEL" "$file" "$page"
+    if [ ! -f "$ud_out" ] || [ ! -s "$ud_out" ]; then
+      printf '[ERR] [%s] Cannot run NameTag: UDPipe output missing for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
+      cleanup_tmpd
+      continue
+    fi
+    
+    printf '[NAMETAG] model=%s file=%s page=%s (processing CoNLL-U)\n' "$NAMETAG_MODEL" "$file" "$page"
     response_file="$tmpd/nametag_response.json"
-
+    
+    # Call NameTag with CoNLL-U input and conllu-ne output format
     if api_call_with_retry "NameTag" "$NAMETAG_URL" "$response_file" \
-       -F "data=@${tmpf}" -F "model=${NAMETAG_MODEL}" -F "output=${NAMETAG_OUTPUT_FORMAT}"; then
-
+       -F "data=@${ud_out}" -F "input=conllu" -F "model=${NAMETAG_MODEL}" -F "output=${NAMETAG_OUTPUT_FORMAT}"; then
       if parse_api_response "$response_file" "NameTag" > "$nt_out"; then
-        printf '[WRITE] [%s] NT output: %s\n' "$(get_timestamp)" "$nt_out"
+        printf '[WRITE] [%s] NT conllu-ne output: %s\n' "$(get_timestamp)" "$nt_out"
       elif [ $? -eq 2 ]; then
         # Empty result - don't save file
         printf '[SKIP] [%s] NameTag returned empty result for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
@@ -553,22 +508,14 @@ PY
       printf '[ERR] [%s] NameTag API call failed for %s page=%s\n' "$(get_timestamp)" "$file" "$page"
       rm -f "$nt_out"
     fi
-
     rate_limit
-  else
-    # printf '[SKIP] [%s] NT output exists: %s\n' "$(get_timestamp)" "$nt_out"
-    continue
   fi
-
   # cleanup tmp dir for this row
   cleanup_tmpd
-
 done || true
-
 # Final summary
 end_time=$(date +%s)
 total_elapsed=$((end_time - start_time))
-
 printf '\n🏁 PROCESSING COMPLETE [%s] 🏁\n' "$(get_timestamp)"
 printf 'Total processed: %d rows\n' "$processed_count"
 printf 'Total time: %s\n' "$(format_duration $total_elapsed)"
