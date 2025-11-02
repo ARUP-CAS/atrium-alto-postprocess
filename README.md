@@ -1,32 +1,52 @@
-# ALTO XML files postprocessing
+# 📦 ALTO XML Files Postprocessing Pipeline
 
-From ALTO XML files to statistics tables, text classification, name entity recognition (NER), keyword extraction (KER), and CONLL-U files.
-Filtering out low-quality OCR text based on language identification and perplexity measures. 
+This project provides a complete workflow for processing ALTO XML files. It takes raw ALTO 
+XMLs and transforms them into structured statistics tables, performs text classification, 
+filters low-quality OCR results, and extracts high-level linguistic features like 
+Named Entities (NER), CONLL-U files with lemmas & part-of-sentence tags, and keywords (KER).
 
-## Setup
-In a new virtual environment, while in the project directory, run:
+The core of the quality filtering relies on language identification and perplexity measures 
+to identify and categorize noisy or unreliable OCR output.
 
+---
+
+## ⚙️ Setup
+
+Before you begin, set up your environment.
+
+1.  Create and activate a new virtual environment in the project directory 🖥.
+2.  Install the required Python packages:
+    ```bash
     pip install -r requirements.txt
-
-Then: 
-
+    ```
+3.  Clone and install `alto-tools` 🔧, which is used for statistics and text extraction:
+    ```bash
     git clone https://github.com/cneud/alto-tools.git
     cd alto-tools
     pip install .
-    
-Additionally, somewhere in the project directory: 
+    cd .. 
+    ```
+4.  Download the FastText model 😊 for language identification:
+    ```bash
+    wget (https://huggingface.co/facebook/fasttext-language-identification/resolve/main/model.bin) -O lid.176.bin
+    ```
+You are now ready to start the workflow.
 
-    wget https://huggingface.co/facebook/fasttext-language-identification/resolve/main/model.bin -O lid.176.bin
-    
-You are good to go. 
+---
 
-## Split document-specific ALTOs into page-specific XML files
+## Workflow Stages
 
-Ensure you have a directory of `<file>.alto.xml` files and then run:
+The process is divided into sequential steps, starting from raw ALTO files and ending 
+with extracted linguistic and statistic data.
+
+### ▶ Step 1: Split Document-Specific ALTOs into Pages
+
+First, ensure you have a directory 📁 containing your document-level `<file>.alto.xml` files. 
+This script will split them into individual page-specific XML files.
 
     python3 page_split.py <input_dir> <output_dir>
 
-Which will create: 
+This command will generate a new directory structure: 
 
     <output_dir>
     ├── <file1>
@@ -37,207 +57,160 @@ Which will create:
         └── ...
     └── ...
 
-Where each of the page-specific files starts with a header taken from the source document-specific ALTO XML. 
+Each page-specific file retains the header from its original source document.
 
-## Get the statistics table of pages
+### ▶ Step 2: Create Page Statistics Table
 
-Now the previous output directory is the input directory:
+Next, use the output directory from Step 1 as the input for this script to generate a 
+foundational CSV statistics file.
 
     python3 alto_stats_create.py <input_dir> -o output.csv
 
-Which will start writing a CSV file line-by-line:
+This script writes a CSV file line-by-line, capturing metadata for each page:
 
     file, page, textlines, illustrations, graphics, strings, path
     CTX200205348, 1, 33, 1, 10, 163, /lnet/.../A-PAGE/CTX200205348/CTX200205348-1.alto.xml
     CTX200205348, 2, 0, 1, 12, 0, /lnet/.../A-PAGE/CTX200205348/CTX200205348-2.alto.xml
-    CTX200603119, 3, 29, 2, 30, 206, /lnet/.../A-PAGE/CTX200603119/CTX200603119-3.alto.xml
+    ...
 
-The framework used for statistics and text contents extraction from XML files 
-is [alto-tools](https://github.com/cneud/alto-tools) and you can check its source code for more details.
+The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
 
 > [!NOTE]
-> The statistics table containing all pages from the collection is used as foundation for the further
-> processing steps.
+> This statistics table is the basis for subsequent processing steps.
+> An example is available in [test_alto_stats.csv](test_alto_stats.csv) 📎.
 
-Example of such statistics table is illustrated in the [test_alto_stats.csv](test_alto_stats.csv) file.
+### ▶ Step 3: Classify Page Text Quality & Language
 
-## Text classification of ALTO document's content in per-line manner
+This is a key ⌛ time-consuming step that analyzes the text quality of each page, 
+line-by-line, counting lines of defined types, to filter out OCR noise.
 
-Uses the [fastText language identification model](https://huggingface.co/facebook/fasttext-language-identification) plus autocorrection tools like [pyspellchecker](https://pypi.org/project/pyspellchecker/) and
-[autocorrect](https://github.com/filyp/autocorrect) Python libraries. 
+It uses the [FastText language identification model](https://huggingface.co/facebook/fasttext-language-identification) 😊, 
+autocorrection libraries ([pyspellchecker](https://pypi.org/project/pyspellchecker/) 🔗,
+[autocorrect](https://github.com/filyp/autocorrect) 🔗), and perplexity scores 
+from [distilGPT2](https://huggingface.co/distilbert/distilgpt2) 😊 to detect noise.
 
-Noise from the OCR process is detected by perplexity measures from the causal language model [distilGPT2](https://huggingface.co/distilbert/distilgpt2).
-
-Script takes an input file of ALTO statistics without text contents (only paths to the xml files of pages).
-When processing a row from the input CSV, it extracts the text content of the page using [alto-tools](https://github.com/cneud/alto-tools), 
-and analyses it line-by-line.
-
-Each line can be classified as: 
-
-- **Clear** - High-confidence, low-perplexity, common language.
-- **Rough** - Medium-confidence, but still likely a common language.
-- **Noisy** - Low-confidence, high-perplexity, or other indicators of OCR issues.
-- **Trash** - Hard to guess language, very high perplexity, or non-prose (not plain text).
-- **Short** - Too few words to make a confident classification.
-- **Non-text** - Failed heuristic checks (e.g., mostly digits/symbols, very short).
-- **Empty** - Line contains only whitespace.
-- **N/A** -   Used internally for error cases or placeholders.
-
-At the end, counts of lines per category are aggregated for the whole page and saved into the output CSV.
-
-To run the script: 
+The script takes the statistics file from Step 2 (e.g., `output.csv`) as its input.
 
     python3 run_langID.py
 
-Which will take some time to finish, while results are saved on each 25th page, output tables are:
-    
-- `line_counts_<input.csv>` - counts of lines per category for each page, columns:
-  - `file` - document identifier
-  - `page` - page number
-  - `textlines` - number of text lines on the ALTO page
-  - `illustrations` - number of illustrations on the ALTO page
-  - `graphics` - number of graphics on the ALTO page
-  - `strings` - number of strings on the ALTO page
-  - `path` - path to the ALTO XML file of the page
-  - `clear_lines` - number of lines classified as **Clear**
-  - `noisy_lines` - number of lines classified as **Noisy**
-  - `trash_lines` - number of lines classified as **Trash**
-  - `nontxt_lines` - number of lines classified as **Non-text**
-  - `empty_lines` - number of lines classified as **Empty**
-  - `rough_lines` - number of lines classified as **Rough**
-  - `short_lines` - number of lines classified as **Short**
-  - `languages` - most common language code pair among page lines (e.g., "eng-ces", "deu-other", "ces" etc.)
-  
-- `pages_classified_<input.csv>` - detailed classification results for each line of each page, columns: 
-  - `file` - document identifier
-  - `page` - page number
-  - `line` - line number on the ALTO page
-  - `line_text` - original text of the line from ALTO page
-  - `lang_code` - predicted ISO language code of the line ([list of all possible language labels predicted by FastText model)](https://github.com/facebookresearch/flores/tree/main/flores200#languages-in-flores-200)
-  - `lang_corrected` - predicted ISO language code after autocorrection of the line text, or from the whole page for a **Short** line
-  - `lang_score` - confidence score of the predicted language code
-  - `lang_score_corrected` - confidence score after autocorrection or from the whole page for a **Short** line
-  - `perplexity` - perplexity score of the original line text
-  - `perplexity_corrected` - perplexity score after autocorrection or from the whole page for a **Short** line
-  - `category` - assigned category of the line (**Clear**, **Rough**, **Noisy**, **Trash**, **Short**, **Non-text**, **Empty**, **N/A**)
-  - `corrected_text` - text of the line after autocorrection, but empty string if unchanged
+As it processes, it aggregates line counts for each page into categories 🪧:
 
-Tables covering the whole collection are saved next to the script, while raw text files and per-document 
-tabular results are recorded in `../PAGE-TXT/<file>` subdirectories and in `../PAGE-STAT` as separate CSV files named
-after the documents they describe.
+-   **Clear** - High-confidence, low-perplexity, common language.
+-   **Rough** - Medium-confidence, but still likely a common language.
+-   **Noisy** - Low-confidence, high-perplexity, or other OCR issues.
+-   **Trash** - Hard to guess language, very high perplexity, or non-prose. 
+-   **Short** - Too few words to classify confidently.
+-   **Non-text** - Failed heuristic checks (e.g., mostly digits/symbols).
+-   **Empty** - Line contains only whitespace.
+-   **N/A** - Used internally for error cases.
 
-Examples of such output tables are illustrated in the [line_counts_test_alto_stats.csv](line_counts_test_alto_stats.csv) 
-and [pages_classified_test_alto_stats.csv](pages_classified_test_alto_stats.csv) files.
+This script generates two primary output tables (results are saved every 25 pages):
 
-## Get the text contents of pages into the stats CSV
+1.  `line_counts_<input.csv>`: Page-level summary of line counts per category.
+    - *Columns*:
+      - `file` - document identifier
+      - `page` - page number
+      - `textlines` - number of text lines on the ALTO page
+      - `illustrations` - number of illustrations on the ALTO page
+      - `graphics` - number of graphics on the ALTO page
+      - `strings` - number of strings on the ALTO page
+      - `path` - path to the ALTO XML file of the page
+      - `clear_lines` - number of lines classified as **Clear**
+      - `noisy_lines` - number of lines classified as **Noisy**
+      - `trash_lines` - number of lines classified as **Trash**
+      - `nontxt_lines` - number of lines classified as **Non-text**
+      - `empty_lines` - number of lines classified as **Empty**
+      - `rough_lines` - number of lines classified as **Rough**
+      - `short_lines` - number of lines classified as **Short**
+      - `languages` - most common language code pair among page lines (e.g., "eng-ces", "deu-other", "ces" etc.)
+    -   *Example*: [line_counts_test_alto_stats.csv](line_counts_test_alto_stats.csv) 📎
 
-Now the statistics output CSV becomes the input CSV:
+2.  `pages_classified_<input.csv>`: Detailed classification results for *every single line*.
+    - *Columns*:
+      - `file` - document identifier
+      - `page` - page number
+      - `line` - line number on the ALTO page
+      - `line_text` - original text of the line from ALTO page
+      - `lang_code` - predicted ISO language code of the line ([list of all possible language labels predicted by FastText model)](https://github.com/facebookresearch/flores/tree/main/flores200#languages-in-flores-200)
+      - `lang_corrected` - predicted ISO language code after autocorrection of the line text, or from the whole page for a **Short** line
+      - `lang_score` - confidence score of the predicted language code
+      - `lang_score_corrected` - confidence score after autocorrection or from the whole page for a **Short** line
+      - `perplexity` - perplexity score of the original line text
+      - `perplexity_corrected` - perplexity score after autocorrection or from the whole page for a **Short** line
+      - `category` - assigned category of the line (**Clear**, **Rough**, **Noisy**, **Trash**, **Short**, **Non-text**, **Empty**, **N/A**)
+      - `corrected_text` - text of the line after autocorrection, but empty string if unchanged
+    -   *Example*: [pages_classified_test_alto_stats.csv](pages_classified_test_alto_stats.csv) 📎
+
+Raw text files and per-document results are also saved in `../PAGE-TXT/` and `../PAGE-STAT/`.
+
+### ▶ Step 4: Add Full Text Content to Statistics CSV
+
+After classification, you may want a CSV that includes the full, concatenated text for pages 
+deemed high-quality (or all pages). This script adds text content directly into your 
+statistics CSV.
 
     ./addtext.sh input.csv
-    
-Which will replace the last column `path` with a new one `text` and save it in 
-a new `input_with_text.csv` file (also line-by-line).
 
-[//]: # (## Classify extracted texts)
+This will take `input.csv` (e.g., your `line_counts_...csv` from Step 3), replace 
+the `path` column with a new `text` column, and save the result as `input_with_text.csv`.
 
-[//]: # ()
-[//]: # (For this step you should edit the header variables of `labgID.py`  &#40;like upper and lower text )
+### ▶ Step 5: Extract NER and CONLL-U
 
-[//]: # (perplexity thresholds, input and output files, confidence threshold for language )
+Using a CSV file that contains text content (like the one from Step 4), you can 
+now call external APIs to perform advanced NLP analysis.
 
-[//]: # (identification, common languages of the input files, etc.&#41; and then run:)
+The input CSV must have at least these 4 columns: `file, page, lang, text`.
 
-[//]: # ()
-[//]: # (    python3 langID.py)
+    ./text_api_calls.sh input.csv <nametag_out_dir> <udpipe_out_dir>
 
-[//]: # ()
-[//]: # (Which should create a CSV with the following columns: )
-
-[//]: # ()
-[//]: # (    file, page, lang, is_text_good, text)
-
-[//]: # ()
-[//]: # (The resulting file should be filtered out based on the boolean `is_text_good` column to proceed to the next step.)
-
-[//]: # ()
-[//]: # (When detecting text quality and language, the function may append suffixes to the base ISO language code:)
-
-[//]: # ()
-[//]: # ( - `_trash` - Assigned if the text is likely gibberish or unusable.)
-
-[//]: # (   - Perplexity ≥ `PERPLEXITY_THRESHOLD_MAX`)
-
-[//]: # (   - Uppercase ratio > 0.9)
-
-[//]: # (   - Predicted language is not Latin)
-
-[//]: # ()
-[//]: # (- `_noise` - Assigned if the text is noisy but potentially usable.)
-
-[//]: # (  - Perplexity ≥ `PERPLEXITY_THRESHOLD_MIN` )
-
-[//]: # (  - Uppercase ratio > 0.6)
-
-[//]: # (  - Language is not in `COMMON_LANGS`)
-
-[//]: # ()
-[//]: # (- `_maybe` - Assigned when the language classifier is uncertain.)
-
-[//]: # (  - the confidence gap between top-1 and top-2 predictions < 0.15.)
-
-[//]: # ()
-[//]: # (- `NOISY_trash` &#40;special case&#41; - Returned directly if heuristic pre-checks fail &#40;bad letter/digit/symbol/space ratios&#41;.)
-
-## Extract NER and CONLL-U of pages
-
-Now for the CSV with at least 4 columns `file, page, lang, text` run:
-
-    ./text_api_calls.sh inpit.csv <nametag_out_dir> <udpipe_out_dir>
-
-Which should start filling in the output directories with predicted files: 
+This script will populate the output directories 📁 with `.txt` files containing the 
+API results for Name Entity Recognition (NER) and Universal Dependencies (CONLL-U).
 
     <nametag_output_dir>
     ├── <file1>
         ├── <file1>-<page>.txt 
         └── ...
-    ├── <file2>
-        ├── <file2>-<page>.txt 
-        └── ...
-    └── ...
     <udpipe_output_dir>
     ├── <file1>
         ├── <file1>-<page>.txt
         └── ...
-    ├── <file2>
-        ├── <file2>-<page>.txt 
-        └── ...
-    └── ...
 
-The configuration of the used APIs is in the `text_api_calls.sh` script, the header variables for 
-output formats, default models, and other parameters are in the header.
+You can configure ⚙️ API endpoints, models, and other parameters by editing the 
+header variables in the `text_api_calls.sh` script.
 
-## KER keywords extraction based on tf-idf
+### ▶ Step 6: Extract Keywords (KER) based on tf-idf
 
-For the input directory containing subdirectories of `.alto.xml` (`alto`)  or `.txt` (`txt`) files 
-of separate pages, launch keywords extraction of Czech (`cs`) or English (`en`) documents:
+Finally, you can extract keywords 🔎 from your processed text. This script runs on a directory 
+of page-specific files, either `.alto.xml` or `.txt`.
 
     python3 run_ker.py --dir <input_dir> --lang <lang> --max-words <integer> --file-format <file_format>
 
-Two tables will be created as a result of this process:
+-   `--dir`: Input directory (e.g., your output from Step 1 or text files from Step 3).
+-   `--lang`: Language for KER (`cs` for Czech or `en` for English).
+-   `--max-words`: Number of keywords to extract.
+-   `--file-format`: `alto` or `txt`.
 
- - `pages_keywords.tsv` - keywords per page in every input document
- - `documents_keywords.tsv` - summarized keywords for each document from the input directory
+This process creates two `.tsv` tables:
 
-Columns of these tables are:
+1.  `pages_keywords.tsv`: Keywords extracted per-page.
+2.  `documents_keywords.tsv`: Summarized keywords for each document.
 
- - `file` - document identifier
- - `page` - page number (only in `pages_keywords.tsv`)
- - `lang` - language basis of KER (English or Czech)
- - `threshold` - The minimum value of tf-idf score of a term to be considered a keyword (0.2 by default)
- - `keyword<N>` - the N-th keyword extracted from the page/document
- - `score<N>` - the score of the N-th keyword extracted from the page/document
+The columns include `file`, `page` (for the per-page table), `lang`, `threshold`, and pairs of `keyword<N>` and `score<N>`.
 
-The `N` value goes from 1 to the value of `--max-words` parameter (5 or 10 by default).
+An example of the per-document summary is available in [documents_keywords.tsv](documents_keywords.tsv) 📎.
 
-The example of the per-document summary table is illustrated in the [documents_keywords.tsv](documents_keywords.tsv) file.
+---
 
+## Acknowledgements 🙏
+
+**For support write to:** lutsai.k@gmail.com responsible for this GitHub repository [^8] 🔗
+
+- **Developed by** UFAL [^7] 👥
+- **Funded by** ATRIUM [^4]  💰
+- **Shared by** ATRIUM [^4] & UFAL [^7] 🔗
+
+**©️ 2025 UFAL & ATRIUM**
+
+[^4]: https://atrium-research.eu/
+[^8]: https://github.com/ufal/atrium-alto-postprocess
+[^7]: https://ufal.mff.cuni.cz/home-page
