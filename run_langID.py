@@ -42,7 +42,7 @@ This script is configured to produce several outputs:
 # Import all functions from our utility file
 from text_util import *
 import time  # For timing the process
-
+import concurrent.futures
 
 # --- Output Categories (Documentation) ---
 # Each line of text is assigned one of the following categories:
@@ -57,33 +57,74 @@ import time  # For timing the process
 # -------------------------------------------
 
 
+# --- NEW HELPER FUNCTION TO PROCESS BATCH RESULTS ---
+def process_batch_results(all_line_results: list[dict],
+                          line_batch_metadata: list[dict],
+                          lines_writer,
+                          line_counts_cache: dict,
+                          language_counts_cache: dict):
+    """
+    Takes the results from classify_lines_batch and writes them to the
+    detailed CSV and updates the count caches.
+    """
+
+    for result, meta in zip(all_line_results, line_batch_metadata):
+        file_id = meta['file_id']
+        page_id = meta['page_id']
+        page_key = (file_id, page_id)
+
+        # 1. Write to the detailed lines CSV
+        lines_writer.writerow([
+            file_id, page_id, meta['line_number'], meta['original_line_text'],
+            result.get('lang_code'), result.get('lang_corrected'),
+            result.get('lang_score'), result.get('lang_score_corrected'),
+            result.get('perplexity'), result.get('perplexity_corrected'),
+            result.get('category'), result.get('corrected_text')
+        ])
+
+        # 2. Update the line_counts cache for this page
+        category = result.get('category', 'Trash')  # Default to Trash on error
+        if category in line_counts_cache.get(page_key, {}):
+            line_counts_cache[page_key][category] += 1
+
+        # 3. Update the language_counts cache for this page
+        lang_code = result.get('lang_code', 'other')
+        lang_saved = False
+        page_lang_counts = language_counts_cache.get(page_key)
+
+        if page_lang_counts is not None:
+            for lang_name in page_lang_counts.keys():
+                if lang_code.startswith(lang_name):
+                    page_lang_counts[lang_name] += 1
+                    lang_saved = True
+                    break
+            if not lang_saved:
+                page_lang_counts['other'] += 1
+
+
 def main():
     """
-    (NEW, BATCH-OPTIMIZED VERSION)
-    Main processing logic. Reads the input CSV in chunks, processes each page,
-    classifies all lines on that page *in a single batch*, and writes
-    to three separate outputs.
+    (NEW, 16-LINE-BATCH VERSION)
+    Main processing logic. Reads the input CSV sequentially, accumulates
+    "worth-processing" lines into a fixed-size batch (e.g., 16),
+    and processes them together.
     """
     # --- 1. Configuration ---
-    # (These are hardcoded, but could be moved to command-line arguments)
-    INPUT_FILE = "test_alto_stats.csv"  # Input CSV from alto_stats_create.py
-    OUTPUT_TEXT_DIR = "../PAGE_TXT"  # Output (3) - folder for raw .txt files
-    OUTPUT_STAT_DIR = "../PAGE_STAT"  # Output (4) - folder for per-document CSVs
-    CHUNK_SIZE = 500  # How many rows (pages) to read into memory at a time
-    LOG_STEP = 10  # How often to print detailed progress (every 10 pages)
+    INPUT_FILE = "test_alto_stats.csv"
+    OUTPUT_TEXT_DIR = "../PAGE_TXT"
+    OUTPUT_STAT_DIR = "../PAGE_STAT"
+    CHUNK_SIZE = 500  # How many rows (pages) to read from CSV at a time
+    LOG_STEP = 5  # How often to print detailed progress (now in *batches*)
 
-    MODEL_PATH = "lid.176.bin"  # Path to downloaded fastText model
+    # --- NEW: BATCH_SIZE for lines ---
+    # This is the number of *lines* to process in a single ML batch.
+    BATCH_SIZE = 64
 
-    # Output (1) - The summary stats file
+    MODEL_PATH = "lid.176.bin"
     OUTPUT_STATS_FILE = "line_counts_" + Path(INPUT_FILE).name
-    # Output (2) - The detailed per-line file
     OUTPUT_LINES_FILE = "pages_classified_" + Path(INPUT_FILE).name
 
-    # (COMMON_LANGS is defined in text_util.py)
-
     # --- 2. Load Spellers ---
-    # Pre-load spellers for common languages so we don't reload them
-    # for every single line.
     SPELLERS = {}
     for common_lang in COMMON_LANGS:
         speller_type, speller_lang = speller_per_language[common_lang]
@@ -94,9 +135,8 @@ def main():
     print(f"Spellcheckers initialized for languages: {', '.join(SPELLERS.keys())}")
 
     # --- 3. Setup ML Device ---
-    # Check if a GPU is available (much faster)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    print(f"Using device: {device} | Processing {BATCH_SIZE} lines per batch.")
 
     # --- 4. Load Models ---
     print("Loading fastText model (fasttext)...")
@@ -112,7 +152,6 @@ def main():
     model_id = "distilgpt2"
     model_causal = AutoModelForCausalLM.from_pretrained(model_id).to(device)
     tokenizer_causal = AutoTokenizer.from_pretrained(model_id)
-    # Set padding token for batch perplexity
     tokenizer_causal.pad_token = tokenizer_causal.eos_token
     print("Causal LM loaded.")
 
@@ -123,20 +162,20 @@ def main():
     Path(OUTPUT_STAT_DIR).mkdir(parents=True, exist_ok=True)
     print(f"Document level results will be saved to '{OUTPUT_STAT_DIR}/'")
 
+    print("Batch size for line processing:\t", BATCH_SIZE)
+
     try:
         # --- 6. Start Processing ---
         print(f"Analyzing '{INPUT_FILE}'...")
         with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-            total_rows = sum(1 for _ in f) - 1  # Count rows for progress tracking
+            total_rows = sum(1 for _ in f) - 1
         if total_rows <= 0:
             print("Input file is empty. Exiting.")
             return
         print(f"Found {total_rows:,} rows (pages) to process.")
 
-        # Open the detailed lines CSV for writing
         with open(OUTPUT_LINES_FILE, 'w', encoding='utf-8', newline='') as f_lines_csv:
             lines_writer = csv.writer(f_lines_csv)
-            # Write header for the detailed lines file
             lines_writer.writerow(["file", "page", "line", "line_text",
                                    "lang_code", "lang_corrected",
                                    "lang_score", "lang_score_corrected",
@@ -144,10 +183,16 @@ def main():
                                    "category", "corrected_text"])
 
             rows_processed, txt_lines_processed = 0, 0
-            # This will store the DataFrames for each chunk
-            all_stats_chunks = []
+            batches_processed = 0
 
-            # Process the input stats file in chunks
+            all_stats_chunks = []  # Stores the *original* DataFrames
+            page_stats_cache = {}  # Stores page-level stats for "Short" lines
+            line_counts_cache = {}  # Stores line counts per page
+            language_counts_cache = {}  # Stores lang counts per page
+
+            line_batch_to_process = []  # Stores clean text for the next batch
+            line_batch_metadata = []  # Stores context for the next batch
+
             print(f"Reading '{INPUT_FILE}' in chunks of {CHUNK_SIZE}...")
             reader = pd.read_csv(INPUT_FILE, chunksize=CHUNK_SIZE)
             time_start = time.time()
@@ -157,13 +202,15 @@ def main():
                 if "path" not in chunk_df.columns:
                     raise ValueError("Input CSV must have 'path' column.")
 
-                new_stats_rows = []  # To build the new stats for this chunk
+                # Store the original chunk data for later
+                all_stats_chunks.append(chunk_df)
 
                 # --- 8. Row Loop (Page-by-Page) ---
                 for idx, row in chunk_df.iterrows():
                     file_id = str(row['file'])
                     page_id = str(row['page'])
                     xml_path = row['path']
+                    page_key = (file_id, page_id)  # Unique key for caches
 
                     # Define the path for the cached .txt file
                     xml_file_directory = Path(xml_path).parent
@@ -175,9 +222,8 @@ def main():
                         page_text_file.parent.mkdir(parents=True, exist_ok=True)
 
                     # --- A. Extract Text from ALTO ---
-                    # (This will use the .txt cache if it exists)
                     page_lines = get_text_from_alto(xml_path, page_text_file)
-                    total_text = " ".join(page_lines)  # For page-level stats
+                    total_text = " ".join(page_lines)
 
                     # --- B. Save raw text file (to complete the cache) ---
                     if not page_text_file.exists():
@@ -187,151 +233,223 @@ def main():
                         except Exception as e:
                             print(f"\n[Warning] Failed to write text file {page_text_file}: {e}", file=sys.stderr)
 
-                    # --- C. Pre-calculate Page-Level stats ---
-                    # These are used as context for 'Short' lines
+                    # --- C. Pre-calculate Page-Level stats and CACHE them ---
                     try:
                         total_text_perplexity = calculate_perplexity(total_text, model_causal, tokenizer_causal, device)
                         labels, scores = model_fasttext.predict(total_text, k=1)
                         total_lang_code = labels[0].replace("__label__", "")
                         total_score1 = float(scores[0])
                     except Exception as e:
-                        total_lang_code = ""
+                        total_lang_code = "N/A"
                         total_score1 = 0.0
                         total_text_perplexity = 0.0
                         print(f"\n[Error] Page-level prediction failed for {file_id}, page {page_id}: {e}",
                               file=sys.stderr)
 
-                    # --- D. Process all lines on the page (BATCH CALL) ---
-                    line_counts = {"Clear": 0, "Noisy": 0, "Trash": 0, "Non-text": 0, "Empty": 0, "Rough": 0,
-                                   "Short": 0}
-                    language_counts = {lang: 0 for lang in COMMON_LANGS}
-                    language_counts['other'] = 0
+                    # Store page stats for "Short" line context
+                    page_stats_cache[page_key] = {
+                        "lang": total_lang_code,
+                        "score": total_score1,
+                        "perplexity": total_text_perplexity
+                    }
 
-                    if len(page_lines) == 0:
-                        print(f"\t[Warning] No text lines extracted from file '{file_id}', page '{page_id}'")
-                        # Still need to add a row to the stats output
-                        new_row = row.to_dict()
-                        new_row['clear_lines'] = 0  # ... all counts 0
-                        new_row['noisy_lines'] = 0
-                        new_row['trash_lines'] = 0
-                        new_row['nontxt_lines'] = 0
-                        new_row['empty_lines'] = 0
-                        new_row['rough_lines'] = 0
-                        new_row['short_lines'] = 0
-                        new_row['languages'] = ""
-                        new_stats_rows.append(new_row)
+                    # --- D. Initialize Caches for this page ---
+                    line_counts_cache[page_key] = {"Clear": 0, "Noisy": 0, "Trash": 0, "Non-text": 0, "Empty": 0,
+                                                   "Rough": 0, "Short": 0}
+                    language_counts_cache[page_key] = {lang: 0 for lang in COMMON_LANGS}
+                    language_counts_cache[page_key]['other'] = 0
 
-                    else:
-                        # --- THIS IS THE CORE BATCH CALL ---
-                        # Classify all lines on the page at once
-                        all_line_results = classify_lines_batch(
-                            page_lines,
-                            model_ft=model_fasttext,
-                            model_ppl=model_causal,
-                            tokenizer_ppl=tokenizer_causal,
-                            corrected_page_lang=total_lang_code,
-                            corrected_page_lang_score=total_score1,
-                            corrected_page_perplexity=total_text_perplexity,
-                            spellers=SPELLERS,
-                            device=device
+                    # if not page_lines:
+                    #     print(f"\t[Warning] No text lines extracted from file '{file_id}', page '{page_id}'")
+
+                    # --- E. Accumulate Lines from this page ---
+                    for l_num, line_text in enumerate(page_lines, start=1):
+
+                        # Call the pre-filter to see if line is worth processing
+                        category, clean_text = pre_filter_line(line_text)
+
+                        if category == "Empty":
+                            lines_writer.writerow([
+                                file_id, page_id, l_num, line_text,
+                                "N/A", "", 0.0, 0.0, 0.0, 0.0, "Empty", ""
+                            ])
+                            line_counts_cache[page_key]["Empty"] += 1
+
+                        elif category == "Non-text":
+                            lines_writer.writerow([
+                                file_id, page_id, l_num, line_text,
+                                "N/A", "", 0.0, 0.0, 0.0, 0.0, "Non-text", ""
+                            ])
+                            line_counts_cache[page_key]["Non-text"] += 1
+
+                        elif category == "Process":
+                            # Add this line to our batch accumulators
+                            line_batch_to_process.append(clean_text)
+                            line_batch_metadata.append({
+                                "file_id": file_id,
+                                "page_id": page_id,
+                                "line_number": l_num,
+                                "original_line_text": line_text
+                            })
+
+                    # --- F. Process Batches (if full) ---
+                    # Use a while loop in case one page adds enough lines for *multiple* batches
+                    while len(line_batch_to_process) >= BATCH_SIZE:
+                        # 1. Get the batch
+                        lines_to_run = line_batch_to_process[:BATCH_SIZE]
+                        meta_to_run = line_batch_metadata[:BATCH_SIZE]
+
+                        # 2. Run the batch
+                        try:
+                            all_line_results = classify_lines_batch(
+                                lines_to_run,
+                                meta_to_run,
+                                page_stats_cache,
+                                model_fasttext,
+                                model_causal,
+                                tokenizer_causal,
+                                SPELLERS,
+                                device
+                            )
+                        except Exception as e:
+                            print(f"\n[CRITICAL BATCH ERROR] Batch processing failed: {e}", file=sys.stderr)
+                            # Create dummy "Trash" results to avoid data loss
+                            all_line_results = [{"category": "Trash", "lang_code": "N/A"} for _ in lines_to_run]
+
+                        # 3. Write results and update counts
+                        process_batch_results(
+                            all_line_results,
+                            meta_to_run,
+                            lines_writer,
+                            line_counts_cache,
+                            language_counts_cache
                         )
 
-                        # --- Iterate over RESULTS ---
-                        for l_num, result in enumerate(all_line_results, start=1):
-                            # Add to counts for the summary file
-                            if result['category'] in line_counts:
-                                line_counts[result['category']] += 1
-                            else:
-                                line_counts[result['category']] = 1
+                        # 4. Clear processed items from accumulators
+                        line_batch_to_process = line_batch_to_process[BATCH_SIZE:]
+                        line_batch_metadata = line_batch_metadata[BATCH_SIZE:]
 
-                            # Add to language counts
-                            lang_saved = False
-                            for lang_name in language_counts.keys():
-                                if result['lang_code'].startswith(lang_name):
-                                    language_counts[lang_name] += 1
-                                    lang_saved = True
-                                    break
-                            if not lang_saved:
-                                language_counts['other'] += 1
+                        # 5. Log batch progress
+                        batches_processed += 1
+                        if batches_processed % LOG_STEP == 0:
+                            f_lines_csv.flush()
+                            time_spent = time.time() - time_start
+                            lines_per_sec = (batches_processed * BATCH_SIZE) / time_spent if time_spent > 0 else 0
+                            pages_per_min = (rows_processed / time_spent) * 60 if time_spent > 0 else 0
+                            print(
+                                f"\n  -> Processed batch {batches_processed:,}. Total time: {(time_spent / 60):.1f} min \t {batches_processed* BATCH_SIZE:,} lines finished.")
+                            print(f"  -> Avg speed: {lines_per_sec:.1f} lines/sec \t | \t {pages_per_min:.2f} pages/min")
+                            time_left_approx = ((total_rows - rows_processed) / pages_per_min) if pages_per_min > 0 else 0
+                            print(f"  -> Estimated time remaining: {time_left_approx:.1f} min\n")
 
-                            # Write line result to the detailed CSV
-                            lines_writer.writerow([
-                                file_id, page_id, l_num, result['text'], result['lang_code'], result['lang_corrected'],
-                                result['lang_score'], result['lang_score_corrected'],
-                                result['perplexity'], result["perplexity_corrected"], result['category'],
-                                result['corrected_text']
-                            ])
-
-                        # --- E. Prepare new row for the stats file ---
-                        new_row = row.to_dict()  # Start with all old data
-                        # Add new aggregated data
-                        new_row['clear_lines'] = line_counts['Clear']
-                        new_row['noisy_lines'] = line_counts['Noisy']
-                        new_row['trash_lines'] = line_counts['Trash']
-                        new_row['nontxt_lines'] = line_counts['Non-text']
-                        new_row['empty_lines'] = line_counts['Empty']
-                        new_row['rough_lines'] = line_counts['Rough']
-                        new_row['short_lines'] = line_counts['Short']
-
-                        # Get top 2 languages
-                        sorted_langs = sorted(language_counts.items(), key=lambda x: x[1], reverse=True)
-                        top_langs = [lang for lang, count in sorted_langs if count > 0][:2]
-                        new_row['languages'] = "-".join(top_langs) if top_langs else ""
-
-                        new_stats_rows.append(new_row)
-
-                    # print(f"\tProcessed file '{file_id}', page '{page_id}' with '{len(page_lines)}' lines...")
-
-                    # --- F. Log progress ---
+                    # --- G. Log Page Progress ---
                     rows_processed += 1
                     txt_lines_processed += len(page_lines)
                     percentage = (rows_processed / total_rows) * 100
                     time_spent = time.time() - time_start
-                    time_minutes = time_spent / 60
 
-                    # Print a compact progress bar
                     sys.stdout.write(
-                        f"\r* Progress: [ {rows_processed:,} / {total_rows:,} ] pages ({percentage:.1f}%) processed in [{round(time_minutes, 1)} min]... ")
+                        f"\r* * Progress: [ {rows_processed:,} / {total_rows:,} ] pages ({percentage:.1f}%) | Batch Queue: {len(line_batch_to_process):<3} lines | Time: {(time_spent / 60):.1f} min... ")
                     sys.stdout.flush()
 
-                    # Print a detailed log every LOG_STEP rows
-                    if rows_processed % LOG_STEP == 0:
-                        f_lines_csv.flush()  # Save detailed CSV progress
-                        time_per_file = time_spent / rows_processed if rows_processed > 0 else 0
-                        time_per_line = time_spent / txt_lines_processed if txt_lines_processed > 0 else 0
-                        print(f"\n  -> Time spent so far: {time_spent:.1f} sec ({time_minutes:.1f} min)")
-                        print(f"  -> Avg time per PAGE: {time_per_file:.2f} sec")
-                        print(f"  -> Avg time per LINE: {time_per_line:.2f} sec")
-                        print(
-                            f"\tResults for file '{file_id}', page '{page_id}' ({len(page_lines)} lines):\n\t{line_counts}\n\tLanguages: {new_row.get('languages', 'N/A')}\n")
+            # --- 9. End of All Loops ---
+            f_lines_csv.flush()
+            print("\n\nAll pages read. Processing final batch...")
 
-                # --- 9. End of Chunk ---
-                # Add the completed stats rows for this chunk to the main list
-                all_stats_chunks.append(pd.DataFrame(new_stats_rows))
-                f_lines_csv.flush()  # Save detailed CSV progress
+            # --- 10. Process any remaining lines ---
+            if line_batch_to_process:
+                try:
+                    all_line_results = classify_lines_batch(
+                        line_batch_to_process,
+                        line_batch_metadata,
+                        page_stats_cache,
+                        model_fasttext,
+                        model_causal,
+                        tokenizer_causal,
+                        SPELLERS,
+                        device
+                    )
+                    process_batch_results(
+                        all_line_results,
+                        line_batch_metadata,
+                        lines_writer,
+                        line_counts_cache,
+                        language_counts_cache
+                    )
+                    print(f"Processed final batch of {len(line_batch_to_process)} lines.")
+                except Exception as e:
+                    print(f"\n[CRITICAL FINAL BATCH ERROR] Batch processing failed: {e}", file=sys.stderr)
+            else:
+                print("No remaining lines to process.")
 
-        # --- 10. Post-Processing and Saving ---
-        print("\n\nProcessing complete.")
+        # --- 11. Post-Processing and Saving ---
+        print("\nProcessing complete.")
         time_total = time.time() - time_start
-        # ... (print final time stats) ...
         time_minutes_total = time_total / 60
         time_hours_total = time_total / 3600
         print(f"Total time: {time_total:.1f} sec ({time_minutes_total:.1f} min, {time_hours_total:.2f} hr)")
 
-        # --- A. Save the main stats file ---
         if all_stats_chunks:
             print("Consolidating stats file...")
-            # Combine all the chunk DataFrames into one big DataFrame
+            # Combine all the *original* chunk DataFrames
             final_stats_df = pd.concat(all_stats_chunks, ignore_index=True)
+
+            # --- Convert caches to DataFrames to merge ---
+
+            # 1. Line Counts
+            counts_df = pd.DataFrame.from_dict(line_counts_cache, orient='index')
+            # The index is a MultiIndex from (file_id, page_id) tuples.
+            # reset_index() will create 'level_0' and 'level_1' columns.
+            counts_df.reset_index(inplace=True)
+
+            # *** THIS IS THE FIX ***
+            # Rename 'level_0' and 'level_1' directly, and rename all count columns
+            counts_df.rename(columns={
+                'level_0': 'file',
+                'level_1': 'page',
+                "Clear": "clear_lines",
+                "Noisy": "noisy_lines",
+                "Trash": "trash_lines",
+                "Non-text": "nontxt_lines",
+                "Empty": "empty_lines",
+                "Rough": "rough_lines",
+                "Short": "short_lines"
+            }, inplace=True)
+            # *** END OF FIX ***
+
+            # 2. Language Counts
+            lang_list = []
+            for page_key, lang_counts in language_counts_cache.items():
+                sorted_langs = sorted(lang_counts.items(), key=lambda x: x[1], reverse=True)
+                top_langs = [lang for lang, count in sorted_langs if count > 0][:2]
+                lang_str = "-".join(top_langs) if top_langs else ""
+                lang_list.append({'file': page_key[0], 'page': page_key[1], 'languages': lang_str})
+            lang_df = pd.DataFrame(lang_list)
+
+            # --- Merge new columns onto the original DataFrame ---
+            # Ensure file/page are strings for merging
+            final_stats_df['file'] = final_stats_df['file'].astype(str)
+            final_stats_df['page'] = final_stats_df['page'].astype(str)
+            counts_df['file'] = counts_df['file'].astype(str)
+            counts_df['page'] = counts_df['page'].astype(str)
+            lang_df['file'] = lang_df['file'].astype(str)
+            lang_df['page'] = lang_df['page'].astype(str)
+
+            final_stats_df = final_stats_df.merge(counts_df, on=['file', 'page'], how='left')
+            final_stats_df = final_stats_df.merge(lang_df, on=['file', 'page'], how='left')
+
+            # Fill NaNs for pages that had zero processable lines
+            count_cols = ['clear_lines', 'noisy_lines', 'trash_lines', 'nontxt_lines', 'empty_lines',
+                          'rough_lines', 'short_lines']
+            final_stats_df[count_cols] = final_stats_df[count_cols].fillna(0).astype(int)
+            final_stats_df['languages'] = final_stats_df['languages'].fillna("")
 
             print(f"Sorting '{OUTPUT_STATS_FILE}' by file, page...")
             final_stats_df.sort_values(by=["file", "page"], inplace=True)
             final_stats_df.to_csv(OUTPUT_STATS_FILE, index=False, header=True)
             print(f"Updated stats with line counts saved to: {OUTPUT_STATS_FILE}")
 
-            # --- B. Sort the detailed lines file ---
-            # This requires re-reading the *entire* detailed CSV, sorting it,
-            # and re-saving it. This can be slow and memory-intensive.
+            # ... (Rest of your sorting/splitting logic) ...
             print(f"Sorting '{OUTPUT_LINES_FILE}' by file, page, and line. This may take a moment...")
             try:
                 df_lines = pd.read_csv(OUTPUT_LINES_FILE)
@@ -363,10 +481,12 @@ def main():
                 print(f"Successfully split results into {split_count} per-document sets.")
 
             except Exception as e:
-                print(f"\n[Error] Failed to sort {OUTPUT_LINES_FILE} or split per-document files: {e}", file=sys.stderr)
+                print(f"\n[Error] Failed to sort {OUTPUT_LINES_FILE} or split per-document files: {e}",
+                      file=sys.stderr)
 
         else:
             print("No data processed, stats file and per-document files not created.")
+
 
         print(f"Raw text files saved in: {OUTPUT_TEXT_DIR}/")
 

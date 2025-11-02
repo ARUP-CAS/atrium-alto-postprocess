@@ -33,6 +33,7 @@ import csv
 from pathlib import Path
 from autocorrect import Speller
 from spellchecker import SpellChecker
+import concurrent.futures
 
 # --- Configuration ---
 COMMON_LANGS = ["ces", "deu", "eng"]  # Languages considered "common"
@@ -70,6 +71,169 @@ speller_per_language = {
         "lvs": (0, "lv"),
         "eus": (0, "eu")
     }
+
+
+def process_page_batch(page_batch_rows: list, output_text_dir: str,
+                       model_ft, model_ppl, tokenizer_ppl, spellers: dict, device,
+                       executor: concurrent.futures.ThreadPoolExecutor) -> list[tuple]:
+    """
+    (NEW) Processes a batch of *pages* in parallel.
+    This function orchestrates parallel I/O and large-batch ML prediction.
+
+    Args:
+        page_batch_rows (list): A list of row objects from the stats DataFrame.
+        output_text_dir (str): Path to the text cache directory.
+        model_ft, model_ppl, tokenizer_ppl, spellers, device: ML models.
+        executor (ThreadPoolExecutor): A pre-initialized thread pool for I/O.
+
+    Returns:
+        list[tuple]: A list of tuples: (page_row, list_of_line_results)
+    """
+    page_data_map = {}  # {original_row_index: (row, text_cache_path)}
+    batch_size = len(page_batch_rows)
+
+    # --- 1. Prepare file paths for parallel I/O ---
+    for i, row in enumerate(page_batch_rows):
+        file_id = str(row['file'])
+        page_id = str(row['page'])
+        xml_path = row['path']
+
+        xml_file_directory = Path(xml_path).parent
+        separate_dir = str(xml_file_directory).endswith(file_id)
+        if not separate_dir:
+            page_text_file = Path(output_text_dir) / f"{file_id}-{page_id}.txt"
+        else:
+            page_text_file = Path(output_text_dir) / file_id / f"{file_id}-{page_id}.txt"
+            page_text_file.parent.mkdir(parents=True, exist_ok=True)
+
+        page_data_map[i] = (row, xml_path, str(page_text_file))
+
+    # --- 2. Run Parallel I/O (Text Extraction) ---
+    # Submit all text extraction jobs to the thread pool
+    futures = {
+        executor.submit(get_text_from_alto, data[1], data[2]): i
+        for i, data in page_data_map.items()
+    }
+
+    page_lines_list = [None] * batch_size  # [ [lines_page_0], [lines_page_1], ...]
+    page_total_text = [None] * batch_size  # [ "full text page 0", "full text page 1", ...]
+
+    for future in concurrent.futures.as_completed(futures):
+        original_index = futures[future]
+        row, xml_path, txt_path = page_data_map[original_index]
+        try:
+            lines = future.result()
+            page_lines_list[original_index] = lines
+            page_total_text[original_index] = " ".join(lines)
+
+            # --- B. Save raw text file (to complete the cache) ---
+            if not Path(txt_path).exists() and lines:
+                try:
+                    with open(txt_path, 'w', encoding='utf-8') as f_txt:
+                        f_txt.write("\n".join(lines))
+                except Exception as e:
+                    print(f"\n[Warning] Failed to write text file {txt_path}: {e}", file=sys.stderr)
+
+        except Exception as e:
+            print(f"\n[Error] Failed text extraction for {xml_path}: {e}", file=sys.stderr)
+            page_lines_list[original_index] = []
+            page_total_text[original_index] = ""
+
+    # --- 3. Run Batched Page-Level Stats ---
+    # These are needed as context for "Short" lines
+    page_stats_list = []
+    try:
+        page_ppl_results = calculate_perplexity_batch(page_total_text, model_ppl, tokenizer_ppl, device)
+        labels_batch, scores_batch = model_ft.predict(page_total_text, k=1)
+
+        for i in range(batch_size):
+            page_stats_list.append({
+                "lang": labels_batch[i][0].replace("__label__", "") if labels_batch[i] else "N/A",
+                "score": scores_batch[i][0] if scores_batch[i] else 0.0,
+                "perplexity": page_ppl_results[i]
+            })
+    except Exception as e:
+        print(f"\n[Error] Batch page-level prediction failed: {e}", file=sys.stderr)
+        # Create fallback stats
+        page_stats_list = [{"lang": "N/A", "score": 0.0, "perplexity": 0.0}] * batch_size
+
+    # --- 4. Consolidate ALL lines into one "Mega-Batch" ---
+    all_lines_mega_batch = []
+    line_to_page_map = []  # Maps index in mega_batch -> index in page_batch
+
+    for page_index, lines in enumerate(page_lines_list):
+        all_lines_mega_batch.extend(lines)
+        line_to_page_map.extend([page_index] * len(lines))
+
+    if not all_lines_mega_batch:
+        # All pages in this batch were empty
+        return [(page_batch_rows[i], []) for i in range(batch_size)]
+
+    # --- 5. Run ONE Batch Classification for ALL lines ---
+    all_line_results = classify_lines_batch(
+        all_lines_mega_batch,
+        model_ft,
+        model_ppl,
+        tokenizer_ppl,
+        spellers,
+        device,
+        page_stats_list=page_stats_list,  # NEW: Pass list of stats
+        line_to_page_map=line_to_page_map  # NEW: Pass the mapping
+    )
+
+    # --- 6. De-aggregate Results ---
+    final_page_results = [[] for _ in range(batch_size)]
+    for i, line_result in enumerate(all_line_results):
+        page_index = line_to_page_map[i]
+        final_page_results[page_index].append(line_result)
+
+    # --- 7. Return mapped results ---
+    # Zip the original rows with their corresponding line results
+    return_data = []
+    for i, row in enumerate(page_batch_rows):
+        return_data.append((row, final_page_results[i]))
+
+    return return_data
+
+
+# --- NEW HELPER FUNCTION FOR PRE-FILTERING ---
+def pre_filter_line(line: str) -> tuple[str, str]:
+    """
+    Performs the initial, lightweight heuristic checks on a line.
+
+    Returns:
+        A tuple (category, clean_text):
+        - ("Empty", ""): If the line is empty.
+        - ("Non-text", ""): If the line fails heuristic checks.
+        - ("Process", "cleaned_text"): If the line is worth processing.
+    """
+    clean_text = line.strip()
+
+    # --- Handle Empty Line ---
+    if not clean_text:
+        return "Empty", ""
+
+    # --- Heuristic Pre-check (Quickly filter out non-text) ---
+    n_chars = len(clean_text)
+    letters = sum(c.isalpha() for c in clean_text)
+    digits = sum(c.isdigit() for c in clean_text)
+    symbols = sum(not c.isalnum() and not c.isspace() for c in clean_text)
+    unique_symbols = set(c for c in clean_text if not c.isspace())
+
+    if n_chars == 0:
+        return "Empty", ""
+
+    letter_ratio = letters / n_chars
+    digit_ratio = digits / n_chars
+    symbol_ratio = symbols / n_chars
+
+    # These rules define "Non-text":
+    if (letter_ratio < 0.3 or digit_ratio > 0.4 or symbol_ratio > 0.5 or
+            len(clean_text) < 4 or len(unique_symbols) < 3):
+        return "Non-text", ""
+
+    # If it passes all checks, it's worth processing
+    return "Process", clean_text
 
 
 def get_text_from_alto(xml_path: str, txt_path: str) -> list[str]:
@@ -352,102 +516,52 @@ def calculate_perplexity_batch(texts: list[str], model, tokenizer, device) -> li
         return [0.0] * len(texts)  # Fallback on error
 
 
-# --- NEW: BATCH CLASSIFICATION FUNCTION ---
-def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, spellers: dict, device,
-                         corrected_page_text="", corrected_page_lang="", corrected_page_lang_score=0.0,
-                         corrected_page_perplexity=0.0) -> list[dict]:
+# --- (REPLACE) BATCH CLASSIFICATION FUNCTION ---
+def classify_lines_batch(lines_to_process: list[str],
+                         line_batch_metadata: list[dict],
+                         page_stats_map: dict,
+                         model_ft, model_ppl, tokenizer_ppl, spellers: dict, device) -> list[dict]:
     """
-    (BATCH VERSION)
-    Detects language, perplexity, and quality category for a batch of text lines.
-    This is the core function of the quality assessment pipeline.
+    (BATCH VERSION - MODIFIED FOR 16-LINE BATCHES)
+    Detects language, perplexity, and quality category for a pre-filtered
+    batch of text lines. Assumes lines are NOT "Empty" or "Non-text".
 
     Args:
-        lines (list[str]): A list of raw text lines from a single page.
-        model_ft: Pre-loaded fastText model.
-        model_ppl: Pre-loaded perplexity model.
-        tokenizer_ppl: Pre-loaded perplexity tokenizer.
-        spellers: Dictionary of pre-loaded speller objects.
-        device: "cuda" or "cpu".
-        corrected_page_*: Page-level statistics used as context for "Short" lines.
+        lines_to_process (list[str]): A list of pre-cleaned text lines.
+        line_batch_metadata (list[dict]): A list of dicts, one for each line,
+                                          containing {"file_id", "page_id"}.
+        page_stats_map (dict): A dict mapping (file_id, page_id) -> page_stats
+                               for "Short" line context.
+        model_ft, model_ppl, tokenizer_ppl, spellers, device: ML models.
 
     Returns:
         list[dict]: A list of result dictionaries, one for each input line.
     """
-    n_lines = len(lines)
+    n_lines = len(lines_to_process)
     if n_lines == 0:
         return []
 
-    # This list will hold the final results in the correct order
+    # This check is crucial (and was the source of your error!)
+    if n_lines != len(line_batch_metadata):
+        print(
+            f"[Error] Mismatch in classify_lines_batch: {n_lines} lines but {len(line_batch_metadata)} metadata entries.",
+            file=sys.stderr)
+        # Return dummy "Trash" results to avoid crashing
+        return [{
+            "text": line, "lang_code": "N/A", "lang_score": 0.0,
+            "perplexity": 0.0, "category": "Trash",
+            "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
+            "perplexity_corrected": 0.0
+        } for line in lines_to_process]
+
+    # --- 1. Pre-filtering is now DONE in run_langID.py ---
+    # We assume `lines_to_process` is already clean.
+
     final_results = [None] * n_lines
-    # This list will hold only the lines that are valid for processing
-    lines_to_process = []
-    original_indices = []  # Map from batch_index -> original_index
 
-    # --- 1. Pre-filter Empty and Non-text lines ---
-    # This loop quickly filters out lines that are clearly not text,
-    # saving us from running expensive ML models on them.
-    for i, line in enumerate(lines):
-        clean_text = line.strip()
-
-        # --- Handle Empty Line ---
-        if not clean_text:
-            final_results[i] = {
-                "text": line, "lang_code": "N/A", "lang_score": 0.0,
-                "perplexity": 0.0, "category": "Empty",
-                "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
-                "perplexity_corrected": 0.0
-            }
-            continue
-
-        # --- Heuristic Pre-check (Quickly filter out non-text) ---
-        n_chars = len(clean_text)
-        letters = sum(c.isalpha() for c in clean_text)
-        digits = sum(c.isdigit() for c in clean_text)
-        symbols = sum(not c.isalnum() and not c.isspace() for c in clean_text)
-        unique_symbols = set(c for c in clean_text if not c.isspace())
-
-        if n_chars == 0:
-            final_results[i] = {
-                "text": line, "lang_code": "N/A", "lang_score": 0.0,
-                "perplexity": 0.0, "category": "Empty",
-                "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
-                "perplexity_corrected": 0.0
-            }
-            continue  # Skip to next line
-
-        letter_ratio = letters / n_chars
-        digit_ratio = digits / n_chars
-        symbol_ratio = symbols / n_chars
-
-        # These rules define "Non-text":
-        # - Less than 30% letters OR
-        # - More than 40% digits OR
-        # - More than 50% symbols OR
-        # - Less than 4 characters OR
-        # - Less than 3 unique non-space characters
-        if (letter_ratio < 0.3 or digit_ratio > 0.4 or symbol_ratio > 0.5 or
-                len(clean_text) < 4 or len(unique_symbols) < 3):
-            final_results[i] = {
-                "text": line, "lang_code": "N/A", "lang_score": 0.0,
-                "perplexity": 0.0, "category": "Non-text",
-                "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
-                "perplexity_corrected": 0.0
-            }
-            continue  # Skip to next line
-
-        # If the line passes all checks, add it to the batch to be processed
-        lines_to_process.append(clean_text)
-        original_indices.append(i)
-
-    if not lines_to_process:
-        return final_results  # All lines were empty or non-text
-
-    # --- 3. Run Batch Predictions on Original Text ---
-    # This is where the ML models run on all valid lines at once.
+    # --- 2. Run Batch Predictions on Original Text ---
     try:
-        # Get all perplexity scores
         ppl_results = calculate_perplexity_batch(lines_to_process, model_ppl, tokenizer_ppl, device)
-        # Get all language predictions
         labels_batch, scores_batch = model_ft.predict(lines_to_process, k=1)
 
         lang_codes = [l[0].replace("__label__", "") for l in labels_batch]
@@ -455,18 +569,14 @@ def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, s
     except Exception as e:
         print(f"\n[Error] Batch model prediction failed: {e}", file=sys.stderr)
         # On failure, mark all as "Trash"
-        for i, batch_idx in enumerate(original_indices):
-            final_results[batch_idx] = {
-                "text": lines[batch_idx], "lang_code": "N/A", "lang_score": 0.0,
-                "perplexity": 0.0, "category": "Trash",
-                "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
-                "perplexity_corrected": 0.0
-            }
-        return final_results
+        return [{
+            "text": line, "lang_code": "N/A", "lang_score": 0.0,
+            "perplexity": 0.0, "category": "Trash",
+            "corrected_text": "", "lang_corrected": "", "lang_score_corrected": 0.0,
+            "perplexity_corrected": 0.0
+        } for line in lines_to_process]
 
-    # --- 4. & 5. Autocorrect and Run Predictions on Corrected Text ---
-
-    # Identify lines that need correction (and are long enough to be worth it)
+    # --- 3. & 4. Autocorrect and Run Predictions on Corrected Text ---
     texts_to_correct = []
     correction_batch_indices = []  # Index *within lines_to_process*
 
@@ -506,9 +616,8 @@ def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, s
             "lang_score_corrected": lang_scores_corrected[i]
         }
 
-    # --- 6. Categorize and Assemble Final Dictionaries ---
+    # --- 5. Categorize and Assemble Final Dictionaries ---
     for i, line in enumerate(lines_to_process):
-        original_idx = original_indices[i]
         n_words = len(line.split(" "))
 
         # Get original text predictions
@@ -517,18 +626,30 @@ def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, s
         score1 = lang_scores[i]
 
         # --- Handle "Short" lines ---
-        # (Lines with < 3 words)
         if n_words < 3:
-            final_results[original_idx] = {
-                "text": lines[original_idx],  # Use original full line
-                "lang_code": lang_code, "lang_score": score1,
-                "perplexity": text_perplexity, "category": "Short",
-                "corrected_text": "",  # Don't store corrected text for short lines
-                # Use *page-level* stats as context
-                "lang_corrected": corrected_page_lang,
-                "lang_score_corrected": corrected_page_lang_score,
-                "perplexity_corrected": corrected_page_perplexity
-            }
+            # --- THIS IS THE KEY CHANGE ---
+            # Get the page-level context for *this specific line*
+            meta = line_batch_metadata[i]
+            page_stats = page_stats_map.get((meta['file_id'], meta['page_id']))
+            # --- END OF KEY CHANGE ---
+
+            if page_stats:
+                final_results[i] = {
+                    "lang_code": lang_code, "lang_score": score1,
+                    "perplexity": text_perplexity, "category": "Short",
+                    "corrected_text": "",  # Don't store corrected text for short lines
+                    # Use *page-level* stats as context
+                    "lang_corrected": page_stats["lang"],
+                    "lang_score_corrected": page_stats["score"],
+                    "perplexity_corrected": page_stats["perplexity"]
+                }
+            else:  # Fallback if page stats not found (should not happen)
+                final_results[i] = {
+                    "lang_code": lang_code, "lang_score": score1,
+                    "perplexity": text_perplexity, "category": "Short",
+                    "corrected_text": "", "lang_corrected": "N/A",
+                    "lang_score_corrected": 0.0, "perplexity_corrected": 0.0
+                }
             continue
 
         # --- Handle regular lines ---
@@ -548,50 +669,41 @@ def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, s
             correcte_score1 = 0.0
 
         # --- Categorize (Clear, Noisy, Trash, Rough) ---
-        category = "Clear"  # Start with optimistic assumption
+        category = "Clear"
         letters = sum(c.isalpha() for c in line)
         upper_ratio = sum(c.isupper() for c in line) / letters if letters > 0 else 0.0
         is_common = lang_code.split("_")[0] in COMMON_LANGS
         is_cor_common = corrected_lang_code.split("_")[0] in COMMON_LANGS if corrected_lang_code else is_common
-        # This 'is_Latin' check is commented out in the original, but was part of classify_line
-        # is_Latin = lang_code.split("_")[-1] == "Latn"
-        # is_cor_Latin = corrected_lang_code.split("_")[-1] == "Latn" if corrected_lang_code else is_Latin
-
-        # --- Categorization Logic Tree ---
 
         # 1. Check for TRASH
         if text_perplexity >= PERPLEXITY_THRESHOLD_MAX:
             if corrected_text_perplexity == 0.0 or corrected_text_perplexity >= PERPLEXITY_THRESHOLD_MAX:
                 category = "Trash"
-        elif upper_ratio > 0.9 and letters > 10:  # Almost all-caps
+        elif upper_ratio > 0.9 and letters > 10:
             category = "Trash"
-        # elif not is_Latin and not is_cor_Latin: # Not a latin script
-        #     category = "Trash"
 
         # 2. Check for NOISY
         elif text_perplexity >= PERPLEXITY_THRESHOLD_MIN:
             if corrected_text_perplexity == 0.0 or corrected_text_perplexity >= PERPLEXITY_THRESHOLD_MIN:
                 category = "Noisy"
-        elif upper_ratio > 0.6 and letters > 10:  # Mostly all-caps
+        elif upper_ratio > 0.6 and letters > 10:
             category = "Noisy"
-        elif not is_common and not is_cor_common:  # Not a common language
+        elif not is_common and not is_cor_common:
             category = "Noisy"
-        elif score1 < LANG_SCORE_ROUGH and correcte_score1 < LANG_SCORE_ROUGH:  # Low confidence
+        elif score1 < LANG_SCORE_ROUGH and correcte_score1 < LANG_SCORE_ROUGH:
             category = "Noisy"
 
-        # 3. Check for ROUGH (promotion from Noisy)
+        # 3. Check for ROUGH
         if correcte_score1 > LANG_SCORE_ROUGH and any(corrected_lang_code.startswith(cl) for cl in COMMON_LANGS):
             category = "Rough"
         elif score1 > LANG_SCORE_ROUGH and any(lang_code.startswith(cl) for cl in COMMON_LANGS):
             category = "Rough"
 
-        # 4. Check for CLEAR (promotion from Rough)
+        # 4. Check for CLEAR
         if score1 > LANG_SCORE_CLEAR and any(lang_code.startswith(cl) for cl in COMMON_LANGS):
             category = "Clear"
 
-        # --- Assemble the final dictionary for this line ---
-        final_results[original_idx] = {
-            "text": lines[original_idx],
+        final_results[i] = {
             "corrected_text": corrected_text,
             "lang_code": lang_code,
             "lang_corrected": corrected_lang_code,
@@ -603,8 +715,6 @@ def classify_lines_batch(lines: list[str], model_ft, model_ppl, tokenizer_ppl, s
         }
 
     return final_results
-
-
 
 def classify_line(line: str, model_ft, model_ppl, tokenizer_ppl, spellers: dict, device,
                   corrected_page_text="", corrected_page_lang="", corrected_page_lang_score=0.0,
