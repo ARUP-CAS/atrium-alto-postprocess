@@ -132,7 +132,7 @@ and DistilGPT2 models on the **GPU**. It logs results immediately to a raw CSV t
    - *Columns*:
       - `file` - document identifier
       - `page` - page number
-      - `line_num` - starts from 1 for each line on the ALTO page
+      - `line_num` - line number, starts from 1 for each line on the ALTO page
       - `text` - original text of the line from ALTO page
       - `lang` - predicted ISO language code of the line ([list of all possible language labels predicted by FastText model)](https://github.com/facebookresearch/flores/tree/main/flores200#languages-in-flores-200)
       - `score` - confidence score of the predicted language code
@@ -155,11 +155,11 @@ final page-level statistics and per-document splits (**CPU** can handle this).
    - *Columns*:
       - `file` - document identifier
       - `page` - page number
-      - `Clear` - clear lines count
-      - `Non-text` - non-text lines count
-      - `Trash` - trash lines count
-      - `Noisy` - noisy lines count
-      - `Empty` - empty lines count
+      - `Clear` - clear lines count, clean and ready to be processed
+      - `Non-text` - non-text lines count, contain mostly digits/symbols
+      - `Trash` - trash lines count, unintelligible or very high perplexity (due to OCR errors)
+      - `Noisy` - noisy lines count, some errors but partially understandable
+      - `Empty` - empty lines count, contain only whitespace
    -   *Example*: [final_page_stats.csv](final_page_stats.csv) 📎
 
 
