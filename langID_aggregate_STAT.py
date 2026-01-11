@@ -6,6 +6,7 @@ Step 3: Aggregate raw lines into page statistics and split per document.
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+import configparser
 
 def main():
     # Initialize the parser
@@ -40,7 +41,7 @@ def main():
         stats.reset_index(inplace=True)
 
         # Add missing columns if they didn't appear in this chunk
-        for col in ["Clear", "Trash", "Noisy", "Rough", "Empty", "Non-text"]:
+        for col in ["Clear", "Trash", "Noisy", "Empty", "Non-text"]:
             if col not in stats.columns:
                 stats[col] = 0
 

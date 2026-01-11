@@ -106,6 +106,9 @@ As the script processes, it aggregates line counts for each page into categories
 > `raw_lines_classified.csv` and `final_page_stats.csv`, while the
 > raw text files and per-document results are also saved in `../PAGE-TXT/` and `../PAGE-STAT/`.
 
+All of the input-output files and chamgable parameters are available in [config_langID.txt](config_langID.txt) 📎 where 
+here Step 3 is split into three stages:
+
 #### 3.1 Extract Text (CPU Bound)
 This script runs in parallel (using multiple **CPU** cores) to extract text from ALTO XMLs into `.txt` files. It reads the CSV from Step 2.
 
@@ -129,20 +132,13 @@ and DistilGPT2 models on the **GPU**. It logs results immediately to a raw CSV t
    - *Columns*:
       - `file` - document identifier
       - `page` - page number
-      - `textlines` - number of text lines on the ALTO page
-      - `illustrations` - number of illustrations on the ALTO page
-      - `graphics` - number of graphics on the ALTO page
-      - `strings` - number of strings on the ALTO page
-      - `path` - path to the ALTO XML file of the page
-      - `clear_lines` - number of lines classified as **Clear**
-      - `noisy_lines` - number of lines classified as **Noisy**
-      - `trash_lines` - number of lines classified as **Trash**
-      - `nontxt_lines` - number of lines classified as **Non-text**
-      - `empty_lines` - number of lines classified as **Empty**
-      - `rough_lines` - number of lines classified as **Rough**
-      - `short_lines` - number of lines classified as **Short**
-      - `languages` - most common language code pair among page lines (e.g., "eng-ces", "deu-other", "ces" etc.)
-   -   *Example*: [line_counts_test_alto_stats.csv](line_counts_test_alto_stats.csv) 📎
+      - `line_num` - starts from 1 for each line on the ALTO page
+      - `text` - original text of the line from ALTO page
+      - `lang` - predicted ISO language code of the line ([list of all possible language labels predicted by FastText model)](https://github.com/facebookresearch/flores/tree/main/flores200#languages-in-flores-200)
+      - `score` - confidence score of the predicted language code
+      - `ppl` - perplexity score of the original line text
+      - `cat` - assigned category of the line (**Clear**, **Noisy**, **Trash**, **Non-text**, or **Empty**)
+   -   *Example*: [raw_lines_classified.csv](raw_lines_classified.csv) 📎
 
 
 #### 3.3 Aggregate Statistics (Memory Bound)
@@ -159,17 +155,12 @@ final page-level statistics and per-document splits (**CPU** can handle this).
    - *Columns*:
       - `file` - document identifier
       - `page` - page number
-      - `line` - line number on the ALTO page
-      - `line_text` - original text of the line from ALTO page
-      - `lang_code` - predicted ISO language code of the line ([list of all possible language labels predicted by FastText model)](https://github.com/facebookresearch/flores/tree/main/flores200#languages-in-flores-200)
-      - `lang_corrected` - predicted ISO language code after autocorrection of the line text, or from the whole page for a **Short** line
-      - `lang_score` - confidence score of the predicted language code
-      - `lang_score_corrected` - confidence score after autocorrection or from the whole page for a **Short** line
-      - `perplexity` - perplexity score of the original line text
-      - `perplexity_corrected` - perplexity score after autocorrection or from the whole page for a **Short** line
-      - `category` - assigned category of the line (**Clear**, **Rough**, **Noisy**, **Trash**, **Short**, **Non-text**, **Empty**, **N/A**)
-      - `corrected_text` - text of the line after autocorrection, but empty string if unchanged
-   -   *Example*: [pages_classified_test_alto_stats.csv](pages_classified_test_alto_stats.csv) 📎
+      - `Clear` - clear lines count
+      - `Non-text` - non-text lines count
+      - `Trash` - trash lines count
+      - `Noisy` - noisy lines count
+      - `Empty` - empty lines count
+   -   *Example*: [final_page_stats.csv](final_page_stats.csv) 📎
 
 
 ### ▶ Step 4: Add Full Text Content to Statistics CSV

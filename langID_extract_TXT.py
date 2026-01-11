@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 from tqdm import tqdm
+import configparser
 
 
 def extract_single_page(args):

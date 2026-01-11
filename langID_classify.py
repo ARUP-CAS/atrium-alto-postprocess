@@ -61,7 +61,7 @@ def main():
     with open(OUTPUT_LINES_LOG, 'a', encoding='utf-8', newline='') as f_out:
         writer = csv.writer(f_out)
         if write_header:
-            writer.writerow(["file", "page", "line_num", "text", "lang", "score", "ppl", "cat", "cor_text"])
+            writer.writerow(["file", "page", "line_num", "text", "lang", "score", "ppl", "cat"])
 
         # 4. Read Input List
         df = pd.read_csv(INPUT_CSV)
