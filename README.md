@@ -176,27 +176,89 @@ the `path` column with a new `text` column, and save the result as `input_with_t
 
 ### ▶ Step 5: Extract NER and CONLL-U
 
-Using a CSV file that contains text content (like the one from Step 4), you can 
-now call external APIs to perform advanced NLP analysis.
+This stage performs advanced NLP analysis using external APIs (Lindat/CLARIAH-CZ) to generate Universal Dependencies (CoNLL-U) and Named Entity Recognition (NER) data.
 
-The input CSV must have at least these 4 columns: `file, page, lang, text`.
+Unlike previous steps, this process is split into modular shell scripts to handle large-scale processing, text chunking, and API rate limiting.
 
-    ./text_api_calls.sh input.csv <nametag_out_dir> <udpipe_out_dir>
+#### 5.1 Configuration ⚙️
 
-This script will populate the output directories 📁 with `.txt` files containing the 
-API results for Name Entity Recognition (NER) and Universal Dependencies (CONLL-U).
+Before running the pipeline, review the `api_config.env` file. This file controls directory paths, API endpoints, and model selection.
+```bash
+# Example settings in api_config.env
+INPUT_DIR="../PAGE_TXT"        # Source of text files (from Step 3.1)
+OUTPUT_DIR="../OUT_API"        # Destination for results
+MODEL_UDPIPE="czech-pdt-ud-2.15-241121"
+MODEL_NAMETAG="nametag3-czech-cnec2.0-240830"
+WORD_CHUNK_LIMIT=900           # Word limit per API call
+```
 
-    <nametag_output_dir>
-    ├── <file1>
-        ├── <file1>-<page>.txt 
-        └── ...
-    <udpipe_output_dir>
-    ├── <file1>
-        ├── <file1>-<page>.txt
-        └── ...
+#### 5.2 Execution Pipeline
 
-You can configure ⚙️ API endpoints, models, and other parameters by editing the 
-header variables in the `text_api_calls.sh` script.
+Run the following scripts in sequence. Each script utilizes [api_common.sh](api_util/api_common.sh) for logging, retry logic, and error handling.
+
+##### I. Generate Manifest
+
+Maps input text files to document IDs and page numbers to ensure correct processing order.
+```bash
+./api_manifest.sh
+```
+
+* **Input:** `INPUT_DIR` (raw text files in subdirectories).
+* **Output:** `processing_work/manifest.tsv`.
+
+##### II. UDPipe Processing (Morphology & Syntax)
+
+Sends text to the UDPipe API. Large pages are automatically split into chunks (default 900 words) using [chunk.py](api_util/chunk.py) to respect API limits, then merged back into valid CoNLL-U files.
+```bash
+./api_udp.sh
+```
+
+* **Output:** `processing_work/UDPIPE_INTERMEDIATE/*.conllu` (Intermediate CoNLL-U files).
+
+##### III. NameTag Processing (NER)
+
+Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
+(NE) directly into the syntax trees.
+```bash
+./api_nt.sh
+```
+
+* **Output:** `OUTPUT_DIR/CONLLU_FINAL/` (Final annotated files).
+
+##### IV. Generate Statistics
+
+Aggregates the entity counts from the final CoNLL-U files into a summary CSV. It utilizes [analyze.py](api_util/analyze.py) to map complex 
+CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geographical name", "First name", "Company/Firm").
+
+```bash
+./api_stats.sh
+```
+
+* **Output:** `OUTPUT_DIR/STATS/summary_ne_counts.csv`.
+
+#### 5.3 Output Structure
+
+After completing the pipeline, your output directory will be organized as follows:
+```
+processing_work/
+├── UDPIPE_INTERMEDIATE/  # Intermediate CONLL-U files
+│   ├── <doc_id>_part1.conllu
+│   ├── <doc_id>_part2.conllu
+│   └── ...
+├── nametag_response_docname1.conllu.json
+├── nametag_response_docname2.conllu.json
+├── ...
+└── manifest.tsv
+```
+AND
+```
+<OUTPUT_DIR>
+├── CONLLU_FINAL/           # Full linguistic analysis
+│   ├── <doc_id>.conllu     # Parsed sentences with NER tags
+│   └── ...
+└── STATS/
+    └── summary_ne_counts.csv  # Table of top entities per document
+```
 
 ### ▶ Step 6: Extract Keywords (KER) based on tf-idf
 
