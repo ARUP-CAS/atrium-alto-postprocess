@@ -29,8 +29,7 @@ def load_models():
     model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(DEVICE)
     model.eval()  # Set to eval mode
 
-    spellers = load_spellers()
-    return ft, model, tokenizer, spellers
+    return ft, model, tokenizer
 
 
 def write_rows_to_doc(output_dir, file_id, rows):
@@ -63,7 +62,7 @@ def main():
     out_dir_path = Path(OUTPUT_DIR)
     out_dir_path.mkdir(parents=True, exist_ok=True)
 
-    ft_model, ppl_model, ppl_tok, spellers = load_models()
+    ft_model, ppl_model, ppl_tok  = load_models()
 
     # 2. Read Input List
     df = pd.read_csv(INPUT_CSV)

@@ -8,13 +8,8 @@ import shutil
 from pathlib import Path
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from multi_rake import Rake
 
-# Try to import multi_rake; handle missing dependency gracefully
-try:
-    from multi_rake import Rake
-except ImportError:
-    print("[Error] 'multi_rake' library not found. Please install it: pip install multi_rake", file=sys.stderr)
-    sys.exit(1)
 
 # --- Configuration ---
 # Regex to extract Document ID from filename stem.
