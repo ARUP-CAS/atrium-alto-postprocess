@@ -157,6 +157,14 @@ final page-level statistics and per-document splits (**CPU** can handle this).
       - `Empty` - empty lines count, contain only whitespace
    -   *Example*: [final_page_stats.csv](final_page_stats.csv) 📎
 
+Example of per-document CSV file with per-page statistics: [PAGE_STAT](data_samples/PAGE_STAT) 📎.
+
+     PAGE_STAT/
+          ├── stats_<docname1>.csv 
+          ├── stats_<docname2>.csv
+          └── ...
+
+
 ### ▶ Step 5: Extract Keywords (KER) based on tf-idf
 
 Finally, you can extract keywords 🔎 from your processed text. This script runs on a directory of subdirectories with
