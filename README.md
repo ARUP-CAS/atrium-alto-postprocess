@@ -46,9 +46,14 @@ This script will split them into individual page-specific XML files.
 
     python3 page_split.py <input_dir> <output_dir>
 
-This command will generate a new directory structure: 
+Each page-specific file retains the header from its original source document.
 
-    <output_dir>
+* **Input:** `../ALTO/` (input directory with ALTO XML documents)
+* **Output:** `../PAGE_ALTO/` (output directory with ALTO XML files split into pages)
+
+Example of the output directory with divided per-page XML files: [PAGE_ALTO](data_samples/PAGE_ALTO) 📎.
+
+    PAGE_ALTO/
     ├── <file1>
         ├── <file1>-<page>.alto.xml 
         └── ...
@@ -56,8 +61,6 @@ This command will generate a new directory structure:
         ├── <file2>-<page>.alto.xml 
         └── ...
     └── ...
-
-Each page-specific file retains the header from its original source document.
 
 ### ▶ Step 2: Create Page Statistics Table
 
@@ -75,6 +78,9 @@ This script writes a CSV file line-by-line, capturing metadata for each page:
 
 The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
 
+* **Input:** `../PAGE_ALTO/` (input directory with ALTO XML files split into pages from Step 1)
+* **Output:** `output.csv` (table with page-level statistics and paths to ALTO files)
+
 > [!NOTE]
 > This statistics table is the basis for subsequent processing steps.
 > An example is available in [test_alto_stats.csv](test_alto_stats.csv) 📎.
@@ -87,7 +93,20 @@ It reads the CSV from Step 2.
     python3 extract_ALTO_2_TXT.py
 
 * **Input:** `output.csv` (from Step 2)
+* **Input:** `../PAGE_ALTO/` (input directory with ALTO XML files split into pages from Step 1)
 * **Output:** `../PAGE_TXT/` (directory containing raw text files)
+
+Example of per-page text files: [PAGE_TXT](data_samples/PAGE_TXT) 📎.
+
+    PAGE_TXT/
+    ├── <file1>
+        ├── <file1>-<page>.txt 
+        └── ...
+    ├── <file2>
+        ├── <file2>-<page>.txt 
+        └── ...
+    └── ...
+
 
 ### ▶ Step 4: Classify Page Text Quality & Language
 
@@ -119,7 +138,8 @@ and DistilGPT2 models on the **GPU**. It logs results immediately to a raw CSV t
 
     python3 langID_classify.py
 
-* **Input:** `../PAGE_TXT/` and `output.csv`
+* **Input:** `../PAGE_TXT/` from Step 3
+* **Input:** `output.csv` from Step 2
 * **Output:** `DOC_LINE_LANG_CLASS/` containing per-document CSVs (e.g., [DOC_LINE_LANG_CLASS](data_samples/DOC_LINE_LANG_CLASS)) like [raw_lines_classified.csv](raw_lines_classified.csv) 📎
 * **Note:** This script is resume-capable. If interrupted, run it again, and it will skip files already present in the log.
 
@@ -135,6 +155,12 @@ and DistilGPT2 models on the **GPU**. It logs results immediately to a raw CSV t
       - `categ` - assigned category of the line (**Clear**, **Noisy**, **Trash**, **Non-text**, or **Empty**)
    -   *Example*: [raw_lines_classified.csv](raw_lines_classified.csv) 📎
 
+Example of per-document CSV file with per-line statistics: [DOC_LINE_LANG_CLASS](data_samples/DOC_LINE_LANG_CLASS) 📎.
+
+     DOC_LINE_LANG_CLASS/
+     ├── <docname1>.csv 
+     ├── <docname2>.csv
+     └── ...
 
 #### 4.2 Aggregate Statistics (Memory Bound)
 This script processes the directory `DOC_LINE_LANG_CLASS` with CSV files in chunks to produce the 
@@ -160,10 +186,9 @@ final page-level statistics and per-document splits (**CPU** can handle this).
 Example of per-document CSV file with per-page statistics: [PAGE_STAT](data_samples/PAGE_STAT) 📎.
 
      PAGE_STAT/
-          ├── stats_<docname1>.csv 
-          ├── stats_<docname2>.csv
-          └── ...
-
+     ├── stats_<docname1>.csv 
+     ├── stats_<docname2>.csv
+     └── ...
 
 ### ▶ Step 5: Extract Keywords (KER) based on tf-idf
 
@@ -185,12 +210,10 @@ Besides the summary table, individual per-document CSV files are also created in
 
 Example of per-document CSV file with keywords: [KW_PER_DOC](data_samples/KW_PER_DOC) 📎.
 
-
      KW_PER_DOC/
-          ├── <docname1>.csv 
-          ├── <docname2>.csv
-          └── ...
-
+     ├── <docname1>.csv 
+     ├── <docname2>.csv
+     └── ...
 
 ---
 
