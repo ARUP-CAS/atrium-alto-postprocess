@@ -81,6 +81,8 @@ def main():
         print("Consolidating final page stats...")
         final_df = pd.concat(all_page_stats, ignore_index=True)
 
+        final_df.sort_values(by=['file', 'page_num'], inplace=True)
+
         # Save global stats
         final_df.to_csv(OUTPUT_STATS, index=False)
         print(f"Done. Global stats saved to {OUTPUT_STATS}")
