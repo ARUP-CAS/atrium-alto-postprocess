@@ -79,14 +79,14 @@ This script writes a CSV file line-by-line, capturing metadata for each page:
     CTX200205348, 2, 0, 1, 12, 0, /lnet/.../A-PAGE/CTX200205348/CTX200205348-2.alto.xml
     ...
 
-The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
+The extraction is powered by the **alto-tools** framework [^1].
 
 * **Input:** `../PAGE_ALTO/` (input directory with ALTO XML files split into pages from Step 1)
 * **Output:** `output.csv` (table with page-level statistics and paths to ALTO files)
 
 > [!IMPORTANT]
 > This statistics table is the basis for subsequent processing steps.
-> An example is available in [test_alto_stats.csv](test_alto_stats.csv) 📎.
+> Example: [test_alto_stats.csv](test_alto_stats.csv) 📎.
 
 ---
 
@@ -120,11 +120,11 @@ This is a key ⌛ time-consuming step that analyzes the text quality of each pag
 line-by-line, counting lines of defined types, to filter out OCR noise.
 
 It uses the [FastText language identification model](https://huggingface.co/facebook/fasttext-language-identification) 😊 
-and perplexity scores from [distilGPT2](https://huggingface.co/distilbert/distilgpt2) 😊 to detect noise.
+and perplexity scores from [distilGPT2](https://huggingface.co/distilbert/distilgpt2) 😊 to detect noise [^2] [^6].
 
-More post-processing of TXT files can be found in the [GitHub repository](https://github.com/K4TEL/atrium-nlp-enrich.git) 
+More post-processing of TXT files can be found in the [GitHub repository](https://github.com/K4TEL/atrium-nlp-enrich) 
 of ATRIUM project dedicated to based on NLP enrichment of the textual data using Nametag for 
-NER and UDPipe for CONLL-U files with lemmas & POS tags.
+NER and UDPipe for CONLL-U files with lemmas & POS tags [^5].
 
 As the script processes, it aggregates line counts for each page into categories 🪧:
 
@@ -269,6 +269,12 @@ TF-IDF values computed inside the system.
 
 **©️ 2025 UFAL & ATRIUM**
 
+
+[^1]: https://github.com/cneud/alto-tools
+[^2]: https://huggingface.co/facebook/fasttext-language-identification
+[^3]: https://github.com/ufal/ker
 [^4]: https://atrium-research.eu/
-[^8]: https://github.com/ufal/atrium-alto-postprocess
+[^5]: https://github.com/K4TEL/atrium-nlp-enrich
+[^6]: https://huggingface.co/distilbert/distilgpt2
+[^8]: https://github.com/K4TEL/atrium-alto-postprocess
 [^7]: https://ufal.mff.cuni.cz/home-page
