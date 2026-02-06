@@ -4,6 +4,7 @@ extract_LytRdr_ALTO_2_TXT.py
 
 Step 1: Extract and reorder text from ALTO XML files using LayoutReader in parallel.
 Fixed: Removed undefined variable references in parse_alto_xml.
+Added: Horizontal gap check for long spaces/column margins in post_process_text.
 """
 
 import pandas as pd
@@ -89,9 +90,6 @@ def parse_alto_xml(xml_path):
     words = []
     boxes = []
 
-    # --- FIX: Removed the erroneous 'lines' and 'ordered_words' loop here ---
-    # The previous code block referencing 'ordered_words' caused a NameError.
-
     text_lines = find_all(root, 'TextLine')
     for line in text_lines:
         children = list(line)
@@ -166,9 +164,6 @@ def get_vertical_overlap(box1, box2):
     return intersection / min_height
 
 
-import numpy as np
-
-
 def post_process_text(ordered_words, ordered_boxes):
     """Reconstructs text from reordered words/boxes with robust paragraph detection."""
     if not ordered_words:
@@ -187,10 +182,11 @@ def post_process_text(ordered_words, ordered_boxes):
     # 2. Adjust Thresholds
     OVERLAP_THRESHOLD = 0.4
 
-    # Increased from 1.8 to 2.5.
-    # Standard line spacing is usually 1.2-1.5x text height.
-    # Paragraph gaps are usually significantly larger.
+    # Vertical thresholds
     PARAGRAPH_GAP_THRESHOLD = median_height * 2.5
+
+    # Horizontal threshold: 3.0x line height approximates a column gutter or wide break
+    HORIZONTAL_GAP_THRESHOLD = median_height * 3.0
 
     result_tokens = []
     prev_box = None
@@ -208,12 +204,18 @@ def post_process_text(ordered_words, ordered_boxes):
             overlap_ratio = get_vertical_overlap(prev_box, box)
 
             if overlap_ratio > OVERLAP_THRESHOLD:
-                separator = " "
+                # SAME LINE: Check Horizontal Gap
+                h_gap = box[0] - prev_box[2]
+
+                # If gap is significantly large (balanced for column margins), use Tab
+                if h_gap > HORIZONTAL_GAP_THRESHOLD:
+                    separator = "\t"
+                else:
+                    separator = " "
             else:
-                # Calculate vertical gap
+                # DIFFERENT LINE: Check Vertical Gap
                 vertical_gap = curr_top - prev_bottom
 
-                # Logic for line splits
                 # Case A: Column break or layout reset (gap is negative or very large negative)
                 if vertical_gap < -0.5 * median_height:
                     separator = "\n\n"
@@ -229,18 +231,23 @@ def post_process_text(ordered_words, ordered_boxes):
         # 3. Token Append Logic (Cleaned up for clarity)
         if separator == "\n\n":
             # Strip trailing spaces/newlines before adding double newline
-            while result_tokens and result_tokens[-1] in [" ", "\n"]:
+            while result_tokens and result_tokens[-1] in [" ", "\n", "\t"]:
                 result_tokens.pop()
             result_tokens.append("\n\n")
 
         elif separator == "\n":
-            while result_tokens and result_tokens[-1] in [" ", "\n"]:
+            while result_tokens and result_tokens[-1] in [" ", "\n", "\t"]:
                 result_tokens.pop()
             result_tokens.append("\n")
 
+        elif separator == "\t":
+            # Add tab if previous wasn't already a break
+            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " ", "\t"]:
+                result_tokens.append("\t")
+
         elif separator == " ":
             # Only add space if previous token wasn't a separator
-            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " "]:
+            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " ", "\t"]:
                 result_tokens.append(" ")
 
         result_tokens.append(word)
