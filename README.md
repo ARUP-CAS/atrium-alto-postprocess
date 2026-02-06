@@ -95,11 +95,45 @@ The extraction is powered by the **alto-tools** framework [^1].
 This script runs in parallel (using multiple **CPU** cores) to extract text from ALTO XMLs into `.txt` files. 
 It reads the CSV from Step 2.
 
-    python3 extract_ALTO_2_TXT.py
-
 * **Input 1:** `output.csv` (from Step 2)
 * **Input 2:** `../PAGE_ALTO/` (input directory with ALTO XML files split into pages from Step 1)
-* **Output:** `../PAGE_TXT/` (directory containing raw text files)
+* **Output:** `../PAGE_TXT/` or `../PAGE_TXT_LR/` (directory containing raw text files)
+
+#### LayoutReader method 
+
+> [!CAUTION]
+> The model responsible for spatial layout analysis requires a **GPU** to run efficiently.
+
+    python3 extract_LytRdr_ALTO_2_TXT.py
+
+that uses the LayoutReader framework [^9] to extract text and bounding boxes of XML elements, 
+process them to reconstruct the reading order of lines (columns-friendly), then handle words split
+between two lines (added whole word nearby), and based on the vertical spread of text lines groups
+page contents into paragraphs and lines of the output `.txt` file.
+
+Example of per-page text files: [PAGE_TXT_LR](data_samples/PAGE_TXT_LR) 📁.
+```
+PAGE_TXT_LR/
+├── <file1>
+│   ├── <file1>-<page>.txt 
+│   └── ...
+├── <file2>
+│   ├── <file2>-<page>.txt 
+│   └── ...
+└── ...
+```
+
+#### alto-tools method
+
+> [!NOTE]
+> The method is **CPU**-bound and faster than the LayoutReader method, but the text lines may not be in the correct 
+> reading order, as well as the full forms of split words are not included.
+
+    python3 extract_ALTO_2_TXT.py
+
+that uses the `alto-tools` framework [^1] to extract text lines from contents of XML elements.
+There is no post-processing of the extracted text, but this method is faster and can be used
+to get a quick overview of the raw text content.
 
 Example of per-page text files: [PAGE_TXT](data_samples/PAGE_TXT) 📁.
 ```
@@ -112,6 +146,7 @@ PAGE_TXT/
 │   └── ...
 └── ...
 ```
+
 ---
 
 ### ▶ Step 4: Classify Page Text Quality & Language
@@ -229,3 +264,4 @@ before the Handwritten Text Recognition (HTR) processing is applied.
 [^6]: https://huggingface.co/distilbert/distilgpt2
 [^8]: https://github.com/K4TEL/atrium-alto-postprocess
 [^7]: https://ufal.mff.cuni.cz/home-page
+[^9]: https://github.com/ppaanngggg/layoutreader

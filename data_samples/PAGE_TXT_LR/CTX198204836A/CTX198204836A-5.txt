@@ -1,0 +1,3 @@
+ob .8 j
+
+kontrolní blok
