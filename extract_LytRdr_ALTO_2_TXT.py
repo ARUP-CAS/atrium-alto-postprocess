@@ -4,6 +4,7 @@ extract_LytRdr_ALTO_2_TXT.py
 
 Step 1: Extract and reorder text from ALTO XML files using LayoutReader in parallel.
 Fixed: Removed undefined variable references in parse_alto_xml.
+Enhanced: Adapted post_process_text for Justified Text alignment (wider tolerance for word gaps).
 """
 
 import pandas as pd
@@ -89,9 +90,6 @@ def parse_alto_xml(xml_path):
     words = []
     boxes = []
 
-    # --- FIX: Removed the erroneous 'lines' and 'ordered_words' loop here ---
-    # The previous code block referencing 'ordered_words' caused a NameError.
-
     text_lines = find_all(root, 'TextLine')
     for line in text_lines:
         children = list(line)
@@ -166,11 +164,11 @@ def get_vertical_overlap(box1, box2):
     return intersection / min_height
 
 
-import numpy as np
-
-
 def post_process_text(ordered_words, ordered_boxes):
-    """Reconstructs text from reordered words/boxes with robust paragraph detection."""
+    """
+    Reconstructs text from reordered words/boxes with paragraph and justification detection.
+    Adapted for 'Justified' text alignment where spaces between words can be large.
+    """
     if not ordered_words:
         return ""
 
@@ -184,13 +182,21 @@ def post_process_text(ordered_words, ordered_boxes):
     else:
         median_height = 10
 
-    # 2. Adjust Thresholds
-    OVERLAP_THRESHOLD = 0.4
+    # 2. Adjust Thresholds for Justified Text
 
-    # Increased from 1.8 to 2.5.
-    # Standard line spacing is usually 1.2-1.5x text height.
-    # Paragraph gaps are usually significantly larger.
+    # OVERLAP_THRESHOLD:
+    # Slightly stricter (0.5) ensures we are definitely on the same line before calculating horizontal gaps.
+    OVERLAP_THRESHOLD = 0.5
+
+    # PARAGRAPH_GAP_THRESHOLD:
+    # Vertical distance to denote a paragraph break.
     PARAGRAPH_GAP_THRESHOLD = median_height * 2.5
+
+    # HORIZONTAL_GAP_THRESHOLD (The "Justify" Fix):
+    # In justified text, spaces stretch. A gap of 3.0x height might just be a stretched space.
+    # We increase this to 5.0x. This means only gaps significantly larger than 5 lines
+    # of text (or very wide visual gaps like columns) become tabs.
+    HORIZONTAL_GAP_THRESHOLD = median_height * 5.0
 
     result_tokens = []
     prev_box = None
@@ -204,17 +210,33 @@ def post_process_text(ordered_words, ordered_boxes):
             curr_top = box[1]
             prev_bottom = prev_box[3]
 
-            # Check for horizontal overlap (same line)
+            # Check for vertical overlap (same line)
             overlap_ratio = get_vertical_overlap(prev_box, box)
 
             if overlap_ratio > OVERLAP_THRESHOLD:
-                separator = " "
+                # --- SAME LINE LOGIC ---
+
+                # Calculate horizontal gap (Right of prev to Left of current)
+                h_gap = box[0] - prev_box[2]
+
+                # Check 1: Negative Gap (Kerning overlap or OCR error) -> No Space
+                if h_gap < 0:
+                    separator = ""
+
+                # Check 2: Large Gap -> Tab (Column Break)
+                # Using the increased threshold (5.0) prevents Justified text spaces from becoming Tabs
+                elif h_gap > HORIZONTAL_GAP_THRESHOLD:
+                    separator = "\t"
+
+                # Check 3: Standard Gap -> Space
+                else:
+                    separator = " "
             else:
-                # Calculate vertical gap
+                # --- DIFFERENT LINE LOGIC ---
                 vertical_gap = curr_top - prev_bottom
 
-                # Logic for line splits
                 # Case A: Column break or layout reset (gap is negative or very large negative)
+                # i.e., reading flow moved from bottom of col 1 to top of col 2
                 if vertical_gap < -0.5 * median_height:
                     separator = "\n\n"
 
@@ -226,21 +248,24 @@ def post_process_text(ordered_words, ordered_boxes):
                 else:
                     separator = "\n"
 
-        # 3. Token Append Logic (Cleaned up for clarity)
+        # 3. Token Append Logic
         if separator == "\n\n":
-            # Strip trailing spaces/newlines before adding double newline
-            while result_tokens and result_tokens[-1] in [" ", "\n"]:
+            while result_tokens and result_tokens[-1] in [" ", "\n", "\t"]:
                 result_tokens.pop()
             result_tokens.append("\n\n")
 
         elif separator == "\n":
-            while result_tokens and result_tokens[-1] in [" ", "\n"]:
+            while result_tokens and result_tokens[-1] in [" ", "\n", "\t"]:
                 result_tokens.pop()
             result_tokens.append("\n")
 
+        elif separator == "\t":
+            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " ", "\t"]:
+                result_tokens.append("\t")
+
         elif separator == " ":
             # Only add space if previous token wasn't a separator
-            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " "]:
+            if result_tokens and result_tokens[-1] not in ["\n", "\n\n", " ", "\t"]:
                 result_tokens.append(" ")
 
         result_tokens.append(word)
