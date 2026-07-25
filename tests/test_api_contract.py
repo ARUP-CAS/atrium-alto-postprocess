@@ -17,11 +17,15 @@ PRIMARY_ENDPOINTS = ["/process"]
 # -----------------------------------------------------------------------------------------------
 
 try:
-    app = __import__(APP_IMPORT, fromlist=["app"]).app
-except Exception as exc:  # missing heavy service deps → skip cleanly
-    pytest.skip(f"cannot import {APP_IMPORT}.app: {exc}", allow_module_level=True)
+    from fastapi.testclient import TestClient
 
-client = TestClient(app)
+    app = __import__(APP_IMPORT, fromlist=["app"]).app
+    client = TestClient(app)
+except Exception as exc:  # missing heavy service deps → skip cleanly
+    app = None
+    client = None
+    # Pytest will collect the tests but skip running them
+    pytestmark = pytest.mark.skip(reason=f"cannot load app: {exc}")
 
 
 def test_info_envelope_required_fields():
