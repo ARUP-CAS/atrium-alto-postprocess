@@ -129,8 +129,9 @@ are assigned by a fast CPU pre-filter before any model inference. The remaining 
 
 **Parameters (Form Data):**
 
-* `file`: The document file (`.xml` ALTO or `.txt`).
-* `task_type`: `alto`, `text`, or `auto` (default — detected from file extension).
+* `file`: The document file (`.xml` ALTO, `.txt` plain text, or `.json` generic OCR JSON).
+* `task_type`: `alto`, `text`, `json`, or `auto` (default — detected from file extension: `.xml`→`alto`,
+  `.txt`→`text`, `.json`→`json`).
 
 ```bash
 curl -X POST "http://localhost:8000/process" \
@@ -138,8 +139,19 @@ curl -X POST "http://localhost:8000/process" \
   -F "task_type=auto"
 ```
 
+For a generic JSON OCR-engine export, the endpoint walks the same key whitelist
+(`content`, `text`, `line`, `word`, …) as the batch pipeline's `extract_JSON_2_TXT.py`,
+treating each matched string as one line:
+
+```bash
+curl -X POST "http://localhost:8000/process" \
+  -F "file=@/path/to/page_01.json" \
+  -F "task_type=auto"
+```
+
 ### Response Schema
 
+The top-level `type` field is `alto_xml`, `plain_text`, or `json`, matching the routed `task_type`.
 Each item in `cleaned_lines` carries the fields used by the classification pipeline.
 
 ```json
@@ -189,18 +201,18 @@ Each item in `cleaned_lines` carries the fields used by the classification pipel
 
 **Response fields:**
 
-| Field           | Type   | Description                                                                                                                                |
-|-----------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `line_num`      | int    | 1-based line position after layout reordering.                                                                                             |
-| `text`          | string | Cleaned line text with split-word merges applied.                                                                                          |
-| `lang`          | string | ISO language code predicted by FastText (e.g., `eng`, `ces`).                                                                              |
-| `lang_score`    | float  | FastText confidence score `[0, 1]`.                                                                                                        |
-| `perplexity`    | float  | Qwen2.5-0.5B perplexity. `0` means the line was pre-filtered and inference was skipped.                                                    |
-| `sym_count`     | int    | Tokens containing characters outside the allowed internal set (`detect_strange_symbols`).                                                  |
-| `upper_count`   | int    | Tokens with mid-word uppercase artefacts — Patterns 1–3 (`detect_mid_uppercase`).                                                          |
-| `word_weird`    | float  | Mean per-word weirdness score `[0, 1]`; combines strange-symbol, repeated-char, LDL-fusion, mid-uppercase and mirror-OCR (`w` / caps-prefix) signals; `0` = fully clean. |
+| Field           | Type   | Description                                                                                                                                                                                                                |
+|-----------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `line_num`      | int    | 1-based line position after layout reordering.                                                                                                                                                                             |
+| `text`          | string | Cleaned line text with split-word merges applied.                                                                                                                                                                          |
+| `lang`          | string | ISO language code predicted by FastText (e.g., `eng`, `ces`).                                                                                                                                                              |
+| `lang_score`    | float  | FastText confidence score `[0, 1]`.                                                                                                                                                                                        |
+| `perplexity`    | float  | Qwen2.5-0.5B perplexity. `0` means the line was pre-filtered and inference was skipped.                                                                                                                                    |
+| `sym_count`     | int    | Tokens containing characters outside the allowed internal set (`detect_strange_symbols`).                                                                                                                                  |
+| `upper_count`   | int    | Tokens with mid-word uppercase artefacts — Patterns 1–3 (`detect_mid_uppercase`).                                                                                                                                          |
+| `word_weird`    | float  | Mean per-word weirdness score `[0, 1]`; combines strange-symbol, repeated-char, LDL-fusion, mid-uppercase and mirror-OCR (`w` / caps-prefix) signals; `0` = fully clean.                                                   |
 | `quality_score` | float  | Composite quality score `[0, 1]`; weighted sum of nine signals (valid-word ratio, word-weirdness, perplexity, length, garbage density, vowel quality, language confidence, gibberish, fused-word ratio); higher = cleaner. |
-| `category`      | string | One of: `Clear`, `Noisy`, `Trash`, `Non-text`, `Empty`.                                                                                    |
+| `category`      | string | One of: `Clear`, `Noisy`, `Trash`, `Non-text`, `Empty`.                                                                                                                                                                    |
 
 
 ## Installation & Setup 🛠

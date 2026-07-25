@@ -975,7 +975,9 @@ of **Trash** 🗑️ lines may also indicate handwritten content, which can be e
 ## API Service Integration
 
 In addition to the batch pipeline, this repository ships with a FastAPI wrapper (`service/text_api.py`) that exposes
-the core `text_util_langID` quality classification engine over HTTP.
+the core `text_util_langID` quality classification engine over HTTP. The `/process` endpoint accepts ALTO XML,
+plain-text, and generic JSON uploads (`task_type` `alto` / `text` / `json`, or `auto`-detected from the file
+extension), returning the same per-line classification fields as the batch pipeline for all three formats.
 
 The batch pipeline and the API service share the same `text_util_langID` categorization engine and `config.txt`
 settings — including the default **Qwen2.5-0.5B** 🤖 perplexity model — to ensure zero drift between local processing

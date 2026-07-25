@@ -99,7 +99,7 @@ async def info() -> Dict[str, Any]:
         limits={"max_upload_mb": MAX_UPLOAD_MB},
         status="active",
         device=text_manager.device,
-        supported_formats=["ALTO XML (.xml)", "Plain Text (.txt)"],
+        supported_formats=["ALTO XML (.xml)", "Plain Text (.txt)", "Generic JSON (.json)"],
         quality_categories=["Clear", "Noisy", "Trash", "Non-text", "Empty"],
         line_fields=[
             "line_num",
@@ -126,7 +126,7 @@ async def process_document(
     task_type: str = Form("auto"),
 ) -> JSONResponse:
     """
-    Upload an ALTO XML or plain-text file.
+    Upload an ALTO XML, plain-text, or generic JSON file.
 
     Returns a list of classified lines.  Each entry carries:
 
@@ -159,10 +159,12 @@ async def process_document(
             task_type = "alto"
         elif filename.endswith(".txt"):
             task_type = "text"
+        elif filename.endswith(".json"):
+            task_type = "json"
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Cannot auto-detect file type. Set task_type='alto' or 'text'.",
+                detail="Cannot auto-detect file type. Set task_type='alto', 'text', or 'json'.",
             )
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
@@ -176,6 +178,8 @@ async def process_document(
 
         if task_type == "alto":
             result = text_manager.process_alto(tmp_path)
+        elif task_type == "json":
+            result = text_manager.process_json(tmp_path)
         else:
             result = text_manager.process_text_file(tmp_path)
 

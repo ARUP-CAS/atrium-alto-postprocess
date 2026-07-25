@@ -1,9 +1,28 @@
 #!/usr/bin/env python3
-import argparse
+"""
+extract_JSON_2_TXT.py
+Step 3 (json-keys method): Extract text from generic JSON OCR-engine output
+in parallel, CSV-driven like the ALTO extractors.
+
+Walks a whitelist of informative keys (TARGET_KEYS) and yields every string
+leaf whose parent key matches, in document order. This makes no assumption
+about a particular OCR engine's JSON schema beyond "text lives under a
+key named roughly 'text'/'line'/'word'/etc." — see TARGET_KEYS below.
+"""
+
+import concurrent.futures
+import configparser
 import json
-import sys
+import os
 from pathlib import Path
 from typing import Any, Generator, Set
+
+import pandas as pd
+from tqdm import tqdm
+
+from atrium_paradata import ParadataLogger
+
+CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
 
 # Whitelist of informative text keys
 TARGET_KEYS: Set[str] = {
@@ -57,17 +76,105 @@ def process_json_to_txt(input_file: Path, output_file: Path, join_char: str = "\
         f.write(join_char.join(extracted_leaves))
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract ordered plain text from JSON OCR output.")
-    parser.add_argument("-i", "--input", type=Path, required=True, help="Path to the input JSON file.")
-    parser.add_argument("-o", "--output", type=Path, required=True, help="Path to the output TXT file.")
-    parser.add_argument("--join-char", type=str, default="\n", help="Character used to join extracted text nodes.")
+def _load_extract_config(config_path: str = CONFIG_PATH) -> dict:
+    """Read extraction parameters from the [EXTRACT] section of the config.
 
-    args = parser.parse_args()
+    Mirrors extract_ALTO_2_TXT.py's _load_extract_config so all extractors
+    are configured identically.
+    """
+    cfg = configparser.ConfigParser()
+    cfg.read(config_path, encoding="utf-8")
+
+    def get(key, default):
+        return cfg.get("EXTRACT", key, fallback=default) if cfg.has_section("EXTRACT") else default
+
+    workers_default = cfg.getint("EXTRACT", "WORKERS_MAX_JSON", fallback=16) if cfg.has_section("EXTRACT") else 16
+    return {
+        "input_csv": get("INPUT_CSV", "test_alto_stats.csv"),
+        "output_text_dir": get("OUTPUT_TXT_JSON", "./data_samples/PAGE_TXT_JSON"),
+        "max_workers": int(os.getenv("MAX_WORKERS", workers_default)),
+    }
+
+
+_CFG = _load_extract_config()
+INPUT_CSV = _CFG["input_csv"]
+OUTPUT_TEXT_DIR = _CFG["output_text_dir"]
+MAX_WORKERS = _CFG["max_workers"]
+
+
+def extract_single_page(args: tuple) -> bool:
+    """Worker: extract one JSON file's ordered text. Returns success."""
+    file_id, page_id, json_path, output_dir = args
+
+    save_dir = Path(output_dir) / str(file_id)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    txt_path = save_dir / f"{file_id}-{page_id}.txt"
+
+    # Resume support: skip pages already extracted.
+    if txt_path.exists():
+        return True
 
     try:
-        process_json_to_txt(args.input, args.output, args.join_char)
-        print(f"Successfully extracted text to {args.output}")
-    except Exception as e:
-        print(f"Error processing {args.input}: {e}", file=sys.stderr)
-        sys.exit(1)
+        process_json_to_txt(Path(json_path), txt_path)
+    except Exception:
+        return False
+    return True
+
+
+def main() -> None:
+    try:
+        df = pd.read_csv(INPUT_CSV)
+    except FileNotFoundError as e:
+        print(f"CRITICAL ERROR: Could not find input file {INPUT_CSV}")
+        raise SystemExit(1) from e
+
+    print(f"Loaded {len(df)} pages to extract.")
+
+    tasks = []
+    for _, row in df.iterrows():
+        tasks.append((row["file"], row["page"], row["path"], OUTPUT_TEXT_DIR))
+
+    if not tasks:
+        print("No pages to extract.")
+        return
+
+    input_dir = Path(tasks[-1][2]).parent
+
+    _logger = ParadataLogger(
+        program="alto-postprocess",
+        config={
+            "script": "extract_JSON_2_TXT",
+            "method": "json-keys",
+            "input_csv": str(INPUT_CSV),
+            "input_dir": str(input_dir),
+            "output_dir": str(OUTPUT_TEXT_DIR),
+            "n_workers": MAX_WORKERS,
+        },
+        paradata_dir="paradata",
+        output_types=["txt"],
+        config_dir=str(Path(__file__).resolve().parent / "setup"),
+    )
+    # No log_component() call needed: stdlib json parsing only, no licensed
+    # external component (same as extract_ALTO_2_TXT.py's alto-tools method).
+    _total_inputs = len(tasks)
+
+    try:
+        print(f"Extracting with {MAX_WORKERS} workers...")
+        with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            results = list(tqdm(executor.map(extract_single_page, tasks), total=len(tasks)))
+
+        if results:
+            print(f"Extraction complete. Success rate: {sum(results) / len(results):.2%}")
+
+        for t, r in zip(tasks, results, strict=True):
+            if r:
+                _logger.log_success("txt")
+            else:
+                _logger.log_skip(t[2], "json extraction failed")
+        print("Done.")
+    finally:
+        _logger.finalize(input_total=_total_inputs)
+
+
+if __name__ == "__main__":
+    main()

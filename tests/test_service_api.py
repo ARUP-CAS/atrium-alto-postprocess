@@ -63,3 +63,52 @@ def test_process_alto_explicit_routing(mock_process):
     response = client.post("/process", files=files, data=data)
     assert response.status_code == 200
     assert response.json()["type"] == "alto_xml"
+
+
+@patch("service.text_api.text_manager.process_json", create=True)
+def test_process_json_auto_routing(mock_process):
+    """Ensure .json uploads auto-detect to task_type='json' and route to process_json."""
+    mock_process.return_value = {
+        "type": "json",
+        "cleaned_lines": [{"line_num": 1, "text": "Mocked JSON Line", "category": "Clear"}],
+    }
+
+    content = b'{"text": "Mocked JSON Line"}'
+    files = {"file": ("document.json", content, "application/json")}
+    data = {"task_type": "auto"}
+
+    response = client.post("/process", files=files, data=data)
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["type"] == "json"
+    assert res_data["cleaned_lines"][0]["category"] == "Clear"
+    assert res_data["filename"] == "document.json"
+
+
+@patch("service.text_api.text_manager.process_json", create=True)
+def test_process_json_explicit_routing(mock_process):
+    """Ensure task_type='json' routes to process_json regardless of filename."""
+    mock_process.return_value = {"type": "json", "cleaned_lines": []}
+
+    content = b'{"text": "irrelevant"}'
+    files = {"file": ("upload.dat", content, "application/octet-stream")}
+    data = {"task_type": "json"}
+
+    response = client.post("/process", files=files, data=data)
+    assert response.status_code == 200
+    assert response.json()["type"] == "json"
+
+
+def test_info_lists_json_as_supported_format():
+    response = client.get("/info")
+    assert response.status_code == 200
+    assert any("JSON" in fmt for fmt in response.json()["supported_formats"])
+
+
+def test_process_unrecognized_extension_still_rejected():
+    """Auto-detect must still 400 on formats outside alto/text/json (#8)."""
+    files = {"file": ("document.pdf", b"%PDF-1.4", "application/pdf")}
+    data = {"task_type": "auto"}
+
+    response = client.post("/process", files=files, data=data)
+    assert response.status_code == 400

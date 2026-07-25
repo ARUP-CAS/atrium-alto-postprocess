@@ -10,6 +10,8 @@ pytest.importorskip("lxml")
 from service.utils import (  # noqa: E402
     normalize_boxes,
     parse_alto_xml,
+    parse_alto_xml_lines,
+    post_process_text,
 )
 
 _ALTO_BASIC = """<?xml version="1.0" encoding="UTF-8"?>
@@ -96,3 +98,69 @@ def test_normalize_empty_boxes_returns_empty():
 
 def test_normalize_zero_dimension_returns_zero_boxes():
     assert normalize_boxes([[1, 2, 3, 4]], width=0, height=100) == [[0, 0, 0, 0]]
+
+
+# ── parse_alto_xml_lines ─────────────────────────────────────────────────────
+def test_parse_lines_groups_words_by_textline(tmp_path):
+    lines, boxes, dims = parse_alto_xml_lines(_write(tmp_path, "a.xml", _ALTO_BASIC))
+    # _ALTO_BASIC has one TextLine containing "Hello" and "World".
+    assert lines == ["HelloWorld"]
+    assert dims == (1000, 2000)
+    # Box spans both words: x from 10 to 70+60=130, y from 20 to 20+30=50.
+    assert boxes == [[10, 20, 130, 50]]
+
+
+def test_parse_lines_preserves_sp_as_space(tmp_path):
+    doc = """<?xml version="1.0" encoding="UTF-8"?>
+<alto><Layout><Page WIDTH="1000" HEIGHT="2000"><TextLine>
+<String CONTENT="Hello" HPOS="10" VPOS="20" WIDTH="50" HEIGHT="30"/>
+<SP/>
+<String CONTENT="World" HPOS="70" VPOS="20" WIDTH="60" HEIGHT="30"/>
+</TextLine></Page></Layout></alto>"""
+    lines, _, _ = parse_alto_xml_lines(_write(tmp_path, "sp.xml", doc))
+    assert lines == ["Hello World"]
+
+
+def test_parse_lines_subs_hyppart1_annotation_within_one_line(tmp_path):
+    lines, _, _ = parse_alto_xml_lines(_write(tmp_path, "s.xml", _ALTO_SUBS))
+    assert lines == ["be- {beautiful}"]
+
+
+def test_parse_lines_missing_page_returns_empty(tmp_path):
+    lines, boxes, dims = parse_alto_xml_lines(_write(tmp_path, "n.xml", "<alto><Layout/></alto>"))
+    assert lines == [] and boxes == [] and dims == (0, 0)
+
+
+def test_parse_lines_malformed_xml_returns_empty(tmp_path):
+    lines, boxes, dims = parse_alto_xml_lines(_write(tmp_path, "bad.xml", "<alto><not-closed>"))
+    assert lines == [] and boxes == [] and dims == (0, 0)
+
+
+def test_parse_lines_does_not_resolve_external_entities_xxe(tmp_path):
+    """Line-level parser must use the same hardened parser as parse_alto_xml."""
+    secret = tmp_path / "secret2.txt"
+    secret.write_text("TOPSECRET_XXE_LINES", encoding="utf-8")
+    doc = _ALTO_XXE_TMPL.format(secret=secret)
+    lines, _, _ = parse_alto_xml_lines(_write(tmp_path, "xxe2.xml", doc))
+    assert "TOPSECRET_XXE_LINES" not in " ".join(lines)
+
+
+# ── post_process_text ────────────────────────────────────────────────────────
+def test_post_process_empty_input_returns_empty_string():
+    assert post_process_text([], []) == ""
+
+
+def test_post_process_single_line_no_separator():
+    assert post_process_text(["Hello"], [[0, 0, 50, 20]]) == "Hello"
+
+
+def test_post_process_joins_close_lines_with_newline():
+    # Second line starts just below the first (small gap) -> single "\n".
+    out = post_process_text(["Line one", "Line two"], [[0, 0, 100, 20], [0, 22, 100, 42]])
+    assert out == "Line one\nLine two"
+
+
+def test_post_process_large_gap_inserts_paragraph_break():
+    # Second line starts far below the first -> "\n\n" paragraph break.
+    out = post_process_text(["Para one", "Para two"], [[0, 0, 100, 20], [0, 200, 100, 220]])
+    assert out == "Para one\n\nPara two"

@@ -4,6 +4,7 @@ Tests for the run_pipeline.py orchestrator configuration precedence.
 
 import configparser
 import json
+import sys
 from argparse import Namespace
 
 from atrium_paradata import merge_run_paradata
@@ -123,6 +124,32 @@ def test_resolve_settings_cli_precedence():
     assert settings["method"] == "layoutreader"
     assert settings["input_dir"] == "cli/input"
     assert settings["skip_split"] is True
+
+
+def test_resolve_settings_json_keys_format():
+    """--method json-keys resolves input_format='json' and scans input_dir
+    directly (there is no page-split output to scan)."""
+    settings = resolve_settings(_args(method="json-keys", input_dir="data/JSON"), configparser.ConfigParser())
+    assert settings["input_format"] == "json"
+    assert settings["stats_scan_dir"] == "data/JSON"
+    assert settings["text_dir"] == "./data_samples/PAGE_TXT_JSON"
+    assert settings["outputs"]["split"] is None
+
+
+def test_build_plan_json_keys_forces_split_skip_and_routes_stats():
+    settings = resolve_settings(_args(method="json-keys", input_dir="data/JSON"), configparser.ConfigParser())
+    plan = build_plan(settings, "config.txt")
+
+    split_stage = next(s for s in plan if s["key"] == "split")
+    assert split_stage["skip"] is True
+    assert split_stage["cmd"] is None
+
+    stats_stage = next(s for s in plan if s["key"] == "stats")
+    assert stats_stage["cmd"][:2] == [sys.executable or "python3", "json_stats_create.py"]
+    assert "data/JSON" in stats_stage["cmd"]
+
+    extract_stage = next(s for s in plan if s["key"] == "extract")
+    assert extract_stage["cmd"][-1] == "extract_JSON_2_TXT.py"
 
 
 def test_resolve_settings_config_fallback():

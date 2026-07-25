@@ -6,9 +6,26 @@ TextModelManager.load_models(), so the module itself imports cleanly on CPU and
 the classification helpers can be exercised with a mocked FastText model.
 """
 
-from unittest.mock import MagicMock
+import json
+from unittest.mock import MagicMock, patch
 
-from service.text_inference import TextModelManager, _classify_line
+import pytest
+
+pytest.importorskip("lxml")
+
+from service.text_inference import TextModelManager, _classify_line  # noqa: E402
+
+_ALTO_TWO_LINES_WITH_HYPHEN = """<?xml version="1.0" encoding="UTF-8"?>
+<alto><Layout><Page WIDTH="1000" HEIGHT="2000"><PrintSpace>
+<TextLine>
+<String CONTENT="be" HPOS="10" VPOS="20" WIDTH="30" HEIGHT="30" SUBS_TYPE="HypPart1" SUBS_CONTENT="beautiful"/>
+</TextLine>
+<TextLine>
+<String CONTENT="autiful" HPOS="10" VPOS="60" WIDTH="60" HEIGHT="30"/>
+<SP/>
+<String CONTENT="thing" HPOS="80" VPOS="60" WIDTH="50" HEIGHT="30"/>
+</TextLine>
+</PrintSpace></Page></Layout></alto>"""
 
 
 def _mock_ft(lang="ces", score=0.95):
@@ -48,3 +65,106 @@ def test_classify_line_full_pipeline_returns_all_fields():
         assert key in out
     assert out["lang"] == "ces"
     assert isinstance(out["category"], str) and out["category"]
+
+
+def _manager_with_mocked_ft():
+    m = TextModelManager()
+    m.ft_model = _mock_ft("ces", 0.9)
+    m.ppl_model = MagicMock()
+    m.ppl_tokenizer = MagicMock()
+    m.device = "cpu"
+    return m
+
+
+def _patched_ppl(monkeypatch, value=100.0):
+    """calculate_perplexity_batch needs a real model/tokenizer; patch it out
+    with a fixed-value stand-in so these tests don't need torch/transformers."""
+    monkeypatch.setattr(
+        "service.text_inference.calculate_perplexity_batch",
+        lambda texts, model, tokenizer, device: [value] * len(texts),
+    )
+
+
+def test_process_text_file_returns_one_entry_per_nonempty_line(tmp_path, monkeypatch):
+    _patched_ppl(monkeypatch)
+    m = _manager_with_mocked_ft()
+
+    txt_path = tmp_path / "doc.txt"
+    txt_path.write_text("First line\n\nSecond line\n", encoding="utf-8")
+
+    result = m.process_text_file(str(txt_path))
+
+    assert result["type"] == "plain_text"
+    assert [c["text"] for c in result["cleaned_lines"]] == ["First line", "Second line"]
+    assert [c["line_num"] for c in result["cleaned_lines"]] == [1, 2]
+
+
+def test_process_json_extracts_target_keys_only(tmp_path, monkeypatch):
+    _patched_ppl(monkeypatch)
+    m = _manager_with_mocked_ft()
+
+    json_path = tmp_path / "doc.json"
+    json_path.write_text(
+        json.dumps({"metadata": {"engine": "X"}, "page": {"lines": [{"textline": "Hello"}, {"textline": "World"}]}}),
+        encoding="utf-8",
+    )
+
+    result = m.process_json(str(json_path))
+
+    assert result["type"] == "json"
+    assert [c["text"] for c in result["cleaned_lines"]] == ["Hello", "World"]
+
+
+def test_process_alto_reorders_and_dehyphenates_across_lines(tmp_path, monkeypatch):
+    """layout_model=None (the class default) forces the document-order
+    fallback deterministically, regardless of whether v3.helpers happens to be
+    importable in this environment — see process_alto's boxes2inputs/
+    layout_model guard."""
+    _patched_ppl(monkeypatch)
+    m = _manager_with_mocked_ft()
+    assert m.layout_model is None
+
+    xml_path = tmp_path / "doc.xml"
+    xml_path.write_text(_ALTO_TWO_LINES_WITH_HYPHEN, encoding="utf-8")
+
+    result = m.process_alto(str(xml_path))
+
+    assert result["type"] == "alto_xml"
+    # The word split across the line break ("be-{beautiful}" / "autiful")
+    # must be reconstructed into one word, not duplicated or left broken.
+    texts = [c["text"] for c in result["cleaned_lines"]]
+    assert texts == ["beautiful", "thing"]
+
+
+def test_process_alto_empty_document_returns_no_lines(tmp_path, monkeypatch):
+    _patched_ppl(monkeypatch)
+    m = _manager_with_mocked_ft()
+
+    xml_path = tmp_path / "empty.xml"
+    xml_path.write_text('<alto><Layout><Page WIDTH="100" HEIGHT="100"/></Layout></alto>', encoding="utf-8")
+
+    result = m.process_alto(str(xml_path))
+    assert result == {"type": "alto_xml", "cleaned_lines": []}
+
+
+def test_process_alto_uses_layout_reader_when_model_available(tmp_path, monkeypatch):
+    """When boxes2inputs and layout_model are both present, process_alto must
+    call the LayoutReader reordering path instead of the fallback."""
+    _patched_ppl(monkeypatch)
+    m = _manager_with_mocked_ft()
+    m.layout_model = MagicMock()
+
+    xml_path = tmp_path / "doc.xml"
+    xml_path.write_text(_ALTO_TWO_LINES_WITH_HYPHEN, encoding="utf-8")
+
+    with (
+        patch("service.text_inference.boxes2inputs", MagicMock()),
+        patch(
+            "service.text_inference._run_layout_reader",
+            return_value=(["thing"], [[0, 0, 10, 10]]),
+        ) as mock_reader,
+    ):
+        result = m.process_alto(str(xml_path))
+
+    mock_reader.assert_called_once()
+    assert [c["text"] for c in result["cleaned_lines"]] == ["thing"]
