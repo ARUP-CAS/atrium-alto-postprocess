@@ -40,8 +40,8 @@ def test_apply_document_postprocessing_dedup():
     assert res.loc[1, "pp_dedup"]
 
 
-@patch("langID_classify.pd.read_csv")
-@patch("langID_classify.configparser.ConfigParser")
+@patch("classify_TEXT.pd.read_csv")
+@patch("classify_TEXT.configparser.ConfigParser")
 def test_main_graceful_exit(mock_cfg_class, mock_read_csv):
     """Test that main initializes but fails safely if the input CSV is missing."""
     mock_cfg = mock_cfg_class.return_value

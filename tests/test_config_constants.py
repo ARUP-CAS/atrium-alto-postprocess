@@ -99,8 +99,8 @@ def test_tier1_key_roundtrip_from_alternate_config(tmp_path):
         encoding="utf-8",
     )
     code = (
-        "import text_util_langID as tu;"
-        "import langID_classify as lc;"
+        "import text_util as tu;"
+        "import classify_TEXT as lc;"
         "assert tu.WQX_CHARS == frozenset('xyz'), tu.WQX_CHARS;"
         "assert frozenset(tu.ROT_WHITELIST) == frozenset({'po', 'do'});"
         "assert tu.TRAILING_FILL_CHARS == ' .:', repr(tu.TRAILING_FILL_CHARS);"
