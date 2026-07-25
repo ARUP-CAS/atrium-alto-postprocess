@@ -32,7 +32,7 @@ WORKDIR /app
 
 # 1) deps first for layer caching. CPU torch pinned, then the unpinned `torch`
 #    in the requirements files is already satisfied (stays CPU).
-COPY setup/requirements.txt setup/requirements-test.txt setup/requirements-sweep.txt ./
+COPY setup/requirements.txt setup/requirements-test.txt setup/requirements-sweep.txt setup/
 COPY service/requirements.txt service/requirements.txt
 RUN pip install --index-url ${TORCH_INDEX_URL} torch \
     && pip install -r setup/requirements.txt -r service/requirements.txt -r setup/requirements-test.txt -r setup/requirements-sweep.txt
