@@ -32,8 +32,8 @@ if str(_TOOLS) not in sys.path:
 
 import recategorize_from_csv as R  # noqa: E402
 
-import langID_classify as lc  # noqa: E402
-import text_util_langID as tu  # noqa: E402
+import classify_TEXT as lc  # noqa: E402
+import text_util as tu  # noqa: E402
 
 _SAMPLE_DIR = _ROOT / "data_samples" / "DOC_LINE_CATEG"
 
@@ -87,7 +87,7 @@ def test_override_constants_restores_on_exception():
 
 def test_default_constants_track_live_modules():
     # DEFAULT_CONSTANTS is read from the live modules, so it can never drift from
-    # config_langID.txt the way a hardcoded table would.
+    # config.txt the way a hardcoded table would.
     assert R.DEFAULT_CONSTANTS["CATEG_TRASH_SCORE_MAX"] == tu.CATEG_TRASH_SCORE_MAX
     assert R.DEFAULT_CONSTANTS["CATEG_NOISY_SCORE_MAX"] == tu.CATEG_NOISY_SCORE_MAX
     assert "QS_WEIGHT_SYMBOL" not in R.TUNABLE_CONSTANTS  # dropped from the QS sum in #3

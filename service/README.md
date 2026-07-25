@@ -354,7 +354,7 @@ For further details on the LINDAT development workflow see the
 with at least 48 GB of VRAM** (e.g., an NVIDIA RTX A6000 or a multi-GPU setup) to run the extraction pipeline
 successfully. Running this on consumer GPUs (like a 3090/4090) will likely result in Out-Of-Memory (OOM) crashes.
 * **Perplexity Threshold Coupling:** The service uses **Qwen2.5-0.5B** by default, matched to `PERPLEXITY_THRESHOLD_MAX
-= 1000.0` in `config_langID.txt`. If you switch the perplexity model via the `GPT2_MODEL_NAME` environment variable
+= 1000.0` in `config.txt`. If you switch the perplexity model via the `GPT2_MODEL_NAME` environment variable
 (e.g., to the English-only `distilgpt2`), you **must** recalibrate `PERPLEXITY_THRESHOLD_MAX` — perplexity scales differ
 wildly between architectures (≈ `3000.0` suits `distilgpt2`), so a value tuned for one model is mis-calibrated for the other.
 

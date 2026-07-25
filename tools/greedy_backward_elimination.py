@@ -42,7 +42,7 @@ if str(_THIS_DIR) not in sys.path:
 
 from recategorize_from_csv import _load_lang_config, evaluate_dataframe, load_csvs, read_config_constants  # noqa: E402
 
-from text_util_langID import override_constants  # noqa: E402
+from text_util import override_constants  # noqa: E402
 
 # Using the unified rules array covering structural gateways and dynamic penalties
 CANDIDATE_RULES: Set[str] = {
@@ -198,8 +198,8 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default="../setup/config_langID.txt",
-        help="Path to the system configuration file (default: ../setup/config_langID.txt).",
+        default="../setup/config.txt",
+        help="Path to the system configuration file (default: ../setup/config.txt).",
     )
     parser.add_argument(
         "--macro-tol",

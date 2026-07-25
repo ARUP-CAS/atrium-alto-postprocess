@@ -14,8 +14,8 @@ Pipeline stages
        --method alto-tools  -> extract_ALTO_2_TXT.py        (PAGE_TXT/,     Apache-2.0)
        --method layoutreader-> extract_LytRdr_ALTO_2_TXT.py (PAGE_TXT_LR/,  CC BY-NC-SA 4.0)  [default]
        --method glm         -> extract_LLM_ALTO_2_TXT.py    (PAGE_TXT_LLM/, glm-4)
-  4. langID_classify.py       PAGE_TXT*/       -> DOC_LINE_CATEG/   (line classify)     [paradata]
-  5. langID_aggregate_STAT.py DOC_LINE_CATEG/  -> DOC_LINE_STATS/   (page aggregate)    [paradata]
+  4. classify_TEXT.py       PAGE_TXT*/       -> DOC_LINE_CATEG/   (line classify)     [paradata]
+  5. aggregate_STAT.py DOC_LINE_CATEG/  -> DOC_LINE_STATS/   (page aggregate)    [paradata]
 
 (#4) The classify stage reads its text input from the LANGID_TEXT_DIR env var,
 which this orchestrator sets to the SELECTED method's output directory. Without
@@ -34,7 +34,7 @@ only the stages that actually ran.
 
 Configuration
 -------------
-Every setting is read from config_langID.txt. Precedence: CLI flag > config > default.
+Every setting is read from config.txt. Precedence: CLI flag > config > default.
 
 Usage
 -----
@@ -60,7 +60,7 @@ from typing import Dict, List
 
 from atrium_paradata import merge_run_paradata
 
-CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config_langID.txt")
+CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
 
 # Canonical stage order; the keys also drive --skip-<key> / [PIPELINE].SKIP_<KEY>.
 STAGE_ORDER = ["split", "stats", "extract", "classify", "aggregate"]
@@ -229,13 +229,13 @@ def build_plan(settings: Dict, config_path: str) -> List[Dict]:
         {
             "key": "classify",
             "name": "4. langID_classify (PAGE_TXT* -> DOC_LINE_CATEG)",
-            "cmd": [py, "langID_classify.py"],
+            "cmd": [py, "classify_TEXT.py"],
             "logged": True,
         },
         {
             "key": "aggregate",
             "name": "5. langID_aggregate_STAT (DOC_LINE_CATEG -> DOC_LINE_STATS)",
-            "cmd": [py, "langID_aggregate_STAT.py", "--config", config_path],
+            "cmd": [py, "aggregate_STAT.py", "--config", config_path],
             "logged": True,
         },
     ]

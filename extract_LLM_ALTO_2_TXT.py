@@ -20,8 +20,8 @@ from atrium_paradata import ParadataLogger
 
 _SCRIPT_NAME = "extract_llm"
 
-# --- Configuration (read from config_langID.txt [EXTRACT]) ---
-CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config_langID.txt")
+# --- Configuration (read from config.txt [EXTRACT]) ---
+CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
 
 
 def _load_extract_config(config_path: str = CONFIG_PATH) -> dict:

@@ -1,11 +1,11 @@
 """
 tests/test_text_util.py
 =======================
-Unit tests for text_util_langID.py  —  all pure-Python, zero ML dependencies.
+Unit tests for text_util.py  —  all pure-Python, zero ML dependencies.
 """
 
-from langID_classify import CSV_HEADER, _fast_track_row, _row_from_dict
-from text_util_langID import (
+from classify_TEXT import CSV_HEADER, _fast_track_row, _row_from_dict
+from text_util import (
     CATEG_NOISY_SCORE_MAX,
     LANG_REMAP_ALWAYS,
     categorize_line,

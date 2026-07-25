@@ -43,8 +43,8 @@ for _p in (str(_ROOT), str(_TOOLS)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import text_util_langID as tu  # noqa: E402
-from text_util_langID import (  # noqa: E402
+import text_util as tu  # noqa: E402
+from text_util import (  # noqa: E402
     _fire,
     override_constants,
     rule_fire_capture,
@@ -74,7 +74,7 @@ def test_fire_noop_outside_capture():
 def test_categorize_line_output_unchanged_by_instrumentation():
     """categorize_line() must return the same result with and without a
     capture block active — instrumentation must be transparent."""
-    from text_util_langID import categorize_line
+    from text_util import categorize_line
 
     kwargs = dict(
         qs=0.3,
@@ -131,7 +131,7 @@ def test_rule_fire_capture_yields_live_dict():
 def test_hard_sweep_fires_for_low_lang_high_ppl():
     """A line with very low lang_score and extreme perplexity should trip
     rule_hard_sweep (the first rule in determine_category)."""
-    from text_util_langID import categorize_line
+    from text_util import categorize_line
 
     with rule_fire_capture() as counts:
         categ, _ = categorize_line(
@@ -166,7 +166,7 @@ def test_hard_sweep_fires_for_low_lang_high_ppl():
 def test_lowppl_clear_fires_for_low_perplexity():
     """A line with very low perplexity and enough words should trip
     rule_lowppl_clear and be classified Clear."""
-    from text_util_langID import categorize_line
+    from text_util import categorize_line
 
     with rule_fire_capture() as counts:
         categ, _ = categorize_line(
@@ -231,7 +231,7 @@ def test_capture_restores_on_exception():
 def test_disabled_rules_override_suppresses_fire():
     """When a rule is in DISABLED_RULES (via override_constants), its _fire()
     call is never reached — so no count is registered."""
-    from text_util_langID import categorize_line
+    from text_util import categorize_line
 
     with override_constants({"DISABLED_RULES": frozenset(["rule_hard_sweep"])}):
         with rule_fire_capture() as counts:

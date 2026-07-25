@@ -43,7 +43,7 @@ Usage
   # With custom config and JSON output
   python tools/rule_coverage_report.py \\
       --input-dir data_samples/DOC_LINE_CATEG \\
-      --config config_langID.txt \\
+      --config config.txt \\
       --output rule_coverage.json
 
 Exit codes
@@ -69,7 +69,7 @@ if str(_ROOT) not in sys.path:
 
 import pandas as pd  # noqa: E402
 
-from text_util_langID import override_constants, rule_fire_capture  # noqa: E402
+from text_util import override_constants, rule_fire_capture  # noqa: E402
 from tools.recategorize_from_csv import (  # noqa: E402
     _load_lang_config,
     evaluate_dataframe,
@@ -79,7 +79,7 @@ from tools.recategorize_from_csv import (  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Canonical rule / penalty registry
-# Keep in sync with _fire() call-sites in text_util_langID.py.
+# Keep in sync with _fire() call-sites in text_util.py.
 # ---------------------------------------------------------------------------
 RULES: list[str] = sorted(
     [
@@ -206,7 +206,7 @@ def run_coverage(
     Parameters
     ----------
     raw_path:    Path to a CSV file or a directory of per-document CSVs.
-    config_path: Optional path to config_langID.txt INI.
+    config_path: Optional path to config.txt INI.
     output_path: If given, write ``rule_coverage.json`` to this path.
     quiet:       Suppress the per-rule table.
     skip_loo:    Skip the LOO decisive-count pass (faster; coverage only).
@@ -217,7 +217,7 @@ def run_coverage(
                                clear_loss, class}.
     """
     df, in_path = _load_dataframe(raw_path)
-    resolved_config = config_path or str(_ROOT / "setup" / "config_langID.txt")
+    resolved_config = config_path or str(_ROOT / "setup" / "config.txt")
     expected_langs, known_bases = _load_lang_config(resolved_config)
 
     n_total = len(df)
@@ -371,7 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--input-dir", dest="input_dir", metavar="DIR", help="Alias for the positional PATH (directory form)."
     )
-    ap.add_argument("--config", metavar="FILE", help="config_langID.txt-style INI.  Default: <repo>/config_langID.txt.")
+    ap.add_argument("--config", metavar="FILE", help="config.txt-style INI.  Default: <repo>/config.txt.")
     ap.add_argument(
         "--output", metavar="JSON_FILE", help="Write full results to this JSON file (e.g. rule_coverage.json)."
     )

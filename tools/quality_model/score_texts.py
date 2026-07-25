@@ -7,7 +7,7 @@ variants are *new strings*, so they need a fresh FastText + Qwen pass before
 
 ``build_line_record`` is a **faithful, dependency-light mirror** of the per-line
 orchestration currently inlined in
-``langID_classify.process_and_write_batch_cpu`` (``langID_classify.py:315-437``).
+``langID_classify.process_and_write_batch_cpu`` (``classify_TEXT.py:315-437``).
 It calls the REAL production leaf functions in ``text_util_langID`` — it is not a
 second engine. Phase 0's refactor task is to make production *import this function*
 and lock the equivalence with ``tests/test_line_record_parity.py``.
@@ -36,10 +36,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import text_util_langID as tu  # noqa: E402  (path bootstrap must run first)
+import text_util as tu  # noqa: E402  (path bootstrap must run first)
 
 # Trust-tier multipliers — the same values langID_classify reads from config
-# ([CLASSIFY] section, langID_classify.py:240-241). Read from the shared config so
+# ([CLASSIFY] section, classify_TEXT.py:240-241). Read from the shared config so
 # this tool cannot silently diverge from production.
 TRUST_TIER_TRUSTED = tu._get_float("CLASSIFY", "TRUST_TIER_TRUSTED", 0.85)
 TRUST_TIER_UNKNOWN = tu._get_float("CLASSIFY", "TRUST_TIER_UNKNOWN", 0.50)
@@ -89,7 +89,7 @@ def build_line_record(
     ``original_lang`` / ``original_lang_score`` are the *pre-remap* FastText
     prediction; ``perplexity`` is the fresh Qwen (or distilgpt2) value. Empty and
     ``Non-text`` lines short-circuit through ``pre_filter_line`` with a 0.0 score,
-    mirroring the fast-track rows in production (``langID_classify.py:447``).
+    mirroring the fast-track rows in production (``classify_TEXT.py:447``).
     """
     original_text = raw_line
     merged, split_ws, split_we = tu.parse_line_splits(raw_line)

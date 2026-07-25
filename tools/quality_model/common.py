@@ -20,7 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import text_util_langID as tu  # noqa: E402  (path bootstrap must run first)
+import text_util as tu  # noqa: E402  (path bootstrap must run first)
 
 # Band thresholds — reused from production so training/eval agree with categorize_line.
 TRASH_MAX = tu.CATEG_TRASH_SCORE_MAX  # 0.55
@@ -53,7 +53,7 @@ DEFAULT_CATEG = "categ"
 
 
 def load_config(path: str | Path) -> configparser.ConfigParser:
-    """Load a quality-model config (same .ini/.txt style as config_langID.txt)."""
+    """Load a quality-model config (same .ini/.txt style as config.txt)."""
     cfg = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
     read = cfg.read(path, encoding="utf-8")
     if not read:

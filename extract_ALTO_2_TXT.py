@@ -31,7 +31,7 @@ from atrium_paradata import ParadataLogger
 
 _SCRIPT_NAME = "extract_alto2txt"
 
-CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config_langID.txt")
+CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
 
 # Common hyphen variations found in OCR/typesetting at a line break.
 HYPHEN_VARIATIONS = ("-", "\xad", "\u2013", "\u2014")

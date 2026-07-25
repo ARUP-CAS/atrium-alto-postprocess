@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-text_util_langID.py
+text_util.py
 
 Purpose:
 Provides the core text-processing utilities for the ALTO OCR post-processing pipeline.
@@ -75,7 +75,7 @@ _config = configparser.RawConfigParser()
 # (#7 Phase 0) Honor the LANGID_CONFIG env var that run_pipeline.py sets for
 # child stages, so `--config other.txt` actually reaches the [TEXT_UTILS]
 # constants instead of silently falling back to the CWD default.
-_config_path = Path(os.getenv("LANGID_CONFIG", "setup/config_langID.txt"))
+_config_path = Path(os.getenv("LANGID_CONFIG", "setup/config.txt"))
 if _config_path.exists():
     _config.read(_config_path)
 
@@ -353,7 +353,7 @@ GHOST_HITS_INVERTED_MIN = _get_int("TEXT_UTILS", "GHOST_HITS_INVERTED_MIN", 1)
 # (#7 Tier 1) Trailing filler chars stripped before headline/short-line checks.
 # Read from config with unicode-escape decoding, because configparser strips
 # leading whitespace from values — the leading space must be written as \x20
-# in config_langID.txt. Decoded default == the previous literal " ._:-<–—".
+# in config.txt. Decoded default == the previous literal " ._:-<–—".
 TRAILING_FILL_CHARS = (
     _get_str("TEXT_UTILS", "TRAILING_FILL_CHARS", "\\x20._:-<\\u2013\\u2014")
     .encode("latin-1", "backslashreplace")

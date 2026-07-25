@@ -36,7 +36,7 @@ Usage
 
     # apply a different constant set (config file and/or KEY=VALUE overrides)
     python tools/recategorize_from_csv.py data_samples/DOC_LINE_CATEG/ \
-        --config config_langID.txt \
+        --config config.txt \
         --override CATEG_TRASH_SCORE_MAX=0.45 LOWPPL_CLEAR_MAX=60.0 \
         --out /tmp/rescored
 
@@ -77,13 +77,13 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-import langID_classify as _lc  # noqa: E402
-import text_util_langID as _tu  # noqa: E402
-from langID_classify import (  # noqa: E402
+import classify_TEXT as _lc  # noqa: E402
+import text_util as _tu  # noqa: E402
+from classify_TEXT import (  # noqa: E402
     CSV_HEADER,
     apply_document_postprocessing,
 )
-from text_util_langID import (  # noqa: E402
+from text_util import (  # noqa: E402
     TRASH_REASONS,
     _lang_base,
     analyze_rotation_signals,
@@ -436,9 +436,7 @@ def recategorize_dataframe(
     row order/index.
     """
     if expected_langs is None or known_bases is None:
-        expected_langs, known_bases = _load_lang_config(
-            os.getenv("LANGID_CONFIG", str(_ROOT / "setup/config_langID.txt"))
-        )
+        expected_langs, known_bases = _load_lang_config(os.getenv("LANGID_CONFIG", str(_ROOT / "setup/config.txt")))
 
     work = _coerce_locators(df.copy())
 
@@ -492,7 +490,7 @@ def rescore_csv(in_path: Path, constants: Mapping[str, Any] | None = None) -> tu
 
 # ---------------------------------------------------------------------------
 # Tunable inventory + defaults (read from the live modules — never hardcoded,
-# so the tool can never drift from config_langID.txt)
+# so the tool can never drift from config.txt)
 # ---------------------------------------------------------------------------
 
 # Production compute_quality_score sums these NINE weights (the legacy symbol
@@ -574,7 +572,7 @@ def _live_default(name: str) -> float | int:
 
 
 # Live snapshot of the current config — the sweep's base point and the
-# re-scorer's defaults. Reflects config_langID.txt exactly (no hardcoded drift).
+# re-scorer's defaults. Reflects config.txt exactly (no hardcoded drift).
 DEFAULT_CONSTANTS: dict[str, float | int] = {name: _live_default(name) for name in TUNABLE_CONSTANTS}
 
 
@@ -599,7 +597,7 @@ def _parse_scalar(value: str) -> float | int | bool | str:
 
 
 def read_config_constants(config_path: Path | str | None) -> dict[str, Any]:
-    """Read tunable constants from a config_langID.txt-style INI file.
+    """Read tunable constants from a config.txt-style INI file.
 
     Interpolation is disabled because the config may contain literal ``%``
     characters (punctuation/symbol strings). All sections are scanned
@@ -931,7 +929,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("path", nargs="?", help="CSV file or directory of per-document CSVs")
     ap.add_argument("--input-dir", dest="input_dir", help="Alias for the positional path (a directory).")
     ap.add_argument("--out", "--output-dir", dest="out", help="Output file/dir (default: overwrite in place).")
-    ap.add_argument("--config", help="setup/config_langID.txt-style INI to source constants from.")
+    ap.add_argument("--config", help="setup/config.txt-style INI to source constants from.")
     ap.add_argument(
         "--override",
         nargs="*",

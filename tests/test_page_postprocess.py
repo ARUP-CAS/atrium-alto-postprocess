@@ -24,13 +24,13 @@ sys.modules["tqdm"].tqdm = lambda x, **k: x  # type: ignore[attr-defined]
 
 import pandas as pd  # noqa: E402
 
-from langID_classify import (  # noqa: E402
+from classify_TEXT import (  # noqa: E402
     CSV_HEADER,
     INVERTED_PAGE_MAJORITY,
     INVERTED_RUN_MIN,
     apply_document_postprocessing,
 )
-from text_util_langID import LANG_SCORE_ROUGH  # noqa: E402
+from text_util import LANG_SCORE_ROUGH  # noqa: E402
 
 _LOW = LANG_SCORE_ROUGH - 0.10  # below the rough gate -> low_lang True
 _HIGH = 0.95

@@ -56,7 +56,7 @@ def test_load_extract_config_defaults_when_missing(tmp_path):
 
 
 def test_load_extract_config_reads_overrides(tmp_path):
-    cfgfile = tmp_path / "config_langID.txt"
+    cfgfile = tmp_path / "config.txt"
     cfgfile.write_text(
         "[EXTRACT]\nLLM_MODEL = my/model\nLLM_MAX_NEW_TOKENS = 128\nWORKERS_MAX_LLM = 3\n",
         encoding="utf-8",

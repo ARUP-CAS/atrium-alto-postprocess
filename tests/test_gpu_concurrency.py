@@ -7,7 +7,7 @@ import multiprocessing as mp
 
 import pytest
 
-from langID_classify import process_and_write_batch_cpu, worker_models
+from classify_TEXT import process_and_write_batch_cpu, worker_models
 
 
 class DummyFT:

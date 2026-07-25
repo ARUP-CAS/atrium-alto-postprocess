@@ -23,7 +23,7 @@ with that coupling in mind.
 Example
 -------
     python tools/ab_constant_eval.py \\
-        --input-dir data_samples/DOC_LINE_CATEG --config config_langID.txt \\
+        --input-dir data_samples/DOC_LINE_CATEG --config config.txt \\
         --const CATEG_GARBAGE_DENSITY_HIGH --values 0.35,0.55
 """
 
@@ -121,9 +121,7 @@ def run_ab(
 def main() -> None:
     parser = argparse.ArgumentParser(description="A/B a single config constant vs. the stored categories.")
     parser.add_argument("--input-dir", type=Path, required=True, help="Directory of DOC_LINE_CATEG CSVs.")
-    parser.add_argument(
-        "--config", type=str, default="setup/config_langID.txt", help="setup/config_langID.txt-style file."
-    )
+    parser.add_argument("--config", type=str, default="setup/config.txt", help="setup/config.txt-style file.")
     parser.add_argument("--const", type=str, default="CATEG_GARBAGE_DENSITY_HIGH", help="Constant to vary.")
     parser.add_argument(
         "--values",

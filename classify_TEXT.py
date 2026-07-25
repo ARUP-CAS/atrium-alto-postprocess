@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-langID_classify.py
+classify_TEXT.py
 
 Step 2: Read TXT files → Merge Split Words → Batch classify.
 
@@ -43,7 +43,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from atrium_paradata import ParadataLogger
-from text_util_langID import (
+from text_util import (
     _TRUSTED_FOREIGN_LANG_BASES,
     CATEG_TRASH_SCORE_MAX,
     COMMON_LANGS,
@@ -221,7 +221,7 @@ def gpu_inference_worker(task_queue: mp.Queue, result_dict: dict, model_name: st
 # CPU workers — which re-import this module — see the same values without any
 # queue plumbing. Honors the LANGID_CONFIG env var set by run_pipeline.py.
 _config = configparser.ConfigParser()
-_config_path = Path(os.getenv("LANGID_CONFIG", "setup/config_langID.txt"))
+_config_path = Path(os.getenv("LANGID_CONFIG", "setup/config.txt"))
 if _config_path.exists():
     _config.read(_config_path)
 
@@ -785,7 +785,7 @@ def process_document(task):
 
 def main():
     """Initializes queue managers, sets up models, and maps CPU document tasks."""
-    config_path = os.getenv("LANGID_CONFIG", "setup/config_langID.txt")
+    config_path = os.getenv("LANGID_CONFIG", "setup/config.txt")
     config = configparser.ConfigParser()
     config.read(config_path)
 

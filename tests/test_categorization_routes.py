@@ -7,7 +7,7 @@ trash_inverted route + non-diacritics hard gate, and the low-ppl Clear
 fast-track. All pure-Python — no torch/fasttext/GPU.
 """
 
-from text_util_langID import (
+from text_util import (
     _MIRROR_GLYPH,
     _ROTATE_GLYPH,
     ROT_GHOSTLIST,

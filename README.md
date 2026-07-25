@@ -98,13 +98,13 @@ intermediate file formats produced, and the **effective end-to-end output licens
 [Paradata logging](#paradata-logging)).
 
 ```bash
-python3 run_pipeline.py                      # all settings from config_langID.txt
+python3 run_pipeline.py                      # all settings from config.txt
 python3 run_pipeline.py --method glm         # override just the extraction backend
 python3 run_pipeline.py --skip-split         # PAGE_ALTO already populated
 python3 run_pipeline.py --dry-run            # print the resolved plan, run nothing
 ```
 
-* **Configuration ⚙️:** every setting is read from [config_langID.txt](setup/config_langID.txt) 📎
+* **Configuration ⚙️:** every setting is read from [config.txt](setup/config.txt) 📎
 (section `[PIPELINE]`, with `INPUT_CSV` taken from `[EXTRACT]`). Precedence is
 **CLI flag > config value > built-in default**. Point at a different config with `--config`
 or the `LANGID_CONFIG` environment variable.
@@ -306,7 +306,7 @@ As the script processes, it assigns each line one of five categories 🪧:
 > `DOC_LINE_LANG_CLASS/` and `DOC_LINE_STATS/`, while the
 > raw **text** 📝 files (primary input) are stored in `../PAGE_TXT/` generated from `../PAGE_ALTO/`.
 
-All input/output paths and tunable parameters are configured ⚙️ in [config_langID.txt](setup/config_langID.txt) 📎.
+All input/output paths and tunable parameters are configured ⚙️ in [config.txt](setup/config.txt) 📎.
 Parameters are organized into **three sections**: `[CLASSIFY]`, `[AGGREGATE]`, and `[TEXT_UTILS]`.
 
 ```ini
@@ -378,7 +378,7 @@ does not change between models and their defaults are stable across either choic
 > `CLEAN_PROSE_WC_MIN`) parameterise the near-boundary **"Override 4"** clean-prose promotion, which has been
 > **removed** from `determine_category()` (see the callout in [Categorisation Logic](#categorisation-logic)). These
 > keys — together with the never-implemented `CLEAR_BAND_WC_MIN` guard — have now been **removed from
-> `config_langID.txt`** as well (#7 Phase 0 of the config-coverage audit); they are **not read** by any current
+> `config.txt`** as well (#7 Phase 0 of the config-coverage audit); they are **not read** by any current
 > scoring or categorisation path. The rows are kept here only as historical documentation of the removed override.
 
 Language- and collection-specific data 🇨🇿 moved from hardcoded Python literals into the config (#7 Tier 1). Defaults
@@ -416,7 +416,7 @@ processes, running **language identification** 🌐 concurrently.
 > collection to work as a default replacement of ambiguous language recognition predictions.
 
 ```bash
-python3 langID_classify.py
+python3 classify_TEXT.py
 
 ```
 
@@ -550,7 +550,7 @@ all-caps run of 10+ characters, or any digit-bearing alphanumeric token remains 
 
 **FastText** 🌐 [^2](https://huggingface.co/facebook/fasttext-language-identification) is run on the **lowercased** line text and returns a predicted ISO 639-3 language code
 (e.g. `ces` for Czech 🇨🇿, `deu` for German 🇩🇪) and a confidence score between 0 and 1. The pipeline then applies
-a series of remapping rules (`remap_lang()` in [text_util_langID.py](text_util_langID.py)📎) before the `lang` and
+a series of remapping rules (`remap_lang()` in [text_util_langID.py](text_util.py)📎) before the `lang` and
 `lang_score` fields are finalised for storage and before the score is used in quality computation.
 
 **Configuration keys (in `[CLASSIFY]`):**
@@ -601,7 +601,7 @@ default), and the stored `lang_score` is replaced according to the `LANG_REMAP_A
 
 ##### Structural Detectors
 
-Lines that pass the pre-filter are analysed by structural detectors defined in [text_util_langID.py](text_util_langID.py)📎:
+Lines that pass the pre-filter are analysed by structural detectors defined in [text_util_langID.py](text_util.py)📎:
 
 | Detector                     | What it counts                                                                                                                                                                             |
 |------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -617,7 +617,7 @@ Lines that pass the pre-filter are analysed by structural detectors defined in [
 ##### Composite Quality Score
 
 After structural detection, each line receives a single floating-point `quality_score` 📈 in [0, 1] computed by
-`compute_quality_score()` in [text_util_langID.py](text_util_langID.py)📎. The score is a weighted sum of **nine**
+`compute_quality_score()` in [text_util_langID.py](text_util.py)📎. The score is a weighted sum of **nine**
 normalised signals, **dynamically divided by the total sum of weights** to strictly bound the maximum
 score to 1.0 (preventing score inflation):
 
@@ -679,7 +679,7 @@ and mostly legible, the reduced weight prevents the label from being unfairly pe
 *Trigger:* `word_count ≤ 2` **and** raw LM **perplexity** 📉 `> SHORT_PPL_CAP` (default **850.0** for Qwen2.5-0.5B 🤖,
 **2500.0** for distilgpt2 🤖).
 
-*Applied:* in `langID_classify.py`, **before** `compute_quality_score()` is called. The **perplexity** 📉 value
+*Applied:* in `classify_TEXT.py`, **before** `compute_quality_score()` is called. The **perplexity** 📉 value
 *passed to scoring* is clamped to `SHORT_PPL_CAP`. **The stored `perplex` column in the output **CSV** 📊 is not
 changed**.
 
@@ -691,7 +691,7 @@ Without this cap, every single-word or two-word line would receive a near-zero *
 
 ##### Categorisation Logic
 
-Categorisation is a two-function split: `determine_category()` in [text_util_langID.py](text_util_langID.py)📎 holds
+Categorisation is a two-function split: `determine_category()` in [text_util_langID.py](text_util.py)📎 holds
 all of the routing logic and returns `(category, reason)`; `categorize_line()` is now a thin wrapper that calls
 `determine_category()` and then clamps the stored `quality_score` to the range consistent with the returned category
 so downstream analytics can rely on the score as a monotone proxy for category rank.
@@ -787,7 +787,7 @@ corresponding to the assigned band, so the **CSV** 📊 value is always internal
 ##### Post-Processing Smoothing
 
 After all lines in a document are classified and written to **CSV** 📊, `apply_document_postprocessing()` in
-[langID_classify.py](langID_classify.py)📎 runs three passes, **in this order**, before the file is finalized. This
+[classify_TEXT.py](classify_TEXT.py)📎 runs three passes, **in this order**, before the file is finalized. This
 same function is reused byte-for-byte by the offline re-scorer (`tools/recategorize_from_csv.py`), so production
 output and offline re-measurement never drift.
 
@@ -888,12 +888,12 @@ still referenced the now-removed "Override 4" clean-prose promotion and the old 
 | Mostly readable valid cap                        | `determine_category`                                                 | `MOSTLY_READABLE_VALID_MIN`                                                                                                                                                                   | Caps semi-readable strings at `Noisy` unless `lm_confident_czech` (below) relaxes it.                                                                                                                                                                                                                |
 | LM-confident-Czech relaxation                    | `determine_category`, `_lm_confident_czech`                          | `LOWPPL_CZECH_CLEAR_MAX`, `CZECH_CLEAR_GARBAGE_MAX`                                                                                                                                           | A confidently-Czech, low-perplexity, structurally clean line can reach `Clear` even below the mostly-readable floor.                                                                                                                                                                                 |
 | ~~Near-boundary clean-prose promotion~~          | *(removed)*                                                          | *(removed: `CLEAN_PROSE_*` constants no longer exist)*                                                                                                                                        | Previously promoted borderline `Noisy` lines to `Clear`; this path has been removed from the current implementation. See the note in [Categorisation Logic](#categorisation-logic).                                                                                                                  |
-| Short **perplexity** 📉 cap                      | `langID_classify.py` (before scoring)                                | `SHORT_PPL_CAP`                                                                                                                                                                               | Applied only to lines with ≤ 2 words. Does not change the stored `perplex` column; affects only the value passed to quality scoring.                                                                                                                                                                 |
-| Language 🌐 remapping                            | `langID_classify.py` / `remap_lang` (before scoring)                 | `EXPECTED_LANGS`, `TRUSTED_FOREIGN_LANGS`, `LANG_SCORE_REMAP`, `LANG_SCORE_REMAP_FAR`, `LANG_REMAP_ALWAYS`                                                                                    | Unknown languages remapped to first entry of `EXPECTED_LANGS`. Stored score set unconditionally (`LANG_REMAP_ALWAYS=true`, default) or capped (`=false`), except `slk` which always retains its original score. `orig_lang_score` is untouched either way and drives gates 1/2/late-stage penalties. |
-| Context smoothing (rolling window)               | Post-processing pass 2, `langID_classify.py`                         | `CATEG_TRASH_SCORE_MAX`, `SURROUNDED_TRASH_QS_MARGIN`                                                                                                                                         | `Noisy` line must be surrounded by 2 `Trash` lines on **each** side (4 total); score must be < trash threshold + 0.15. Recorded as `pp_surrounded_trash`.                                                                                                                                            |
-| Page-context rules                               | Post-processing pass 3, `langID_classify.py`                         | `PAGE_GARBAGE_CLEAR_MAX`, `PAGE_GARBAGE_LANG_MAX`, `PAGE_GARBAGE_MEDIAN_QS_MAX`, `PAGE_GARBAGE_NOISY_QS_MAX`, `PAGE_CLEAN_CLEAR_MIN`, `PAGE_CLEAN_MEDIAN_QS_MIN`, `PAGE_CLEAN_RECOVER_QS_MIN` | Symmetric garbage-page-pulls-down / clean-page-promotes-up rules, run **after** dedup and rolling-window smoothing, **before** the inverted-scan sweep. Recorded as `pp_page_context`.                                                                                                               |
-| Page-level inverted-scan sweep                   | Post-processing pass 4, `langID_classify.py`                         | `ROT_RATIO_INVERTED_MIN`, `PPL_INVERTED_MIN`, `LANG_SCORE_ROUGH`, `ROT_HIGH_LANG_CONF`, `INVERTED_RUN_MIN`, `INVERTED_PAGE_MAJORITY`                                                          | Three arms (diacritic-absence, perplexity/weirdness, rotation) — see above. Suspicious lines Trashed via page-majority (checked first) or a run of ≥ 4. Recorded as `pp_inverted_run`.                                                                                                               |
-| Header/footer deduplication                      | Post-processing pass 1, `langID_classify.py`                         | none                                                                                                                                                                                          | Based on **exact text match** across the whole document; harmonises to modal category. Recorded as `pp_dedup`. Runs **first**, before the other three passes.                                                                                                                                        |
+| Short **perplexity** 📉 cap                      | `classify_TEXT.py` (before scoring)                                | `SHORT_PPL_CAP`                                                                                                                                                                               | Applied only to lines with ≤ 2 words. Does not change the stored `perplex` column; affects only the value passed to quality scoring.                                                                                                                                                                 |
+| Language 🌐 remapping                            | `classify_TEXT.py` / `remap_lang` (before scoring)                 | `EXPECTED_LANGS`, `TRUSTED_FOREIGN_LANGS`, `LANG_SCORE_REMAP`, `LANG_SCORE_REMAP_FAR`, `LANG_REMAP_ALWAYS`                                                                                    | Unknown languages remapped to first entry of `EXPECTED_LANGS`. Stored score set unconditionally (`LANG_REMAP_ALWAYS=true`, default) or capped (`=false`), except `slk` which always retains its original score. `orig_lang_score` is untouched either way and drives gates 1/2/late-stage penalties. |
+| Context smoothing (rolling window)               | Post-processing pass 2, `classify_TEXT.py`                         | `CATEG_TRASH_SCORE_MAX`, `SURROUNDED_TRASH_QS_MARGIN`                                                                                                                                         | `Noisy` line must be surrounded by 2 `Trash` lines on **each** side (4 total); score must be < trash threshold + 0.15. Recorded as `pp_surrounded_trash`.                                                                                                                                            |
+| Page-context rules                               | Post-processing pass 3, `classify_TEXT.py`                         | `PAGE_GARBAGE_CLEAR_MAX`, `PAGE_GARBAGE_LANG_MAX`, `PAGE_GARBAGE_MEDIAN_QS_MAX`, `PAGE_GARBAGE_NOISY_QS_MAX`, `PAGE_CLEAN_CLEAR_MIN`, `PAGE_CLEAN_MEDIAN_QS_MIN`, `PAGE_CLEAN_RECOVER_QS_MIN` | Symmetric garbage-page-pulls-down / clean-page-promotes-up rules, run **after** dedup and rolling-window smoothing, **before** the inverted-scan sweep. Recorded as `pp_page_context`.                                                                                                               |
+| Page-level inverted-scan sweep                   | Post-processing pass 4, `classify_TEXT.py`                         | `ROT_RATIO_INVERTED_MIN`, `PPL_INVERTED_MIN`, `LANG_SCORE_ROUGH`, `ROT_HIGH_LANG_CONF`, `INVERTED_RUN_MIN`, `INVERTED_PAGE_MAJORITY`                                                          | Three arms (diacritic-absence, perplexity/weirdness, rotation) — see above. Suspicious lines Trashed via page-majority (checked first) or a run of ≥ 4. Recorded as `pp_inverted_run`.                                                                                                               |
+| Header/footer deduplication                      | Post-processing pass 1, `classify_TEXT.py`                         | none                                                                                                                                                                                          | Based on **exact text match** across the whole document; harmonises to modal category. Recorded as `pp_dedup`. Runs **first**, before the other three passes.                                                                                                                                        |
 
 ---
 
@@ -915,7 +915,7 @@ This script processes the `DOC_LINE_LANG_CLASS/` directory with **CSV** 📊 fil
 final page-level statistics. It is **CPU** 💻-bound and parallelized with `ProcessPoolExecutor`.
 
 ```
-python3 langID_aggregate_STAT.py
+python3 aggregate_STAT.py
 ```
 
 * **Input 📥:** `DOC_LINE_LANG_CLASS/` (directory with **CSV** 📊 files from the previous step)
@@ -977,7 +977,7 @@ of **Trash** 🗑️ lines may also indicate handwritten content, which can be e
 In addition to the batch pipeline, this repository ships with a FastAPI wrapper (`service/text_api.py`) that exposes
 the core `text_util_langID` quality classification engine over HTTP.
 
-The batch pipeline and the API service share the same `text_util_langID` categorization engine and `config_langID.txt`
+The batch pipeline and the API service share the same `text_util_langID` categorization engine and `config.txt`
 settings — including the default **Qwen2.5-0.5B** 🤖 perplexity model — to ensure zero drift between local processing
 and web uploads.
 
@@ -1033,8 +1033,8 @@ them records it. For this repository the components and their effect on the **ef
 | Component                                                                              | License         | Counted     | Used by                                                        |
 |----------------------------------------------------------------------------------------|-----------------|-------------|----------------------------------------------------------------|
 | **alto-tools** 🔧 [^1](https://github.com/cneud/alto-tools)                            | Apache-2.0      | always      | page split, statistics, alto-tools text extraction             |
-| **FastText** 🌐 [^2](https://huggingface.co/facebook/fasttext-language-identification) | CC BY-NC 4.0    | always      | language identification (`langID_classify.py`)                 |
-| **Qwen2.5-0.5B** 🤖 [^6](https://huggingface.co/Qwen/Qwen2.5-0.5B)                     | Apache-2.0      | conditional | **perplexity** 📉 scoring (default, `langID_classify.py`)      |
+| **FastText** 🌐 [^2](https://huggingface.co/facebook/fasttext-language-identification) | CC BY-NC 4.0    | always      | language identification (`classify_TEXT.py`)                 |
+| **Qwen2.5-0.5B** 🤖 [^6](https://huggingface.co/Qwen/Qwen2.5-0.5B)                     | Apache-2.0      | conditional | **perplexity** 📉 scoring (default, `classify_TEXT.py`)      |
 | **distilgpt2** 🤖                                                                      | Apache-2.0      | conditional | **perplexity** 📉 scoring (English-only alternative)           |
 | **LayoutLMv3** 📐 [^9](https://github.com/ppaanngggg/layoutreader)                     | CC BY-NC-SA 4.0 | conditional | LayoutReader text extraction (`extract_LytRdr_ALTO_2_TXT.py`)  |
 | **GLM-4v-9b** 🤖 [^10](https://huggingface.co/THUDM/glm-4v-9b)                         | glm-4           | conditional | generative **OCR** 🔍 extraction (`extract_LLM_ALTO_2_TXT.py`) |

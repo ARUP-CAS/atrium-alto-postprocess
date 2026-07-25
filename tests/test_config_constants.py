@@ -11,8 +11,8 @@ import os
 import subprocess
 import sys
 
-import text_util_langID as tu
-from langID_classify import FASTTEXT_MODEL, TRUST_TIER_TRUSTED, TRUST_TIER_UNKNOWN
+import text_util as tu
+from classify_TEXT import FASTTEXT_MODEL, TRUST_TIER_TRUSTED, TRUST_TIER_UNKNOWN
 
 
 def test_tier1_defaults_match_previous_literals():

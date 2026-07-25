@@ -93,7 +93,7 @@ def test_clean_prose_outscores_garbage():
 
 def test_short_line_perplexity_is_capped():
     # <=2 words with a huge perplexity must be capped at SHORT_PPL_CAP.
-    import text_util_langID as tu
+    import text_util as tu
 
     rec = S.build_line_record("Literatura", "ces_Latn", 0.9, 99999.0, EXPECTED, TRUSTED)
     assert rec["perplex"] <= tu.SHORT_PPL_CAP

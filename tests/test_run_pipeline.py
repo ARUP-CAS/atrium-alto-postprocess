@@ -71,7 +71,7 @@ def test_outputs_resolved_from_config_and_defaults():
 
 def test_build_plan_returns_all_stages_with_skip_flags():
     settings = resolve_settings(_args(start_from="classify"), configparser.ConfigParser())
-    plan = build_plan(settings, "config_langID.txt")
+    plan = build_plan(settings, "config.txt")
     assert [s["key"] for s in plan] == STAGE_ORDER
     assert [s["key"] for s in plan if not s["skip"]] == ["classify", "aggregate"]
 

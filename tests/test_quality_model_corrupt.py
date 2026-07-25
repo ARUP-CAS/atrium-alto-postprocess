@@ -30,7 +30,7 @@ import random  # noqa: E402
 
 import corrupt as C  # noqa: E402
 
-import text_util_langID as tu  # noqa: E402
+import text_util as tu  # noqa: E402
 
 
 def _rng(seed: int = 1) -> random.Random:

@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from langID_classify import apply_document_postprocessing
+from classify_TEXT import apply_document_postprocessing
 
 
 def test_apply_document_postprocessing_empty():
@@ -52,7 +52,7 @@ def test_main_graceful_exit(mock_cfg_class, mock_read_csv):
     # Simulate the input CSV missing during the main loop bootup
     mock_read_csv.side_effect = FileNotFoundError("Missing INPUT_CSV")
 
-    from langID_classify import main
+    from classify_TEXT import main
 
     with pytest.raises(FileNotFoundError, match="Missing INPUT_CSV"):
         main()

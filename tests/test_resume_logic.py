@@ -6,7 +6,7 @@ import queue
 
 import pandas as pd
 
-from langID_classify import process_document
+from classify_TEXT import process_document
 
 
 def test_process_document_resume_skips_existing(tmp_path):

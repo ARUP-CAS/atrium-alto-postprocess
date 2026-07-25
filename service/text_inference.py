@@ -2,7 +2,7 @@
 service/text_inference.py
 Manages the LayoutReader, FastText, and Qwen2.5-0.5B (default) perplexity models.
 
-Classification is fully aligned with the main pipeline (langID_classify.py):
+Classification is fully aligned with the main pipeline (classify_TEXT.py):
   - Unified penalty path : categorize_line() from text_util_langID
   - New API fields       : word_weird, garbage_density, ldl_fuses, etc.
 """
@@ -30,7 +30,7 @@ except ImportError:
 # Import the full quality-analysis toolkit from the main pipeline module.
 # Unconditional on purpose: the service must never silently fall back to a
 # stale secondary categoriser — a broken import has to fail loud at startup.
-from text_util_langID import (  # noqa: E402
+from text_util import (  # noqa: E402
     analyze_rotation_signals,
     compute_garbage_density,
     compute_quality_score,
@@ -46,7 +46,7 @@ from text_util_langID import (  # noqa: E402
     detect_wx_words,
     score_words_in_line,
 )
-from text_util_langID import categorize_line as _categorize_line_struct  # noqa: E402
+from text_util import categorize_line as _categorize_line_struct  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

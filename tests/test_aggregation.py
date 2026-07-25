@@ -1,12 +1,12 @@
 """
-Tests for langID_aggregate_STAT.py pure-logic helpers.
+Tests for aggregate_STAT.py pure-logic helpers.
 """
 
 import pandas as pd
 
-from langID_aggregate_STAT import _sum_metrics, load_config
+from aggregate_STAT import _sum_metrics, load_config
 
-DEFAULT_CONFIG = "setup/config_langID.txt"
+DEFAULT_CONFIG = "setup/config.txt"
 config = load_config(DEFAULT_CONFIG)
 STANDARD_COLS = frozenset(config.get("standard_cols", "Clear,Noisy,Trash,Non-text,Empty").split(","))
 
@@ -63,7 +63,7 @@ def test_sum_metrics_empty():
 def test_load_config_reads_standard_cols(tmp_path):
     """(#7 Phase 0) [AGGREGATE] STANDARD_COLS must round-trip from the config
     file instead of always falling back to the hardcoded default."""
-    cfg = tmp_path / "config_langID.txt"
+    cfg = tmp_path / "config.txt"
     cfg.write_text("[AGGREGATE]\nSTANDARD_COLS = Clear,Noisy\n", encoding="utf-8")
     loaded = load_config(str(cfg))
     assert loaded["standard_cols"] == "Clear,Noisy"

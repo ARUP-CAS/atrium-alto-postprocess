@@ -48,7 +48,7 @@ RUN git clone --filter=blob:none --no-checkout --depth 1 \
     && rm -rf /tmp/layoutreader
 
 # 3) FastText LID weights -> $MODEL_DIR/lid.176.bin, symlinked to the bare CWD path
-#    the batch pipeline (langID_classify.py:99) loads.
+#    the batch pipeline (classify_TEXT.py:99) loads.
 #
 #    Hardened fetch:
 #      * follows the canonical ?download=true redirect to the LFS CDN,

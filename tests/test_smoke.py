@@ -4,7 +4,7 @@ tests/test_smoke.py
 End-to-end smoke tests for the pipeline categorization logic with mocked model inferences.
 """
 
-from text_util_langID import (
+from text_util import (
     analyze_rotation_signals,
     categorize_line,
     compute_garbage_density,

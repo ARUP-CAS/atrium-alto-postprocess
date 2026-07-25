@@ -2,7 +2,7 @@
  * script.js
  * Frontend logic for ATRIUM Text Processor
  *
- * Quality categories returned by text_util_langID.py:
+ * Quality categories returned by text_util.py:
  *   Clear    – passes all structural and perplexity checks
  *   Noisy    – degraded but recoverable (symbol / uppercase / high PPL)
  *   Trash    – structurally corrupt, not worth downstream processing

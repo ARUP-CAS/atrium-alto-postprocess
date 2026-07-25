@@ -653,7 +653,7 @@ def run_sobol_backend(
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Config-constant importance sweep (faithful production engine).")
     p.add_argument("--input-dir", type=Path, required=True)
-    p.add_argument("--config", type=str, default=None, help="config_langID.txt to source the base config from.")
+    p.add_argument("--config", type=str, default=None, help="config.txt to source the base config from.")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--backend", choices=("sklearn", "optuna", "morris", "sobol"), default="sklearn")
     p.add_argument("--n-trials", type=int, default=400)
@@ -699,7 +699,7 @@ def main(argv=None):
     n_docs = data["file"].nunique() if "file" in data.columns else 1
     print(f"Loaded {len(data):,} lines across {n_docs} document(s)")
 
-    expected_langs, known_bases = _load_lang_config(args.config or str(Path("setup/config_langID.txt")))
+    expected_langs, known_bases = _load_lang_config(args.config or str(Path("setup/config.txt")))
     eval_kwargs = {"expected_langs": expected_langs, "known_bases": known_bases}
 
     baseline_metrics = evaluate_dataframe(data, base_constants, **eval_kwargs)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-langID_aggregate_STAT.py
+aggregate_STAT.py
 
 Step 4.2: Aggregate raw lines into page statistics.
 
@@ -44,7 +44,7 @@ from atrium_paradata import ParadataLogger
 # ---------------------------------------------------------------------------
 
 # STANDARD_COLS = ["Clear", "Noisy", "Trash", "Non-text", "Empty"]
-DEFAULT_CONFIG = "setup/config_langID.txt"
+DEFAULT_CONFIG = "setup/config.txt"
 
 
 def load_config(config_path):

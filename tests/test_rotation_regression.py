@@ -1,7 +1,7 @@
 import pytest
 
 from tests.calibration_fixtures import CLEAR, ROT_FALSE_POSITIVE_GUARDS, TRASH_INVERTED
-from text_util_langID import (
+from text_util import (
     LANG_REMAP_ALWAYS,
     LANG_SCORE_REMAP,
     analyze_rotation_signals,
