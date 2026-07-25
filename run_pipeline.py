@@ -16,8 +16,8 @@ ONE summary JSON. Supports two input formats, selected implicitly via
          --method glm         -> extract_LLM_ALTO_2_TXT.py    (PAGE_TXT_LLM/, glm-4)
 
   Generic JSON (--method json-keys):
-    1. page_split                N/A — not applicable; each JSON file is already one page.
-    2. json_stats_create.py     <input_dir>/     -> <stats>.csv       (page listing)      [paradata]
+    1. page_split.py            JSON/            -> PAGE_JSON/        (split into pages)  (#31)
+    2. json_stats_create.py     PAGE_JSON/       -> <stats>.csv       (page statistics)   [paradata]
     3. extract_JSON_2_TXT.py    <stats>.csv      -> PAGE_TXT_JSON/    (text extraction)   [paradata]
 
   4. classify_TEXT.py       PAGE_TXT*/       -> DOC_LINE_CATEG/   (line classify)     [paradata]
@@ -81,18 +81,21 @@ EXTRACT_METHODS = {
 }
 
 # input format -> (page_split script or None, stats-CSV-builder script).
-# split_script is None when the format has no page-splitting concept (stage 1
-# becomes a no-op); the stats script then scans the raw input_dir instead of
-# a page_alto_dir.
+# split_script is None when the format has no page-splitting concept at all
+# (stage 1 becomes a permanent no-op for that format); the stats script then
+# scans the raw input_dir instead of a page-output dir. (#31) Both formats
+# currently split into pages — json now goes through page_split.py's
+# split_json_document() just like alto goes through split_alto_xml().
 INPUT_FORMATS = {
     "alto": {"split_script": "page_split.py", "stats_script": "alto_stats_create.py"},
-    "json": {"split_script": None, "stats_script": "json_stats_create.py"},
+    "json": {"split_script": "page_split.py", "stats_script": "json_stats_create.py"},
 }
 
 _DEFAULTS = {
     "method": "layoutreader",
     "input_dir": "data_samples/ALTO",
     "page_alto_dir": "data_samples/PAGE_ALTO",
+    "page_json_dir": "data_samples/PAGE_JSON",
     "skip_split": False,
     "paradata_dir": "paradata",
     "input_csv": "test_alto_stats.csv",
@@ -156,6 +159,9 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
 
     input_dir = (args.input_dir or _cfg_get(cfg, "PIPELINE", "INPUT_DIR", _DEFAULTS["input_dir"])).strip()
     page_alto = (args.page_alto_dir or _cfg_get(cfg, "PIPELINE", "PAGE_ALTO_DIR", _DEFAULTS["page_alto_dir"])).strip()
+    page_json = (
+        getattr(args, "page_json_dir", None) or _cfg_get(cfg, "PIPELINE", "PAGE_JSON_DIR", _DEFAULTS["page_json_dir"])
+    ).strip()
     paradata_dir = (args.paradata_dir or _cfg_get(cfg, "PIPELINE", "PARADATA_DIR", _DEFAULTS["paradata_dir"])).strip()
     input_csv = (args.input_csv or _cfg_get(cfg, "EXTRACT", "INPUT_CSV", _DEFAULTS["input_csv"])).strip()
     text_dir = _resolve_extract_outdir(method, cfg)
@@ -164,10 +170,11 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
     ).strip()
     stats_dir = (_cfg_get(cfg, "AGGREGATE", "OUTPUT_DOC_DIR", _DEFAULTS["stats_dir"]) or _DEFAULTS["stats_dir"]).strip()
 
-    # The stats-CSV builder scans PAGE_ALTO for the "alto" format (post-split
-    # per-page XML), but scans the raw input_dir directly for "json" — there is
-    # no split stage/output to scan (#31).
-    stats_scan_dir = page_alto if input_format == "alto" else input_dir
+    # (#31/D8) The per-page-output dir for the SELECTED format — page_alto_dir
+    # for "alto", page_json_dir for "json". Both formats now split into pages,
+    # so the stats-CSV builder scans this same dir uniformly for either format.
+    page_dir = page_alto if input_format == "alto" else page_json
+    stats_scan_dir = page_dir
 
     skip = _resolve_skips(args, cfg)
 
@@ -176,6 +183,7 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
         "input_format": input_format,
         "input_dir": input_dir,
         "page_alto_dir": page_alto,
+        "page_json_dir": page_json,
         "stats_scan_dir": stats_scan_dir,
         "paradata_dir": paradata_dir,
         "input_csv": input_csv,
@@ -185,10 +193,11 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
         "skip_split": skip["split"],
         "start_from": getattr(args, "start_from", None),
         # Resolved output location per stage (used for the pre-flight existence check).
-        # "split" is None for formats with no split stage (#6 pre-flight check
-        # below must not warn about a nonexistent output for those).
+        # "split" is the per-format page dir for both formats now that json
+        # also splits into pages (#31); None remains supported here for any
+        # future format with no split-stage concept at all.
         "outputs": {
-            "split": page_alto if input_format == "alto" else None,
+            "split": page_dir,
             "stats": input_csv,
             "extract": text_dir,
             "classify": categ_dir,
@@ -239,10 +248,11 @@ def build_plan(settings: Dict, config_path: str) -> List[Dict]:
     stats_script = INPUT_FORMATS[fmt]["stats_script"]
 
     if split_script:
+        page_out_dir = settings["page_alto_dir"] if fmt == "alto" else settings["page_json_dir"]
         split_stage = {
             "key": "split",
-            "name": "1. page_split (ALTO -> PAGE_ALTO)",
-            "cmd": [py, split_script, settings["input_dir"], settings["page_alto_dir"]],
+            "name": f"1. {split_script} ({fmt} -> {page_out_dir})",
+            "cmd": [py, split_script, settings["input_dir"], page_out_dir],
             "logged": False,
         }
     else:
@@ -308,6 +318,7 @@ def main() -> int:
         help="Override [PIPELINE].INPUT_DIR (document-level ALTO XMLs, or JSON files for --method json-keys).",
     )
     ap.add_argument("--page-alto-dir", default=None, help="Override [PIPELINE].PAGE_ALTO_DIR (per-page ALTO dir).")
+    ap.add_argument("--page-json-dir", default=None, help="Override [PIPELINE].PAGE_JSON_DIR (per-page JSON dir, #31).")
     ap.add_argument("--input-csv", default=None, help="Override [EXTRACT].INPUT_CSV (page-stats CSV).")
     ap.add_argument("--paradata-dir", default=None, help="Override [PIPELINE].PARADATA_DIR.")
 
@@ -375,7 +386,8 @@ def main() -> int:
         print(f"  {run_tag} {log_tag} {st['name']}")
     print(
         f"Resolved settings: input_dir={settings['input_dir']} "
-        f"page_alto_dir={settings['page_alto_dir']} input_csv={settings['input_csv']} "
+        f"page_alto_dir={settings['page_alto_dir']} page_json_dir={settings['page_json_dir']} "
+        f"input_csv={settings['input_csv']} "
         f"text_dir={settings['text_dir']} paradata_dir={settings['paradata_dir']}"
     )
 

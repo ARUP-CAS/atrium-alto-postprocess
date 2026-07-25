@@ -7,14 +7,17 @@ This script scans a given input folder for JSON OCR-output files. It can scan
 both the root of the folder and one level of subdirectories, mirroring
 alto_stats_create.py's walk.
 
-Unlike ALTO XML, a generic JSON OCR export has no external element-counting
-tool (there is no "alto-tools -s" equivalent), and the pipeline's page model
-for JSON is "one file = one page" (see extract_JSON_2_TXT.py). So each JSON
-file becomes exactly one CSV row: page=1, textlines/illustrations/graphics=0
-(no structural equivalent exists for JSON), and strings=the number of text
-leaves extract_JSON_2_TXT.py would pull out of that file (reusing its
-TARGET_KEYS whitelist walk, so the count matches what will actually be
-extracted).
+(#31) As of page_split.py's split_json_document(), a generic JSON document is
+split into pages up front just like ALTO, so this script's input is
+post-split, per-page JSON (`<file>-<page>.json`) — no different in shape from
+what alto_stats_create.py already scans. Unlike ALTO XML, a generic JSON OCR
+export has no external element-counting tool (there is no "alto-tools -s"
+equivalent), so this produces one CSV row per JSON file: file/page derived
+from the split filename (mirrors alto_stats_create._process_single_xml's
+`basename.split(".")[0].split("-")`), textlines/illustrations/graphics=0 (no
+structural equivalent exists for JSON), and strings=the number of text leaves
+extract_JSON_2_TXT.py would pull out of that file (reusing its TARGET_KEYS
+whitelist walk, so the count matches what will actually be extracted).
 
 This CSV has the same columns as the ALTO stats CSV (file, page, textlines,
 illustrations, graphics, strings, path), so it's a drop-in input for the same
@@ -51,11 +54,18 @@ def _process_single_json(json_path, fname):
 
     n_strings = sum(1 for _ in _yield_json_text_by_keys(data, TARGET_KEYS))
 
-    file_id = os.path.splitext(os.path.basename(fname))[0]
+    # --- (D7) Derive file ID and page ID from the split filename ---
+    # e.g. "doc123-1.json" -> file="doc123", page="1" — same convention as
+    # alto_stats_create._process_single_xml, since page_split.py now names
+    # split JSON pages identically to split ALTO pages.
+    base = os.path.basename(fname).split(".")[0]  # "doc123-1"
+    parts = base.split("-")  # ["doc123", "1"]
+    file_id = parts[0]  # "doc123"
+    page = parts[1] if len(parts) > 1 else ""  # "1"
 
     rec = {
         "file": file_id,
-        "page": 1,
+        "page": page,
         "textlines": 0,
         "illustrations": 0,
         "graphics": 0,

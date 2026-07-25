@@ -12,11 +12,12 @@ All tests chdir into tmp_path because ParadataLogger writes to the relative
 ``paradata/`` directory.
 """
 
+import json
 import xml.etree.ElementTree as ET
 
 import pytest
 
-from page_split import main, split_alto_xml
+from page_split import main, split_alto_xml, split_json_document
 
 _ALTO_NS = "http://www.loc.gov/standards/alto/ns-v3#"
 
@@ -171,3 +172,174 @@ def test_split_preserves_root_attributes(workdir):
 
     root = ET.parse(workdir / "out" / "doc" / "doc-7.alto.xml").getroot()
     assert root.get("SCHEMAVERSION") == "3.1"
+
+
+# ── (#31) split_json_document unit behaviour ─────────────────────────────────
+
+
+def _read_json(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_split_json_family_a_nested_pages_with_page_number_field(workdir):
+    """Family A: top-level 'pages' list, each item carrying a page-number
+    field (Azure/docTR shape). Sibling top-level keys are the JSON 'header'
+    and are preserved on every output page."""
+    doc = {
+        "metadata": {"engine": "test"},
+        "pages": [
+            {"pageNumber": 1, "text": "hello"},
+            {"pageNumber": 2, "text": "world"},
+        ],
+    }
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 2
+    out_dir = workdir / "out" / "doc"
+    produced = sorted(p.name for p in out_dir.iterdir())
+    assert produced == ["doc-1.json", "doc-2.json"]
+
+    page1 = _read_json(out_dir / "doc-1.json")
+    assert page1["metadata"] == {"engine": "test"}  # header preserved
+    assert page1["pages"] == {"pageNumber": 1, "text": "hello"}  # single page object, not a list
+
+    page2 = _read_json(out_dir / "doc-2.json")
+    assert page2["pages"] == {"pageNumber": 2, "text": "world"}
+
+
+def test_split_json_family_a_falls_back_to_index_without_page_number_field(workdir):
+    """Family A without any PAGE_NUMBER_FIELD_KEYS field falls back to a
+    1-based index, mirroring ALTO's PHYSICAL_IMG_NR-or-index fallback."""
+    doc = {"pages": [{"text": "hello"}, {"text": "world"}]}
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 2
+    produced = sorted(p.name for p in (workdir / "out" / "doc").iterdir())
+    assert produced == ["doc-1.json", "doc-2.json"]
+
+
+def test_split_json_family_a_one_level_nested(workdir):
+    """(D5) A page-list container one level under a dict-valued top-level key
+    (e.g. Azure's analyzeResult.pages) is detected; sibling keys at both
+    levels are preserved."""
+    doc = {
+        "status": "succeeded",
+        "analyzeResult": {
+            "modelId": "prebuilt-layout",
+            "pages": [{"pageNumber": 1, "angle": 0.1}, {"pageNumber": 2, "angle": -0.2}],
+        },
+    }
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 2
+    page1 = _read_json(workdir / "out" / "doc" / "doc-1.json")
+    assert page1["status"] == "succeeded"  # top-level sibling preserved
+    assert page1["analyzeResult"]["modelId"] == "prebuilt-layout"  # nested sibling preserved
+    assert page1["analyzeResult"]["pages"] == {"pageNumber": 1, "angle": 0.1}
+
+
+def test_split_json_family_b_tagged_flat_list(workdir):
+    """Family B: a flat list tagged with a per-item page field and >1
+    distinct value (AWS Textract shape) is grouped by that value."""
+    doc = {
+        "Blocks": [
+            {"BlockType": "PAGE", "Page": 1},
+            {"BlockType": "WORD", "Page": 1, "Text": "hello"},
+            {"BlockType": "PAGE", "Page": 2},
+            {"BlockType": "WORD", "Page": 2, "Text": "world"},
+        ],
+        "DocumentMetadata": {"Pages": 2},
+    }
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 2
+    out_dir = workdir / "out" / "doc"
+    produced = sorted(p.name for p in out_dir.iterdir())
+    assert produced == ["doc-1.json", "doc-2.json"]
+
+    page1 = _read_json(out_dir / "doc-1.json")
+    assert page1["DocumentMetadata"] == {"Pages": 2}  # sibling preserved
+    assert [b["BlockType"] for b in page1["Blocks"]] == ["PAGE", "WORD"]
+    assert all(b["Page"] == 1 for b in page1["Blocks"])
+
+
+def test_split_json_family_b_single_value_falls_through_to_fallback(workdir):
+    """(D6) A flat tagged list with only ONE distinct value is not evidence
+    of a multi-page document — falls through to the Family C fallback."""
+    doc = {"items": [{"page": 1, "text": "a"}, {"page": 1, "text": "b"}]}
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 1
+    out_dir = workdir / "out" / "doc"
+    produced = sorted(p.name for p in out_dir.iterdir())
+    assert produced == ["doc-1.json"]
+    assert _read_json(out_dir / "doc-1.json") == doc  # unchanged
+
+
+def test_split_json_family_c_fallback_unchanged(workdir):
+    """Family C (D4): today's exact single-page fixtures still produce
+    exactly one unchanged <base>-1.json — the pipeline's prior behaviour."""
+    doc = {"page": {"lines": [{"textline": "Hello World"}, {"textline": "Second line"}]}}
+    src = workdir / "in" / "doc1.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 1
+    out_dir = workdir / "out" / "doc1"
+    produced = sorted(p.name for p in out_dir.iterdir())
+    assert produced == ["doc1-1.json"]
+    assert _read_json(out_dir / "doc1-1.json") == doc
+
+
+def test_split_json_empty_list_falls_through_to_fallback(workdir):
+    """An empty 'pages' list matches neither Family A nor B (_is_dict_list
+    requires a non-empty list) — falls through to the Family C fallback."""
+    doc = {"pages": []}
+    src = workdir / "in" / "doc.json"
+    src.write_text(json.dumps(doc), encoding="utf-8")
+
+    count = split_json_document(str(src), str(workdir / "out"))
+
+    assert count == 1
+    assert _read_json(workdir / "out" / "doc" / "doc-1.json") == doc
+
+
+def test_main_dispatches_json_files_to_split_json_document(workdir):
+    """main() discovers *.json alongside *.xml and dispatches each by
+    extension."""
+    doc = {"pages": [{"pageNumber": 1, "text": "a"}, {"pageNumber": 2, "text": "b"}]}
+    (workdir / "in" / "doc.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out")])
+
+    out_dir = workdir / "out" / "doc"
+    produced = sorted(p.name for p in out_dir.iterdir())
+    assert produced == ["doc-1.json", "doc-2.json"]
+
+
+def test_main_survives_malformed_json_document(workdir):
+    """(#31) A broken JSON file is logged as a skip; the run continues to the
+    next document — mirrors test_main_survives_malformed_document for ALTO."""
+    (workdir / "in" / "aaa_broken.json").write_text("{not valid json", encoding="utf-8")
+    (workdir / "in" / "bbb_good.json").write_text(json.dumps({"text": "OK"}), encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out")])
+
+    assert (workdir / "out" / "bbb_good").is_dir()  # later doc still processed
+    assert not (workdir / "out" / "aaa_broken").exists()

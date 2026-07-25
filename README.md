@@ -126,16 +126,19 @@ directory, alongside the individual per-stage logs.
 
 ---
 
-### ▶️ Step 1: Split Document-Specific ALTOs into Pages ✂️
+### ▶️ Step 1: Split Document-Specific Inputs into Pages ✂️
 
-First, ensure you have a directory 📁 containing your document-level `<file>.alto.xml` files.
-This script will split them into individual page-specific **XML** 📄 files.
+First, ensure you have a directory 📁 containing your document-level input files. This script
+will split them into individual page-specific files — it supports **both** of the pipeline's
+input formats, dispatched automatically by file extension.
 
 ```
 python3 page_split.py <input_dir> <output_dir>
 ```
 
 Each page-specific file retains the header from its original source document 📌.
+
+#### ALTO XML input
 
 * **Input 📥:** `../ALTO/` (input directory with **ALTO XML** 📄 documents)
 * **Output 📤:** `../PAGE_ALTO/` (output directory with **ALTO XML** 📄 files split into pages)
@@ -149,6 +152,28 @@ PAGE_ALTO/
 │   └── ...
 ├── <file2>
 │   ├── <file2>-<page>.alto.xml
+│   └── ...
+└── ...
+```
+
+#### Generic JSON input (#31)
+
+Real OCR/Doc-AI engines don't agree on how they represent multi-page documents, so the JSON
+path is detected heuristically rather than assuming one vendor's schema: a nested page-list
+container (e.g. Azure Document Intelligence's/docTR's `pages` array), a flat element list
+tagged with a per-item page field (e.g. AWS Textract), or — when neither pattern is found —
+today's single-page-per-file default (e.g. pero-ocr, OCR.space).
+
+* **Input 📥:** `../JSON/` (input directory with generic JSON OCR-engine 📄 documents)
+* **Output 📤:** `../PAGE_JSON/` (output directory with **JSON** 📄 files split into pages)
+
+```
+PAGE_JSON/
+├── <file1>
+│   ├── <file1>-<page>.json
+│   └── ...
+├── <file2>
+│   ├── <file2>-<page>.json
 │   └── ...
 └── ...
 ```

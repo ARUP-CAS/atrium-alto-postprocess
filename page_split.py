@@ -3,16 +3,26 @@
 page_split.py
 
 Purpose:
-This script takes a multi-page ALTO XML file as input and splits it into
-multiple single-page ALTO XML files. Each output file will contain the
-full header and style information from the original file, but the <Layout>
-section will only contain the data for a single page.
+This script takes a multi-page document as input and splits it into multiple
+single-page files, ordered plain-text-adjacent stage 1 of the pipeline for
+BOTH input formats it supports:
+
+- ALTO XML: a document-level `<file>.alto.xml` (multiple `<Page>` elements
+  under one `<Layout>`) is split into one `<base>-<page>.alto.xml` per page
+  (``split_alto_xml``). Each output file keeps the full header and style
+  information from the original file, but the <Layout> section only contains
+  the data for a single page.
+- Generic JSON OCR/Doc-AI output (#31): a document-level JSON file is split
+  into one `<base>-<page>.json` per page (``split_json_document``), detecting
+  the page boundary heuristically since OCR/Doc-AI engines don't agree on how
+  multi-page documents are represented (see that function's docstring).
 
 Usage:
     python page_split.py <input_directory> <output_directory>
 """
 
 import argparse
+import json
 import os
 import xml.etree.ElementTree as ET  # For parsing and creating XML
 
@@ -87,12 +97,213 @@ def split_alto_xml(input_file_path, output_dir):
     return len(pages)
 
 
+# ── (#31) Generic JSON page splitting ───────────────────────────────────────
+#
+# Real OCR/Doc-AI engines fall into two structural families for representing
+# multi-page documents (no vendor-specific parsers — see 31.plan.md):
+#
+#   Family A — a nested "pages" array (Azure Document Intelligence, docTR,
+#   Google Document AI, most PDF-text-layer dumps): one JSON per document, a
+#   top-level (or one-level-nested) key holds an ordered list of page dicts.
+#
+#   Family B — a flat element list tagged with a per-item page field (AWS
+#   Textract): no nesting, a single flat list where every item carries a
+#   field pointing back to its page.
+#
+#   Family C — already one file per page (pero-ocr, OCR.space, and today's
+#   pipeline default). Used as the fallback when neither A nor B fires, so
+#   existing single-page JSON behaviour is fully preserved.
+
+# Family A: top-level (or one-level-nested) key whose value is a non-empty list of dicts.
+PAGE_LIST_KEYS = {"pages", "page_results", "parsedresults", "page_list", "document_pages", "documentpages"}
+
+# Field checked inside each candidate page-dict / flat-list element (Family A page numbering,
+# and Family B grouping key).
+PAGE_NUMBER_FIELD_KEYS = {
+    "pagenumber",
+    "page_number",
+    "page_num",
+    "page",
+    "pageid",
+    "page_id",
+    "pageno",
+    "page_no",
+    "physical_img_nr",
+}
+
+
+def _is_dict_list(value):
+    """True if value is a non-empty list where every item is a dict."""
+    return isinstance(value, list) and len(value) > 0 and all(isinstance(item, dict) for item in value)
+
+
+def _get_field_ci(d, keys):
+    """Case-insensitive lookup of the first key in `d` matching one of `keys`
+    (already-lowercase). Returns the value, or None if no key matches."""
+    for k, v in d.items():
+        if isinstance(k, str) and k.lower() in keys:
+            return v
+    return None
+
+
+def _find_family_a(data):
+    """(D5) Depth <= 2 scan: top-level, or nested one level under a
+    dict-valued top-level key. Returns (container_parent, key, page_list) for
+    the first PAGE_LIST_KEYS match whose value is a non-empty list of dicts,
+    by depth-then-declaration-order (top-level before nested, first-seen key
+    order) — or None if nothing matches.
+    """
+    if not isinstance(data, dict):
+        return None
+
+    for k, v in data.items():
+        if isinstance(k, str) and k.lower() in PAGE_LIST_KEYS and _is_dict_list(v):
+            return data, k, v
+
+    for _k, v in data.items():
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                if isinstance(k2, str) and k2.lower() in PAGE_LIST_KEYS and _is_dict_list(v2):
+                    return v, k2, v2
+
+    return None
+
+
+def _tagged_group(lst):
+    """(D6) Try each PAGE_NUMBER_FIELD_KEYS candidate as a grouping field for
+    a flat list of dicts. Returns (field_name, {value: [items]}) for the
+    first field where a strict majority of items carry it (D6: fewer than
+    half carrying the tag is not evidence of a multi-page document either)
+    AND it has more than one distinct value — or None if no field qualifies.
+    Group order follows first-seen value order.
+    """
+    n = len(lst)
+    for field in PAGE_NUMBER_FIELD_KEYS:
+        tagged = [(item, _get_field_ci(item, {field})) for item in lst]
+        tagged = [(item, val) for item, val in tagged if val is not None]
+        if len(tagged) * 2 <= n:  # not a strict majority
+            continue
+
+        distinct = []
+        for _, val in tagged:
+            if val not in distinct:
+                distinct.append(val)
+        if len(distinct) <= 1:
+            continue
+
+        groups = {val: [item for item, v in tagged if v == val] for val in distinct}
+        return field, groups
+
+    return None
+
+
+def _find_family_b(data):
+    """(D6) Depth <= 2 scan (same shape as Family A's) for any flat list of
+    dicts that qualifies under `_tagged_group`. Returns
+    (container_parent, key, list, tag_field, groups), or None.
+    """
+    if not isinstance(data, dict):
+        return None
+
+    candidates = []
+    for k, v in data.items():
+        if _is_dict_list(v):
+            candidates.append((data, k, v))
+    for _k, v in data.items():
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                if _is_dict_list(v2):
+                    candidates.append((v, k2, v2))
+
+    for parent, key, lst in candidates:
+        result = _tagged_group(lst)
+        if result is not None:
+            tag_field, groups = result
+            return parent, key, lst, tag_field, groups
+
+    return None
+
+
+def _replace_container_value(data, parent, key, new_value):
+    """Return a shallow-copied `data` with `key` in the (possibly nested)
+    `parent` dict replaced by `new_value`. Sibling keys at every level are
+    preserved untouched — this is the "header" (Description/Styles-equivalent)
+    that each split-out page keeps.
+    """
+    if parent is data:
+        doc = dict(data)
+        doc[key] = new_value
+        return doc
+
+    new_parent = dict(parent)
+    new_parent[key] = new_value
+    return {k: (new_parent if v is parent else v) for k, v in data.items()}
+
+
+def _write_json_page(page_output_dir, base_name, page_number, doc):
+    output_filepath = os.path.join(page_output_dir, f"{base_name}-{page_number}.json")
+    with open(output_filepath, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False)
+
+
+def split_json_document(input_file_path, output_dir):
+    """
+    Splits a single JSON OCR/Doc-AI document into single-page JSON files,
+    mirroring split_alto_xml()'s contract exactly (same naming pattern,
+    same directory shape, same int page-count return) — see 31.plan.md.
+
+    Detection order (never assume, never break today's single-page fixtures):
+      1. Family A — a nested page-list container (D1-D3, D5).
+      2. Family B — a flat list tagged with a per-item page field (D6).
+      3. Family C — neither pattern found: today's behaviour, one output
+         file, page number "1", full document unchanged (D4).
+
+    Returns:
+        int: The number of pages written (always >= 1; a JSON document has
+        no "no pages found" case the way an ALTO file can have none).
+    """
+    with open(input_file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    base_name = os.path.splitext(os.path.basename(input_file_path))[0]
+    page_output_dir = os.path.join(output_dir, base_name)
+    os.makedirs(page_output_dir, exist_ok=True)
+
+    family_a = _find_family_a(data)
+    if family_a is not None:
+        parent, key, page_list = family_a
+        print(f"  -> Found {len(page_list)} page(s) (nested list). Splitting...")
+        for i, page_obj in enumerate(page_list, 1):
+            page_number = _get_field_ci(page_obj, PAGE_NUMBER_FIELD_KEYS)
+            page_number = str(page_number) if page_number is not None else str(i)
+            doc = _replace_container_value(data, parent, key, page_obj)
+            _write_json_page(page_output_dir, base_name, page_number, doc)
+        print(f"  -> Successfully split into {len(page_list)} file(s) in '{page_output_dir}'.")
+        return len(page_list)
+
+    family_b = _find_family_b(data)
+    if family_b is not None:
+        parent, key, _lst, _tag_field, groups = family_b
+        print(f"  -> Found {len(groups)} page(s) (tagged flat list). Splitting...")
+        for page_number, items in groups.items():
+            doc = _replace_container_value(data, parent, key, items)
+            _write_json_page(page_output_dir, base_name, str(page_number), doc)
+        print(f"  -> Successfully split into {len(groups)} file(s) in '{page_output_dir}'.")
+        return len(groups)
+
+    # Family C fallback (D4): neither pattern found, route through the same
+    # writer as a single page — preserves 100% of current behaviour.
+    print("  -> No multi-page pattern detected. Writing as single page.")
+    _write_json_page(page_output_dir, base_name, "1", data)
+    return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Split multi-page ALTO XML files into single-page files.",
+        description="Split multi-page ALTO XML or generic JSON OCR files into single-page files.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("input_dir", help="Path to the directory containing ALTO XML files to process.")
+    parser.add_argument("input_dir", help="Path to the directory containing ALTO XML or JSON files to process.")
     parser.add_argument("output_dir", help="Path to the directory where split files will be saved.")
     args = parser.parse_args(argv)
 
@@ -103,6 +314,19 @@ def main(argv=None):
     os.makedirs(args.output_dir, exist_ok=True)
     print(f"Output will be saved to '{os.path.abspath(args.output_dir)}'\n")
 
+    all_files = sorted(os.listdir(args.input_dir))
+
+    # (#31) output_types is format-aware: only declare the formats actually
+    # present in input_dir, instead of hardcoding "xml". Falls back to
+    # ["xml"] when the directory has neither, preserving prior behaviour.
+    _formats_present = []
+    if any(fname.lower().endswith(".xml") for fname in all_files):
+        _formats_present.append("xml")
+    if any(fname.lower().endswith(".json") for fname in all_files):
+        _formats_present.append("json")
+    if not _formats_present:
+        _formats_present = ["xml"]
+
     _logger = ParadataLogger(
         program="alto-postprocess",
         config={
@@ -111,30 +335,38 @@ def main(argv=None):
             "output_dir": str(args.output_dir),
         },
         paradata_dir="paradata",
-        output_types=["xml"],
+        output_types=_formats_present,
         config_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup"),
     )
 
     # (#10) Track documents (the unit of input) and pages (the unit of output)
     # separately. input_files_total counts source documents; the per-page count
-    # feeds the "xml" output total for throughput; successfully_processed is the
-    # number of documents successfully split — so it can never exceed inputs.
+    # feeds the per-format output total for throughput; successfully_processed
+    # is the number of documents successfully split — so it can never exceed
+    # inputs.
     _total_inputs = 0
     _docs_ok = 0
 
     try:
-        for filename in sorted(os.listdir(args.input_dir)):
-            if filename.lower().endswith(".xml"):
-                input_file_path = os.path.join(args.input_dir, filename)
-                print(f"Processing '{filename}'...")
-                _total_inputs += 1
-                try:
-                    page_count = split_alto_xml(input_file_path, args.output_dir)
-                    _logger.log_success("xml", count=page_count)  # pages produced
-                    if page_count > 0:
-                        _docs_ok += 1
-                except Exception as e:
-                    _logger.log_skip(str(filename), str(e))
+        for filename in all_files:
+            lower_name = filename.lower()
+            if lower_name.endswith(".xml"):
+                fmt, split_fn = "xml", split_alto_xml
+            elif lower_name.endswith(".json"):
+                fmt, split_fn = "json", split_json_document
+            else:
+                continue
+
+            input_file_path = os.path.join(args.input_dir, filename)
+            print(f"Processing '{filename}'...")
+            _total_inputs += 1
+            try:
+                page_count = split_fn(input_file_path, args.output_dir)
+                _logger.log_success(fmt, count=page_count)  # pages produced
+                if page_count > 0:
+                    _docs_ok += 1
+            except Exception as e:
+                _logger.log_skip(str(filename), str(e))
     finally:
         _logger.finalize(input_total=_total_inputs, processed_total=_docs_ok)
 

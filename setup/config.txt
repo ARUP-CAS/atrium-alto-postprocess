@@ -179,6 +179,9 @@ GHOST_HITS_INVERTED_MIN     = 1
 METHOD        = layoutreader
 INPUT_DIR     = data_samples/ALTO
 PAGE_ALTO_DIR = data_samples/PAGE_ALTO
+# (#31) Per-page output dir for generic JSON input (--method json-keys),
+# parallel to PAGE_ALTO_DIR.
+PAGE_JSON_DIR = data_samples/PAGE_JSON
 PARADATA_DIR  = paradata
 # Per-stage skip flags (#6): skip a stage whose outputs already exist. CLI
 # --skip-<stage> / --start-from override these. A skipped stage's outputs must
