@@ -84,6 +84,21 @@ _DEFAULTS = {
 }
 
 
+def extract_text(input_file_path: Path, output_txt_path: Path) -> None:
+    """Routes the file to the correct extractor based on its extension."""
+    ext = input_file_path.suffix.lower()
+
+    if ext == ".json":
+        script = "extract_JSON_2_TXT.py"
+    elif ext == ".xml" and "alto" in input_file_path.name.lower():
+        script = "extract_ALTO_2_TXT.py"
+    else:
+        raise ValueError(f"Unsupported file format for extraction: {ext}")
+
+    # Call the appropriate CLI tool
+    subprocess.run(["python3", script, "--input", str(input_file_path), "--output", str(output_txt_path)], check=True)
+
+
 def _load_config(config_path: str) -> configparser.ConfigParser:
     cfg = configparser.ConfigParser(inline_comment_prefixes=None)
     cfg.read(config_path, encoding="utf-8")
