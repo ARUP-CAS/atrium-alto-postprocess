@@ -203,7 +203,7 @@ GHOST_DOMINATED_MIN_RATIO = _get_float("TEXT_UTILS", "GHOST_DOMINATED_MIN_RATIO"
 WORD_W_PENALTY = _get_float("TEXT_UTILS", "WORD_W_PENALTY", 0.20)
 
 # (#3 A3) Page-level inverted-scan sweep — defined here (config-driven) and
-# re-exported via `from text_util_langID import *` so langID_classify and the
+# re-exported via `from text_util import *` so classify_TEXT and the
 # tests share one tunable source of truth.
 INVERTED_RUN_MIN = _get_int("TEXT_UTILS", "INVERTED_RUN_MIN", 4)
 INVERTED_PAGE_MAJORITY = _get_float("TEXT_UTILS", "INVERTED_PAGE_MAJORITY", 0.60)

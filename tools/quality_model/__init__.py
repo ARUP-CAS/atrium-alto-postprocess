@@ -6,6 +6,6 @@ single small regression model. See ``agent_dev_logs/plans/23.plan.md`` for the
 full strategy and ``tools/quality_model/README.md`` for usage.
 
 Design invariant (from ``tools/SWEEP_NOTES.md``): there is ONE scoring engine.
-Every module here reuses the production ``text_util_langID`` /
-``langID_classify`` functions — it never re-implements the score.
+Every module here reuses the production ``text_util`` /
+``classify_TEXT`` functions — it never re-implements the score.
 """

@@ -332,7 +332,7 @@ def test_run_coverage_json_output(tmp_path):
 
 # def test_rule_wqx_rot_fires():
 #     """The WQX/rotation rule must fire for a suspicious line."""
-#     from text_util_langID import categorize_line
+#     from text_util import categorize_line
 #
 #     with rule_fire_capture() as counts:
 #         categ, qs = categorize_line(

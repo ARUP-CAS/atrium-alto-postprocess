@@ -1,7 +1,7 @@
 """
 tests/test_page_postprocess.py
 ==============================
-Unit tests for langID_classify.apply_document_postprocessing — the pure, GPU-free
+Unit tests for classify_TEXT.apply_document_postprocessing — the pure, GPU-free
 document-level smoothing helper extracted in #3 (A3). The heavy GPU/ML imports
 (``torch``, ``transformers``, ``fasttext``) are stubbed so this suite runs in the
 fast lane without the model stack, exactly as the orchestrator's other hermetic
@@ -15,7 +15,7 @@ reclassifies, plus the run-based fallback and the no-op guarantees on clean page
 import sys
 import types
 
-# --- stub the GPU/ML stack BEFORE importing langID_classify -------------------
+# --- stub the GPU/ML stack BEFORE importing classify_TEXT -------------------
 # Note: atrium_paradata was removed from this stub list. It has no ML dependencies
 # and can be imported safely without polluting the test environment for test_paradata.py.
 for _name in ("torch", "tqdm", "fasttext", "transformers"):

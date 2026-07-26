@@ -17,7 +17,7 @@ ENV ATRIUM_RUNNER_IMAGE=${ATRIUM_RUNNER_IMAGE} \
     PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HF_HOME=/cache/huggingface \
     MODEL_DIR=/app/models \
-    LANGID_CONFIG=/app/setup/config_langID.txt
+    LANGID_CONFIG=/app/setup/config.txt
 
 # (#3) The per-document line CSVs now carry extra diagnostic boolean and string columns
 # (including original_text, original_lang, and rule flags). This aggregation

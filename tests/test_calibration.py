@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-# Stub the GPU/ML stack before importing the tool (it imports langID_classify).
+# Stub the GPU/ML stack before importing the tool (it imports classify_TEXT).
 for _n in ("torch", "tqdm", "fasttext", "transformers"):
     sys.modules.setdefault(_n, types.ModuleType(_n))
 sys.modules["tqdm"].tqdm = lambda x, **k: x  # type: ignore[attr-defined]

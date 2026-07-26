@@ -3,7 +3,7 @@ service/text_inference.py
 Manages the LayoutReader, FastText, and Qwen2.5-0.5B (default) perplexity models.
 
 Classification is fully aligned with the main pipeline (classify_TEXT.py):
-  - Unified penalty path : categorize_line() from text_util_langID
+  - Unified penalty path : categorize_line() from text_util
   - New API fields       : word_weird, garbage_density, ldl_fuses, etc.
 """
 
@@ -276,7 +276,7 @@ def _run_layout_reader(lines: List[str], norm_boxes: List[List[int]], layout_mod
 
 
 # ---------------------------------------------------------------------------
-# Helper: classify one line (mirrors process_and_write_batch in langID_classify)
+# Helper: classify one line (mirrors process_and_write_batch in classify_TEXT)
 # ---------------------------------------------------------------------------
 
 
@@ -293,7 +293,7 @@ def _classify_line(
     Run the full unified classification pipeline on a single text line and
     return all quality metrics.
 
-    categorize_line signature (from text_util_langID):
+    categorize_line signature (from text_util):
         categorize_line(qs, txt, wc, vowel_ratio, perplexity, *, weird_ratio=0.0,
                         return_reason=False, valid_word_ratio=1.0, lang_score=1.0,
                         orig_lang_score=1.0, gibberish_present=False,

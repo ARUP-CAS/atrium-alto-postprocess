@@ -14,7 +14,7 @@ CSV file, along with the file/page identifiers derived from the filenames
 and the full path to the XML file.
 
 This CSV is the primary input for the next step in the pipeline
-(e.g., run_langID.py).
+
 
 Dependencies:
 - alto-tools (must be installed and in the system's PATH)

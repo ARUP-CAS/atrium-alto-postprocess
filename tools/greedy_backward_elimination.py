@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Set
 
 import pandas as pd
 
-# Point Python to the root directory to access text_util_langID and sibling scripts
+# Point Python to the root directory to access text_util and sibling scripts
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR.parent))

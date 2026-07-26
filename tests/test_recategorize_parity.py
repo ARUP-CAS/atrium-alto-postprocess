@@ -5,7 +5,7 @@ Regression net for the unified, constants-parameterised re-scorer (#5).
 
 The offline importance tooling must use the SAME engine as production: the real
 ``compute_quality_score`` / ``categorize_line`` / ``apply_document_postprocessing``
-driven by ``text_util_langID.override_constants`` — never a parallel
+driven by ``text_util.override_constants`` — never a parallel
 re-implementation. The decisive guarantee is *parity*: at the default config the
 re-score reproduces the stored ``categ`` on the sample corpus (flip_rate <= 0.01).
 If that ever drifts, the surrogate sweep is measuring something other than
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-# Stub the GPU/ML stack before importing the tool (it imports langID_classify).
+# Stub the GPU/ML stack before importing the tool (it imports claasify_TEXT).
 for _n in ("torch", "tqdm", "fasttext", "transformers"):
     sys.modules.setdefault(_n, types.ModuleType(_n))
 sys.modules["tqdm"].tqdm = lambda x, **k: x  # type: ignore[attr-defined]
@@ -65,7 +65,7 @@ def test_decisive_override_changes_categories(corpus):
 
 def test_override_constants_restores_globals():
     before_tu = tu.CATEG_TRASH_SCORE_MAX
-    before_lc = lc.CATEG_TRASH_SCORE_MAX  # langID_classify holds its own binding
+    before_lc = lc.CATEG_TRASH_SCORE_MAX  # classify_TEXT holds its own binding
     with tu.override_constants({"CATEG_TRASH_SCORE_MAX": 0.123}, modules=(tu, lc)):
         assert tu.CATEG_TRASH_SCORE_MAX == 0.123
         assert lc.CATEG_TRASH_SCORE_MAX == 0.123

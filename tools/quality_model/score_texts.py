@@ -7,8 +7,8 @@ variants are *new strings*, so they need a fresh FastText + Qwen pass before
 
 ``build_line_record`` is a **faithful, dependency-light mirror** of the per-line
 orchestration currently inlined in
-``langID_classify.process_and_write_batch_cpu`` (``classify_TEXT.py:315-437``).
-It calls the REAL production leaf functions in ``text_util_langID`` — it is not a
+``classify_TEXT.process_and_write_batch_cpu`` (``classify_TEXT.py:315-437``).
+It calls the REAL production leaf functions in ``text_util`` — it is not a
 second engine. Phase 0's refactor task is to make production *import this function*
 and lock the equivalence with ``tests/test_line_record_parity.py``.
 
@@ -38,7 +38,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import text_util as tu  # noqa: E402  (path bootstrap must run first)
 
-# Trust-tier multipliers — the same values langID_classify reads from config
+# Trust-tier multipliers — the same values classify_TEXT reads from config
 # ([CLASSIFY] section, classify_TEXT.py:240-241). Read from the shared config so
 # this tool cannot silently diverge from production.
 TRUST_TIER_TRUSTED = tu._get_float("CLASSIFY", "TRUST_TIER_TRUSTED", 0.85)

@@ -6,7 +6,7 @@ set -e
 
 # --- Configuration ---
 INPUT_DIR="${1:-data_samples/DOC_LINE_CATEG}"
-CONFIG="${2:-setup/config_langID.txt}"
+CONFIG="${2:-setup/config.txt}"
 OUT_BASE="${3:-sweep_output_full}"
 TRIALS="${4:-400}"         # For RF and Optuna
 SOBOL_N="${5:-256}"        # N parameter for Sobol (Note: total evals = N * (D+2))

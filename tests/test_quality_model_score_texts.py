@@ -5,7 +5,7 @@ Fast, model-free tests for ``build_line_record`` — the faithful mirror of the
 production per-line scoring orchestration (issue #23, Phase 0).
 
 ``build_line_record`` takes the FastText prediction and perplexity as plain
-arguments, so it exercises the real ``text_util_langID`` engine end-to-end without
+arguments, so it exercises the real ``text_util`` engine end-to-end without
 loading FastText or Qwen. The heavy model-loading helpers in ``score_texts`` are
 NOT imported here (they lazy-import torch / transformers / fasttext).
 """

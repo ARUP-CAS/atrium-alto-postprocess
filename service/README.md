@@ -38,7 +38,7 @@ Key features:
 
 * **Layout Analysis:** Uses **LayoutLMv3** to correctly reorder tokens from ALTO XML files based on 2D spatial layout, handling multi-column pages [^9].
 * **Text Cleaning:** Automatically detects and merges hyphenated words split across lines using ALTO `SUBS_TYPE` / `SUBS_CONTENT` attributes and regex-based reconstruction.
-* **Quality Classification:** Classifies every line with a composite **quality score** built from structural detectors (strange symbols, mid-word uppercase, letter–digit–letter fusions, gibberish, fused/rotated tokens) and **Qwen2.5-0.5B** perplexity, implemented in `text_util_langID.py` [^6]. The category is then assigned from quality-score thresholds plus named overrides.
+* **Quality Classification:** Classifies every line with a composite **quality score** built from structural detectors (strange symbols, mid-word uppercase, letter–digit–letter fusions, gibberish, fused/rotated tokens) and **Qwen2.5-0.5B** perplexity, implemented in `text_util.py` [^6]. The category is then assigned from quality-score thresholds plus named overrides.
 * **GPU Support:** Automatically detects and utilises CUDA devices for inference if available [^3].
 * **Two Frontend Variants:** A self-contained standalone interface for direct use, and a LINDAT-integrated interface for deployment within the LINDAT Common framework.
 * **CORS Support:** Cross-Origin Resource Sharing is configurable via the `ALLOWED_ORIGINS` environment variable (defaults to `http://localhost:8080,http://localhost:5500`).
@@ -66,7 +66,7 @@ atrium-alto-postprocess/
 │   └── README.md                # API service documentation
 ├── setup/                       # ⚙️ Configuration and setup files
 │   └── setup_api_server.sh      # Sets up virtual environment and installs dependencies
-├── text_util_langID.py          # Structural quality detectors and categorisation logic
+├── text_util.py          # Structural quality detectors and categorisation logic
 ├── README.md                    # Project overview and documentation (this file)
 ├── LICENSE
 └── ...                          # Other project files (scripts, data samples, paradata)
@@ -96,13 +96,13 @@ The pipeline applies three models in sequence, balancing structural layout under
 
 The service classifies every text line into one of five categories. The first two (`Empty`, `Non-text`)
 are assigned by a fast CPU pre-filter before any model inference. The remaining three are assigned by
-`text_util_langID.categorize_line()` from the composite **quality score**, after immediate overrides.
+`text_util.categorize_line()` from the composite **quality score**, after immediate overrides.
 
 | Label         | Description                                                           | Primary Signal                                                                                    |
 |---------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| `Clear` 🟢    | **High quality.** Ready for downstream NLP.                           | `quality_score ≥ CATEG_NOISY_SCORE_MAX` (0.85), or a low-perplexity / clean-prose override.        |
+| `Clear` 🟢    | **High quality.** Ready for downstream NLP.                           | `quality_score ≥ CATEG_NOISY_SCORE_MAX` (0.85), or a low-perplexity / clean-prose override.       |
 | `Noisy` 🟡    | **Usable but degraded.** Minor OCR artefacts, recoverable downstream. | `CATEG_TRASH_SCORE_MAX` (0.55) ≤ `quality_score` < `CATEG_NOISY_SCORE_MAX` (0.85).                |
-| `Trash` 🔴    | **Structurally corrupt.** Not worth downstream processing.            | `quality_score < CATEG_TRASH_SCORE_MAX` (0.55), or a hard override (all-caps/no-vowel, inverted).  |
+| `Trash` 🔴    | **Structurally corrupt.** Not worth downstream processing.            | `quality_score < CATEG_TRASH_SCORE_MAX` (0.55), or a hard override (all-caps/no-vowel, inverted). |
 | `Non-text` 🔵 | **No meaningful text.** Purely numeric / separator content.           | CPU pre-filter: dates, page numbers, archive/stamp codes, or digit ratio > 40 % on short lines.   |
 | `Empty` ⚪     | **Blank line.** Whitespace only.                                      | `word_count == 0` / whitespace only.                                                              |
 
@@ -116,12 +116,12 @@ are assigned by a fast CPU pre-filter before any model inference. The remaining 
 
 ### Endpoints 🔗
 
-| Method | Path       | Description                                                                                   |
-|--------|------------|-----------------------------------------------------------------------------------------------|
-| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                              |
+| Method | Path       | Description                                                                                                                         |
+|--------|------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                                                                    |
 | `GET`  | `/info`    | Service identity + capabilities: `service`, `version`, `endpoints`, `limits`, plus status, device, line fields, quality categories. |
-| `GET`  | `/health`  | Liveness probe; `?deep=true` also checks the quality/language models are loaded (503 on failure). |
-| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                  |
+| `GET`  | `/health`  | Liveness probe; `?deep=true` also checks the quality/language models are loaded (503 on failure).                                   |
+| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                                                        |
 
 ### Request Example 💻
 
@@ -298,7 +298,7 @@ It is served directly by the FastAPI server at `http://localhost:8000` and works
 Features:
 - Drag-and-drop or click-to-upload for `.xml` and `.txt` files.
 - Processing mode selector (`auto` / `alto` / `text`).
-- Results table with `Sym`, `Upper`, and `PPL` columns aligned to `text_util_langID.py`.
+- Results table with `Sym`, `Upper`, and `PPL` columns aligned to `text_util.py`.
 - Category breakdown bar showing counts for all five labels.
 - Raw extracted text toggle.
 

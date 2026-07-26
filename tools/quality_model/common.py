@@ -4,7 +4,7 @@ Config parsing, dataset IO, feature extraction, band mapping and metrics live he
 so ``train_baseline_gbm.py``, ``train.py`` and (later) ``evaluate.py`` share one
 implementation. Everything in this module is dependency-light: no numpy / sklearn /
 torch, so it imports and is unit-tested without the ML stack. The band thresholds
-are read from the production ``text_util_langID`` so training/eval banding can never
+are read from the production ``text_util`` so training/eval banding can never
 drift from the categoriser.
 """
 

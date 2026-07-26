@@ -16,9 +16,9 @@ Everything downstream of those — ``remap_lang`` (the #3 A1 CAP), the structura
 detectors, ``compute_quality_score``, the per-line ``categorize_line`` and the
 document-level ``apply_document_postprocessing`` (#3 A3) — is recomputed with the
 CURRENT production code. There is exactly ONE scoring engine: the real functions
-imported from ``text_util_langID`` / ``langID_classify``. Different constant
+imported from ``text_util`` / ``classify_TEXT``. Different constant
 values are explored by temporarily overriding the module-level tunables with
-``text_util_langID.override_constants`` (see ``recategorize_dataframe``) — never a
+``text_util.override_constants`` (see ``recategorize_dataframe``) — never a
 parallel re-implementation — so the offline numbers match production by
 construction. At the default config the re-score reproduces the stored ``categ``
 (``flip_rate`` ~ 0); see ``tests/test_recategorize_parity.py``.
@@ -107,8 +107,8 @@ from text_util import (  # noqa: E402
 )
 
 # Modules whose copies of the tunable constants must move in lock-step when a
-# trial overrides them: text_util_langID owns them; langID_classify imported its
-# own bindings via `from text_util_langID import *`.
+# trial overrides them: text_util owns them; classify_TEXT imported its
+# own bindings via `from text_util import *`.
 _CONST_MODULES = (_tu, _lc)
 
 OUTPUT_CATEGORY_ORDER = ("Empty", "Non-text", "Trash", "Noisy", "Clear")
@@ -120,7 +120,7 @@ OUTPUT_CATEGORY_ORDER = ("Empty", "Non-text", "Trash", "Noisy", "Clear")
 
 
 def _load_lang_config(config_path: str):
-    """Resolve EXPECTED_LANGS / TRUSTED_FOREIGN_LANGS exactly as langID_classify.main."""
+    """Resolve EXPECTED_LANGS / TRUSTED_FOREIGN_LANGS exactly as classify_TEXT.main."""
     config = configparser.ConfigParser()
     config.read(config_path)
     expected = [

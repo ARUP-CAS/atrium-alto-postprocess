@@ -15,7 +15,7 @@ Two offline tools live here. Both read the per-line `DOC_LINE_CATEG` CSVs as
 There is a single scoring engine: the **real** production functions
 (`compute_quality_score`, `categorize_line`, `apply_document_postprocessing`).
 A trial's constant set is applied by temporarily overriding the module-level
-tunables with `text_util_langID.override_constants(...)` — there is no parallel
+tunables with `text_util.override_constants(...)` — there is no parallel
 NumPy re-implementation to drift out of sync.
 
 **Parity guarantee:** at the current config the re-score reproduces the stored
@@ -40,12 +40,12 @@ The easiest way to execute the full parameter optimization suite (Coverage, RF, 
     <summary>Latest console output from the pipeline run (no optuna due to sqlite3 dep)</summary>
 
 ```terminaloutput
-(venv-lang) lutsai@stargate:/lnet/work/projects/atrium/alto_util$ ./tools/run_optim_pipeline.sh data_samples/DOC_LINE_CATEG config_langID.txt sweep_output_production
+(venv-lang) lutsai@stargate:/lnet/work/projects/atrium/alto_util$ ./tools/run_optim_pipeline.sh data_samples/DOC_LINE_CATEG config.txt sweep_output_production
 ============================================================
  ATRIUM ALTO Post-Process : Unified Optimization Pipeline
 ============================================================
  Input Data   : data_samples/DOC_LINE_CATEG
- Config File  : config_langID.txt
+ Config File  : config.txt
  Output Base  : sweep_output_production
  ML Trials    : 400 (RF/Optuna)
  Sobol N      : 256

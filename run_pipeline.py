@@ -25,7 +25,7 @@ ONE summary JSON. Supports two input formats, selected implicitly via
 
 (#4) The classify stage reads its text input from the LANGID_TEXT_DIR env var,
 which this orchestrator sets to the SELECTED method's output directory. Without
-this, langID_classify always read the LayoutReader dir and silently ignored
+this, classify_TEXT always read the LayoutReader dir and silently ignored
 alto-tools / glm output.
 
 Stage skipping (#6)
@@ -289,13 +289,13 @@ def build_plan(settings: Dict, config_path: str) -> List[Dict]:
         },
         {
             "key": "classify",
-            "name": "4. langID_classify (PAGE_TXT* -> DOC_LINE_CATEG)",
+            "name": "4. classify_TEXT (PAGE_TXT* -> DOC_LINE_CATEG)",
             "cmd": [py, "classify_TEXT.py"],
             "logged": True,
         },
         {
             "key": "aggregate",
-            "name": "5. langID_aggregate_STAT (DOC_LINE_CATEG -> DOC_LINE_STATS)",
+            "name": "5. aggregate_STAT (DOC_LINE_CATEG -> DOC_LINE_STATS)",
             "cmd": [py, "aggregate_STAT.py", "--config", config_path],
             "logged": True,
         },
@@ -355,11 +355,9 @@ def main() -> int:
         action="store_true",
         help="Skip text extraction (also [PIPELINE].SKIP_EXTRACT). Main use: PAGE_TXT* ready; avoids model load.",
     )
+    ap.add_argument("--skip-classify", action="store_true", help="Skip classify_TEXT (also [PIPELINE].SKIP_CLASSIFY).")
     ap.add_argument(
-        "--skip-classify", action="store_true", help="Skip langID_classify (also [PIPELINE].SKIP_CLASSIFY)."
-    )
-    ap.add_argument(
-        "--skip-aggregate", action="store_true", help="Skip langID_aggregate_STAT (also [PIPELINE].SKIP_AGGREGATE)."
+        "--skip-aggregate", action="store_true", help="Skip aggregate_STAT (also [PIPELINE].SKIP_AGGREGATE)."
     )
 
     ap.add_argument(
@@ -378,7 +376,7 @@ def main() -> int:
     plan = build_plan(settings, config_path)
 
     # (#4) Propagate config + the SELECTED method's text dir to every child stage.
-    # extract_* and langID_classify read LANGID_CONFIG; langID_classify reads
+    # extract_* and classify_TEXT read LANGID_CONFIG; classify_TEXT reads
     # LANGID_TEXT_DIR for its input text directory. Subprocesses inherit os.environ.
     os.environ["LANGID_CONFIG"] = config_path
     os.environ["LANGID_TEXT_DIR"] = settings["text_dir"]

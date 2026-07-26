@@ -218,7 +218,7 @@ def gpu_inference_worker(task_queue: mp.Queue, result_dict: dict, model_name: st
                 result_dict[msg[0]] = [99999.0] * len(msg[1])
 
 
-# (#7 Tier 1) Module-level config read (mirrors text_util_langID) so spawned
+# (#7 Tier 1) Module-level config read (mirrors text_util) so spawned
 # CPU workers — which re-import this module — see the same values without any
 # queue plumbing. Honors the LANGID_CONFIG env var set by run_pipeline.py.
 _config = configparser.ConfigParser()

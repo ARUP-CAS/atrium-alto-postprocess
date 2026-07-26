@@ -4,7 +4,7 @@ Turns a ``Clear`` OCR line into synthetic ``Noisy``/``Trash`` variants so the
 regression model sees a smooth score continuum instead of only the three clamped
 bands the production algorithm emits. Each operation is parameterized by an
 intensity ``eps in [0, 1]`` and is **deliberately aligned with a production
-detector** in ``text_util_langID`` — so the detectors double as the unit-test
+detector** in ``text_util`` — so the detectors double as the unit-test
 oracles that prove each generator does what it claims (see
 ``tests/test_quality_model_corrupt.py``).
 
