@@ -13,6 +13,7 @@ lid.176.bin
 .coverage
 .cache/
 *.log
+*.zip
 .env
 .idea/
-.idea/
+./.idea/

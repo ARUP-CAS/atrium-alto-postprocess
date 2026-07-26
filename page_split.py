@@ -22,11 +22,32 @@ Usage:
 """
 
 import argparse
+import configparser
+import hashlib
 import json
 import os
 import xml.etree.ElementTree as ET  # For parsing and creating XML
 
+import document_hook
 from atrium_paradata import ParadataLogger
+
+DOCUMENT_CONFIG_PATH = os.getenv("LANGID_CONFIG", os.path.join("setup", "config.txt"))
+
+
+def _doc_id_from_filename(filename: str, fmt: str) -> str:
+    """Mirror split_alto_xml's/split_json_document's own base_name derivation,
+    without depending on their internals — used only to key the document record.
+    """
+    stem = os.path.splitext(filename)[0]
+    return stem.replace(".alto", "") if fmt == "xml" else stem
+
+
+def _sha256_of(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _assert_no_doctype(input_file_path):
@@ -307,6 +328,10 @@ def main(argv=None):
     parser.add_argument("output_dir", help="Path to the directory where split files will be saved.")
     args = parser.parse_args(argv)
 
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(DOCUMENT_CONFIG_PATH)
+    document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+
     if not os.path.isdir(args.input_dir):
         print(f"Error: Input directory not found at '{args.input_dir}'")
         return
@@ -365,6 +390,21 @@ def main(argv=None):
                 _logger.log_success(fmt, count=page_count)  # pages produced
                 if page_count > 0:
                     _docs_ok += 1
+                    # (atrium-project#13) page_split is the first stage to see the
+                    # original input, so it is the natural first writer of `source`
+                    # — set_source() is itself a no-op if a baseline already has one.
+                    doc_id = _doc_id_from_filename(filename, fmt)
+                    document_hook.write_document_block(
+                        document_json_dir,
+                        doc_id,
+                        _logger,
+                        source={
+                            "sha256": _sha256_of(input_file_path),
+                            "filename": filename,
+                            "media_type": "application/alto+xml" if fmt == "xml" else "application/json",
+                            "page_count": page_count,
+                        },
+                    )
             except Exception as e:
                 _logger.log_skip(str(filename), str(e))
     finally:

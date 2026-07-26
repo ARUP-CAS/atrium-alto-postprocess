@@ -42,6 +42,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
+import document_hook
 from atrium_paradata import ParadataLogger
 from text_util import (
     _TRUSTED_FOREIGN_LANG_BASES,
@@ -640,6 +641,28 @@ def apply_document_postprocessing(df: "pd.DataFrame") -> "pd.DataFrame":
     return df
 
 
+def _lines_records_from_df(df) -> list:
+    """Project this document's finalized CSV rows onto atrium_document's `lines[]`
+    shape: key fields `page`/`line`, plus this repo's owned fields (categ,
+    quality_score, lang, text). Rows missing a value for an owned field simply omit
+    that key rather than writing a placeholder.
+    """
+    records = []
+    for _, row in df.iterrows():
+        rec = {"page": str(row["page_num"]), "line": int(row["line_num"])}
+        for csv_col, schema_field, cast in (
+            ("categ", "categ", str),
+            ("quality_score", "quality_score", float),
+            ("lang", "lang", str),
+            ("text", "text", str),
+        ):
+            value = row.get(csv_col)
+            if pd.notna(value):
+                rec[schema_field] = cast(value)
+        records.append(rec)
+    return records
+
+
 def process_document(task):
     """
     Worker function executed by CPU pool.
@@ -659,7 +682,10 @@ def process_document(task):
         *_rest,
     ) = task
 
-    gpu_timeout = _rest[0] if _rest else 600.0
+    gpu_timeout = _rest[0] if len(_rest) > 0 else 600.0
+    document_json_dir = _rest[1] if len(_rest) > 1 else ""
+    doc_run_id = _rest[2] if len(_rest) > 2 else None
+    doc_paradata_ref = _rest[3] if len(_rest) > 3 else ""
 
     try:
         out_path = Path(output_dir) / f"{file_id}.csv"
@@ -777,6 +803,17 @@ def process_document(task):
             df = df[CSV_HEADER]  # guard: write columns in canonical order
             df.to_csv(out_path, index=False, encoding="utf-8")
 
+            # (atrium-project#13) lines[] is field-owned here: categ/quality_score/
+            # lang/text only — a co-contributor's fields on the same row (nlp-enrich's
+            # lemma/upos/feats/teitok_ref/bbox) survive untouched via merge_block.
+            document_hook.write_document_block(
+                document_json_dir,
+                file_id,
+                doc_run_id,
+                doc_paradata_ref,
+                merge_blocks={"lines": _lines_records_from_df(df)},
+            )
+
         return {"status": "success", "file_id": file_id, "lines": processed_count}
 
     except Exception as e:
@@ -838,24 +875,6 @@ def main():
     gpu_process = mp.Process(target=gpu_inference_worker, args=(task_queue, result_dict, MODEL_NAME, gpu_dead))
     gpu_process.start()
 
-    grouped_tasks = []
-    for file_id, group in df.groupby("file"):
-        grouped_tasks.append(
-            (
-                str(file_id),
-                group,
-                TEXT_DIR,
-                OUTPUT_DIR,
-                BATCH_SIZE,
-                task_queue,
-                result_dict,
-                EXPECTED_LANGS,
-                _TRUSTED_FOREIGN_LANG_BASES,
-                gpu_dead,
-                GPU_WAIT_TIMEOUT,
-            )
-        )
-
     logger = ParadataLogger(
         program="langID-classify",
         config={
@@ -874,6 +893,35 @@ def main():
     logger.log_component("fasttext")
     _ppl_component = "distilgpt2" if "distilgpt2" in MODEL_NAME.lower() else "qwen2.5_0.5b"
     logger.log_component(_ppl_component)
+
+    # (atrium-project#13) resolved once here — cheap primitives, safe to hand to
+    # every worker process; the ParadataLogger object itself is not passed down.
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(config_path)
+    _document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    _doc_run_id = logger._run_id
+    _doc_paradata_ref = document_hook.paradata_ref_for(logger)
+
+    grouped_tasks = []
+    for file_id, group in df.groupby("file"):
+        grouped_tasks.append(
+            (
+                str(file_id),
+                group,
+                TEXT_DIR,
+                OUTPUT_DIR,
+                BATCH_SIZE,
+                task_queue,
+                result_dict,
+                EXPECTED_LANGS,
+                _TRUSTED_FOREIGN_LANG_BASES,
+                gpu_dead,
+                GPU_WAIT_TIMEOUT,
+                _document_json_dir,
+                _doc_run_id,
+                _doc_paradata_ref,
+            )
+        )
 
     # Size the pool from the CPUs actually allocated to this process (SLURM cgroup /
     # --cpus-per-task) rather than the node's total core count, and reserve one core for

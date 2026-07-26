@@ -20,6 +20,7 @@ import torch
 from tqdm import tqdm
 from transformers import LayoutLMv3ForTokenClassification
 
+import document_hook
 from atrium_paradata import ParadataLogger
 
 _SCRIPT_NAME = "extract_layoutreader"
@@ -412,6 +413,11 @@ def main():
     _logger.log_component("layoutlmv3")  # CC BY-NC-SA 4.0 attaches to LR outputs
     _total_inputs = len(tasks)
 
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(CONFIG_PATH)
+    _document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    _doc_paradata_ref = document_hook.paradata_ref_for(_logger)
+
     try:
         if use_cuda:
             # CUDA: Sequential execution
@@ -438,6 +444,19 @@ def main():
                 _logger.log_skip(t[0], "layoutreader processing failed")
             else:
                 _logger.log_success("txt")
+
+        for doc_id, page_ids in document_hook.group_tasks_by_doc(tasks).items():
+            pages, content = document_hook.pages_and_content_from_text(
+                OUTPUT_TEXT_DIR, doc_id, page_ids, engine=f"layoutreader:{LR_MODEL}"
+            )
+            document_hook.write_document_block(
+                _document_json_dir,
+                doc_id,
+                _logger._run_id,
+                _doc_paradata_ref,
+                merge_blocks={"pages": pages} if pages else None,
+                set_blocks={"content": content} if pages else None,
+            )
 
     finally:
         _logger.finalize(_total_inputs)

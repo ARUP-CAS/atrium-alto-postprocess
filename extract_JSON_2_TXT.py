@@ -20,6 +20,7 @@ from typing import Any, Generator, Set
 import pandas as pd
 from tqdm import tqdm
 
+import document_hook
 from atrium_paradata import ParadataLogger
 
 CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
@@ -158,6 +159,11 @@ def main() -> None:
     # external component (same as extract_ALTO_2_TXT.py's alto-tools method).
     _total_inputs = len(tasks)
 
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(CONFIG_PATH)
+    _document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    _doc_paradata_ref = document_hook.paradata_ref_for(_logger)
+
     try:
         print(f"Extracting with {MAX_WORKERS} workers...")
         with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -171,6 +177,19 @@ def main() -> None:
                 _logger.log_success("txt")
             else:
                 _logger.log_skip(t[2], "json extraction failed")
+
+        for doc_id, page_ids in document_hook.group_tasks_by_doc(tasks).items():
+            pages, content = document_hook.pages_and_content_from_text(
+                OUTPUT_TEXT_DIR, doc_id, page_ids, engine="json-keys"
+            )
+            document_hook.write_document_block(
+                _document_json_dir,
+                doc_id,
+                _logger._run_id,
+                _doc_paradata_ref,
+                merge_blocks={"pages": pages} if pages else None,
+                set_blocks={"content": content} if pages else None,
+            )
         print("Done.")
     finally:
         _logger.finalize(input_total=_total_inputs)

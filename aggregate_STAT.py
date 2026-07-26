@@ -37,6 +37,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
+import document_hook
 from atrium_paradata import ParadataLogger
 
 # ---------------------------------------------------------------------------
@@ -196,6 +197,28 @@ def _sum_metrics(df, STANDARD_COLS):
     return final_page_df[ordered_cols]
 
 
+def _page_records_from_stats(page_stats_df) -> list:
+    """Project one document's aggregated page-stats row onto atrium_document's
+    `pages[]` shape: quality_score (this stage's own avg_quality_score) plus
+    quality_band, reduced from the same Clear/Noisy/Trash counts already computed
+    by _sum_metrics — the schema's three-way enum is exactly this repo's own
+    category vocabulary, so the reduction has nothing to invent.
+    """
+    records = []
+    for _, row in page_stats_df.iterrows():
+        rec = {
+            "page": str(row["page_num"]),
+            "quality_band": document_hook.quality_band(
+                int(row.get("Clear", 0)), int(row.get("Noisy", 0)), int(row.get("Trash", 0))
+            ),
+        }
+        qs = row.get("avg_quality_score")
+        if pd.notna(qs):
+            rec["quality_score"] = float(qs)
+        records.append(rec)
+    return records
+
+
 def process_csv_file(file_path, STANDARD_COLS):
     """Reads a single CSV file and returns aggregated page metrics."""
     try:
@@ -260,6 +283,12 @@ def main():
         config_dir=str(Path(__file__).resolve().parent / "setup"),
     )
 
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(args.config)
+    document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    doc_run_id = logger._run_id
+    doc_paradata_ref = document_hook.paradata_ref_for(logger)
+
     print(f"Aggregating {len(csv_files)} documents using Multiprocessing...")
     all_page_stats = []
 
@@ -283,6 +312,17 @@ def main():
                         doc_out = output_dir / f"stats_{original_file.stem}.csv"
                         result.to_csv(doc_out, index=False, encoding="utf-8")
                         logger.log_success("csv")
+                        # (atrium-project#13) pages[] is field-owned here: quality_score/
+                        # quality_band only — page-classification's category/
+                        # category_confidence and nlp-enrich's teitok_surface pass through
+                        # untouched via merge_block.
+                        document_hook.write_document_block(
+                            document_json_dir,
+                            original_file.stem,
+                            doc_run_id,
+                            doc_paradata_ref,
+                            merge_blocks={"pages": _page_records_from_stats(result)},
+                        )
                     else:
                         logger.log_skip(original_file.name, "Empty or invalid CSV structure")
                 except Exception as exc:

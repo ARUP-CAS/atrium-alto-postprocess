@@ -1,3 +1,10 @@
+[DOCUMENT]
+# atrium-project#13 (paradata pair): directory of <doc_id>.document.json records,
+# shared across every stage below. Empty = disabled (default); every stage then
+# behaves exactly as it did before this section existed. Overridable per-run via
+# the DOCUMENT_JSON_DIR env var (see document_hook.resolve_document_json_dir).
+JSON_DIR =
+
 [EXTRACT]
 INPUT_CSV          = ./data_samples/test_alto_stats.csv
 OUTPUT_TXT         = ./data_samples/PAGE_TXT

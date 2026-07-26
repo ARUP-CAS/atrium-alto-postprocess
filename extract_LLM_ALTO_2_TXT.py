@@ -16,6 +16,7 @@ from PIL import Image, ImageFile, ImageOps
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
+import document_hook
 from atrium_paradata import ParadataLogger
 
 _SCRIPT_NAME = "extract_llm"
@@ -218,6 +219,11 @@ def main():
     Path(OUTPUT_TEXT_DIR).mkdir(parents=True, exist_ok=True)
     print(f"Starting extraction for {len(df)} pages on {DEVICE}...")
 
+    _doc_cfg = configparser.ConfigParser()
+    _doc_cfg.read(CONFIG_PATH)
+    _document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    _doc_paradata_ref = document_hook.paradata_ref_for(_logger)
+
     try:
         for _, row in tqdm(df.iterrows(), total=len(df)):
             file_id = row["file"]
@@ -259,6 +265,20 @@ def main():
                     f.write(text)
             else:
                 _logger.log_skip(str(image_path), "failed to extract text with GLM")
+
+        _tasks = list(zip(df["file"], df["page"], strict=False))
+        for doc_id, page_ids in document_hook.group_tasks_by_doc(_tasks).items():
+            pages, content = document_hook.pages_and_content_from_text(
+                OUTPUT_TEXT_DIR, doc_id, page_ids, engine=f"glm:{MODEL_PATH}"
+            )
+            document_hook.write_document_block(
+                _document_json_dir,
+                doc_id,
+                _logger._run_id,
+                _doc_paradata_ref,
+                merge_blocks={"pages": pages} if pages else None,
+                set_blocks={"content": content} if pages else None,
+            )
 
         print("Done.")
     finally:
