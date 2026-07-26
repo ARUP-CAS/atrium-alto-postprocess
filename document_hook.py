@@ -23,6 +23,8 @@ Normalising those paradata program names is a separate, still-open item (see
 
 from __future__ import annotations
 
+import copy
+import csv
 import json
 import logging
 import os
@@ -31,10 +33,92 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from atrium_document import DocumentRecord
+from atrium_paradata import ParadataLogger
 
 logger = logging.getLogger(__name__)
 
 PROGRAM_NAME = "alto-postprocess"
+
+
+def write_document_record(
+    input_doc: Optional[Dict[str, Any]], line_categ_path: str, page_stats_path: str, logger: ParadataLogger
+) -> Dict[str, Any]:
+    """
+    Applies the paradata pair accretion model for alto-postprocess.
+    Updates pages, lines, and content blocks. Passes all other blocks through untouched.
+    """
+    # Rule 3: No baseline -> own part only (standalone-safe)
+    doc = copy.deepcopy(input_doc) if input_doc else {}
+
+    # Initialize required structures if missing
+    doc.setdefault("assembled", {}).setdefault("source_run_ids", {})
+    doc.setdefault("provenance", {})
+    doc.setdefault("pages", [])
+    doc.setdefault("lines", [])
+    doc.setdefault("content", {})
+
+    run_id = logger.run_id
+
+    # --- 1. Lines & Content Updates ---
+    if line_categ_path:
+        lines_data = []
+        aggregated_text = []
+        with open(line_categ_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                categ = row.get("categ", "")
+                text_content = row.get("text", "")
+
+                lines_data.append(
+                    {
+                        "page": row.get("page", ""),
+                        "line": int(row.get("line", 0)),
+                        "categ": categ,
+                        "quality_score": float(row.get("quality_score", 0.0)),
+                        "text": text_content,
+                    }
+                )
+
+                # Exclude heuristic outliers like inverted/garbage text from the content aggregate
+                if categ not in ["Garbage", "Inverted"] and text_content:
+                    aggregated_text.append(text_content)
+
+        doc["lines"] = lines_data
+        doc["content"]["text"] = "\n".join(aggregated_text)
+
+    # --- 2. Page Quality Updates ---
+    if page_stats_path:
+        pages_data = []
+        with open(page_stats_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                pages_data.append(
+                    {
+                        "page": row.get("page", ""),
+                        "quality_score": float(row.get("quality_score", 0.0)),
+                        "quality_band": row.get("quality_band", "Unknown"),
+                    }
+                )
+
+        # Merge page stats without overwriting existing upstream page data (e.g., canvas)
+        existing_pages = {str(p.get("page")): p for p in doc["pages"]}
+        for p_data in pages_data:
+            p_num = str(p_data["page"])
+            if p_num in existing_pages:
+                existing_pages[p_num].update(p_data)
+            else:
+                doc["pages"].append(p_data)
+
+    # --- 3 & 4. Stamp Provenance and Licenses ---
+    doc["assembled"]["source_run_ids"]["pages"] = run_id
+    doc["assembled"]["source_run_ids"]["lines"] = run_id
+    doc["assembled"]["source_run_ids"]["content"] = run_id
+
+    # Utilize the new public accessor
+    doc["provenance"]["license_detail"] = logger.get_license_block()
+    doc["provenance"]["paradata_ref"] = f"paradata/{run_id}_pipeline-run.json"
+
+    return doc
 
 
 def update_document_record(

@@ -366,6 +366,8 @@ def main() -> int:
         help="Path for the merged run summary (default: <paradata-dir>/<run_id>_pipeline-run.json).",
     )
     ap.add_argument("--dry-run", action="store_true", help="Print the resolved plan without running anything.")
+    ap.add_argument("--document-json", type=str, help="Path to the input AtriumDocument JSON")
+    ap.add_argument("--document-json-out", type=str, help="Directory to write the updated AtriumDocument JSON")
     args = ap.parse_args()
 
     config_path = args.config
