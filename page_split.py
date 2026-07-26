@@ -269,19 +269,12 @@ def _write_json_page(page_output_dir, base_name, page_number, doc):
 
 def split_json_document(input_file_path, output_dir):
     """
-    Splits a single JSON OCR/Doc-AI document into single-page JSON files,
-    mirroring split_alto_xml()'s contract exactly (same naming pattern,
-    same directory shape, same int page-count return) — see 31.plan.md.
+    Splits a single JSON OCR/Doc-AI document into single-page JSON files.
 
-    Detection order (never assume, never break today's single-page fixtures):
+    Detection order:
       1. Family A — a nested page-list container (D1-D3, D5).
       2. Family B — a flat list tagged with a per-item page field (D6).
-      3. Family C — neither pattern found: today's behaviour, one output
-         file, page number "1", full document unchanged (D4).
-
-    Returns:
-        int: The number of pages written (always >= 1; a JSON document has
-        no "no pages found" case the way an ALTO file can have none).
+      3. Family C — neither pattern found: fallback to today's behaviour.
     """
     with open(input_file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -290,33 +283,81 @@ def split_json_document(input_file_path, output_dir):
     page_output_dir = os.path.join(output_dir, base_name)
     os.makedirs(page_output_dir, exist_ok=True)
 
+    # 1. Family A (Azure, docTR, Google Doc AI)
     family_a = _find_family_a(data)
     if family_a is not None:
         parent, key, page_list = family_a
-        print(f"  -> Found {len(page_list)} page(s) (nested list). Splitting...")
         for i, page_obj in enumerate(page_list, 1):
             page_number = _get_field_ci(page_obj, PAGE_NUMBER_FIELD_KEYS)
             page_number = str(page_number) if page_number is not None else str(i)
             doc = _replace_container_value(data, parent, key, page_obj)
             _write_json_page(page_output_dir, base_name, page_number, doc)
-        print(f"  -> Successfully split into {len(page_list)} file(s) in '{page_output_dir}'.")
         return len(page_list)
 
+    # 2. Family B (AWS Textract)
     family_b = _find_family_b(data)
     if family_b is not None:
         parent, key, _lst, _tag_field, groups = family_b
-        print(f"  -> Found {len(groups)} page(s) (tagged flat list). Splitting...")
         for page_number, items in groups.items():
             doc = _replace_container_value(data, parent, key, items)
             _write_json_page(page_output_dir, base_name, str(page_number), doc)
-        print(f"  -> Successfully split into {len(groups)} file(s) in '{page_output_dir}'.")
         return len(groups)
 
-    # Family C fallback (D4): neither pattern found, route through the same
-    # writer as a single page — preserves 100% of current behaviour.
-    print("  -> No multi-page pattern detected. Writing as single page.")
+    # 3. Family C fallback (pero-ocr, OCR.space)
     _write_json_page(page_output_dir, base_name, "1", data)
     return 1
+
+
+# def split_json_document(input_file_path, output_dir):
+#     """
+#     Splits a single JSON OCR/Doc-AI document into single-page JSON files,
+#     mirroring split_alto_xml()'s contract exactly (same naming pattern,
+#     same directory shape, same int page-count return) — see 31.plan.md.
+#
+#     Detection order (never assume, never break today's single-page fixtures):
+#       1. Family A — a nested page-list container (D1-D3, D5).
+#       2. Family B — a flat list tagged with a per-item page field (D6).
+#       3. Family C — neither pattern found: today's behaviour, one output
+#          file, page number "1", full document unchanged (D4).
+#
+#     Returns:
+#         int: The number of pages written (always >= 1; a JSON document has
+#         no "no pages found" case the way an ALTO file can have none).
+#     """
+#     with open(input_file_path, "r", encoding="utf-8") as f:
+#         data = json.load(f)
+#
+#     base_name = os.path.splitext(os.path.basename(input_file_path))[0]
+#     page_output_dir = os.path.join(output_dir, base_name)
+#     os.makedirs(page_output_dir, exist_ok=True)
+#
+#     family_a = _find_family_a(data)
+#     if family_a is not None:
+#         parent, key, page_list = family_a
+#         print(f"  -> Found {len(page_list)} page(s) (nested list). Splitting...")
+#         for i, page_obj in enumerate(page_list, 1):
+#             page_number = _get_field_ci(page_obj, PAGE_NUMBER_FIELD_KEYS)
+#             page_number = str(page_number) if page_number is not None else str(i)
+#             doc = _replace_container_value(data, parent, key, page_obj)
+#             _write_json_page(page_output_dir, base_name, page_number, doc)
+#         print(f"  -> Successfully split into {len(page_list)} file(s) in '{page_output_dir}'.")
+#         return len(page_list)
+#
+#     family_b = _find_family_b(data)
+#     if family_b is not None:
+#         parent, key, _lst, _tag_field, groups = family_b
+#         print(f"  -> Found {len(groups)} page(s) (tagged flat list). Splitting...")
+#         for page_number, items in groups.items():
+#             doc = _replace_container_value(data, parent, key, items)
+#             _write_json_page(page_output_dir, base_name, str(page_number), doc)
+#         print(f"  -> Successfully split into {len(groups)} file(s) in '{page_output_dir}'.")
+#         return len(groups)
+#
+#     # Family C fallback (D4): neither pattern found, route through the same
+#     # writer as a single page — preserves 100% of current behaviour.
+#     print("  -> No multi-page pattern detected. Writing as single page.")
+#     _write_json_page(page_output_dir, base_name, "1", data)
+#     return 1
 
 
 def main(argv=None):

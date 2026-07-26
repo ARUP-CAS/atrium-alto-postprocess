@@ -38,6 +38,29 @@ CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
 HYPHEN_VARIATIONS = ("-", "\xad", "\u2013", "\u2014")
 
 
+def _dehyphenate(text: str) -> str:
+    """Join words split by a trailing hyphen at a line break into their full form.
+
+    A line whose last non-space character is one of HYPHEN_VARIATIONS is merged
+    with the following line: the hyphen is dropped and the two fragments are
+    concatenated with no space. Lines without a trailing hyphen keep their break.
+    """
+    raw_lines = text.splitlines()
+    out_lines: list[str] = []
+    carry = ""
+    for line in raw_lines:
+        stripped = line.rstrip()
+        if stripped and stripped[-1] in HYPHEN_VARIATIONS:
+            # Drop the hyphen and hold the fragment to fuse with the next line.
+            carry += stripped[:-1]
+            continue
+        out_lines.append(carry + line)
+        carry = ""
+    if carry:
+        out_lines.append(carry)
+    return "\n".join(out_lines).strip() + "\n"
+
+
 def _load_extract_config(config_path: str = CONFIG_PATH) -> dict:
     """Read extraction parameters from the [EXTRACT] section of the config.
 
@@ -63,29 +86,6 @@ _CFG = _load_extract_config()
 INPUT_CSV = _CFG["input_csv"]
 OUTPUT_TEXT_DIR = _CFG["output_text_dir"]
 MAX_WORKERS = _CFG["max_workers"]
-
-
-def _dehyphenate(text: str) -> str:
-    """Join words split by a trailing hyphen at a line break into their full form.
-
-    A line whose last non-space character is one of HYPHEN_VARIATIONS is merged
-    with the following line: the hyphen is dropped and the two fragments are
-    concatenated with no space. Lines without a trailing hyphen keep their break.
-    """
-    raw_lines = text.splitlines()
-    out_lines: list[str] = []
-    carry = ""
-    for line in raw_lines:
-        stripped = line.rstrip()
-        if stripped and stripped[-1] in HYPHEN_VARIATIONS:
-            # Drop the hyphen and hold the fragment to fuse with the next line.
-            carry += stripped[:-1]
-            continue
-        out_lines.append(carry + line)
-        carry = ""
-    if carry:
-        out_lines.append(carry)
-    return "\n".join(out_lines).strip() + "\n"
 
 
 def extract_single_page(args: tuple) -> bool:

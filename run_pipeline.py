@@ -158,11 +158,16 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
 
     input_format = EXTRACT_METHODS[method][3]
 
-    input_dir = (args.input_dir or _cfg_get(cfg, "PIPELINE", "INPUT_DIR", _DEFAULTS["input_dir"])).strip()
-    page_alto = (args.page_alto_dir or _cfg_get(cfg, "PIPELINE", "PAGE_ALTO_DIR", _DEFAULTS["page_alto_dir"])).strip()
+    # Handle the JSON paradata pair document directory
     page_json = (
         getattr(args, "page_json_dir", None) or _cfg_get(cfg, "PIPELINE", "PAGE_JSON_DIR", _DEFAULTS["page_json_dir"])
     ).strip()
+
+    input_dir = (args.input_dir or _cfg_get(cfg, "PIPELINE", "INPUT_DIR", _DEFAULTS["input_dir"])).strip()
+    page_alto = (args.page_alto_dir or _cfg_get(cfg, "PIPELINE", "PAGE_ALTO_DIR", _DEFAULTS["page_alto_dir"])).strip()
+    # page_json = (
+    #     getattr(args, "page_json_dir", None) or _cfg_get(cfg, "PIPELINE", "PAGE_JSON_DIR", _DEFAULTS["page_json_dir"])
+    # ).strip()
     paradata_dir = (args.paradata_dir or _cfg_get(cfg, "PIPELINE", "PARADATA_DIR", _DEFAULTS["paradata_dir"])).strip()
 
     # Handle the JSON paradata pair document directory
@@ -264,8 +269,6 @@ def build_plan(settings: Dict, config_path: str) -> List[Dict]:
             "logged": False,
         }
     else:
-        # No split concept for this format (e.g. json-keys: one file = one
-        # page already) — the stage is a permanent no-op, forced skip below.
         split_stage = {
             "key": "split",
             "name": f"1. page_split (not applicable for format '{fmt}')",

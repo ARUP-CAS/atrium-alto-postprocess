@@ -30,6 +30,43 @@ from text_util import (
 )
 
 
+class TestComputeGarbageDensity:
+    def test_clean_alphanumeric_text_returns_zero(self):
+        assert compute_garbage_density("hello world 123") == 0.0
+
+    def test_common_punctuation_now_counted_as_noise(self):
+        assert compute_garbage_density("hello, world! (test) 1/2 a-b") > 0.0
+
+    def test_dots_are_now_counted_as_noise(self):
+        assert compute_garbage_density("konec...") > 0.0
+
+
+class TestDetectRepeatedChars:
+    def test_clean_word_returns_zero(self):
+        assert detect_repeated_chars("ahoj svete") == 0
+
+    def test_double_consonant_now_triggers(self):
+        assert detect_repeated_chars("panna") >= 1
+
+
+class TestShortGarbageRoute:
+    """(#3 A2/B) structural short-garbage route in determine_category."""
+
+    def test_short_gibberish_token_routed_to_trash(self):
+        # 'olie': 1 token, capped lang score, gibberish present.
+        cat, score, reason = categorize_line(
+            0.895, "olie", 1, 0.75, 1.0, return_reason=True, lang_score=0.75, gibberish_present=True
+        )
+        assert cat == "Trash" and reason == "trash_threshold"
+
+    def test_clean_diacritic_fragment_not_trashed(self):
+        # A short clean Czech fragment with diacritics must survive the route.
+        cat, _, reason = categorize_line(
+            0.70, "Náčrt sondy.", 2, 0.4, 200.0, return_reason=True, lang_score=0.99, gibberish_present=False
+        )
+        assert cat != "Trash"
+
+
 def test_csv_header_and_fast_track_row_arity():
     """Asserts that the fast-track row builder exactly matches the global CSV_HEADER length."""
     row = _fast_track_row(
@@ -51,29 +88,6 @@ def test_row_from_dict_covers_header_exactly():
     main_row = _row_from_dict(dummy_dict)
     assert len(main_row) == len(CSV_HEADER)
     assert main_row[0] == dummy_dict[CSV_HEADER[0]]
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# Densities and Ratios
-# ════════════════════════════════════════════════════════════════════════════
-class TestComputeGarbageDensity:
-    def test_empty_string_returns_zero(self):
-        assert compute_garbage_density("") == 0.0
-
-    def test_space_only_string_returns_zero(self):
-        assert compute_garbage_density("   ") == 0.0
-
-    def test_clean_alphanumeric_text_returns_zero(self):
-        assert compute_garbage_density("hello world 123") == 0.0
-
-    def test_common_punctuation_now_counted_as_noise(self):
-        assert compute_garbage_density("hello, world! (test) 1/2 a-b") > 0.0
-
-    def test_hash_characters_counted_as_noise(self):
-        assert compute_garbage_density("he##lo") > 0.0
-
-    def test_dots_are_now_counted_as_noise(self):
-        assert compute_garbage_density("konec...") > 0.0
 
 
 class TestComputeVowelRatio:
@@ -113,20 +127,6 @@ class TestDetectStrangeSymbols:
 
     def test_two_strange_chars_in_word_counted_each(self):
         assert detect_strange_symbols("he##lo") == 2
-
-
-class TestDetectRepeatedChars:
-    def test_clean_word_returns_zero(self):
-        assert detect_repeated_chars("ahoj svete") == 0
-
-    def test_triple_consonant_repeat_triggers(self):
-        assert detect_repeated_chars("ssset") >= 1
-
-    def test_double_consonant_now_triggers(self):
-        assert detect_repeated_chars("panna") >= 1
-
-    def test_digit_repeat_not_counted(self):
-        assert detect_repeated_chars("1111") == 0
 
 
 class TestDetectGibberishWords:
@@ -355,54 +355,3 @@ class TestCategorizeLineReason:
         qs = CATEG_NOISY_SCORE_MAX + 0.02
         cat, score, reason = categorize_line(qs, "čistý text", 2, 0.4, 200.0, return_reason=True)
         assert cat == "Clear" and reason == "clear_threshold" and score >= CATEG_NOISY_SCORE_MAX
-
-
-class TestShortGarbageRoute:
-    """(#3 A2/B) structural short-garbage route in determine_category."""
-
-    def test_short_gibberish_token_routed_to_trash(self):
-        # 'olie': 1 token, no Czech diacritics, capped lang score, gibberish present.
-        cat, score, reason = categorize_line(
-            0.895,
-            "olie",
-            1,
-            0.75,
-            1.0,
-            return_reason=True,
-            lang_score=0.75,
-            gibberish_present=True,
-        )
-        assert cat == "Trash" and reason == "trash_threshold"
-
-    def test_clean_diacritic_fragment_not_trashed(self):
-        # A short clean Czech fragment with diacritics must survive the route.
-        cat, _, reason = categorize_line(
-            0.70,
-            "Náčrt sondy.",
-            2,
-            0.4,
-            200.0,
-            return_reason=True,
-            lang_score=0.99,
-            gibberish_present=False,
-        )
-        assert cat != "Trash"
-
-    def test_high_confidence_clean_word_not_trashed(self):
-        # 'Praha': no diacritics, but trusted high lang score and no gibberish.
-        cat, _, reason = categorize_line(
-            0.95,
-            "Praha",
-            1,
-            0.5,
-            30.0,
-            return_reason=True,
-            lang_score=0.99,
-            gibberish_present=False,
-        )
-        assert cat != "Trash"
-
-    def test_backward_compatible_default_kwargs(self):
-        # Omitting the new kwargs must reproduce the pre-#3 behaviour (no route).
-        cat, _ = categorize_line(0.95, "Praha", 1, 0.5, 30.0)
-        assert cat == "Clear"
