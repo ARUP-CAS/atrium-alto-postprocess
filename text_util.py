@@ -734,7 +734,7 @@ def pre_filter_line(line: str) -> tuple[str, str]:
     clean_text = re.sub(
         r"(?<=[a-záčďéěíňóřšťůúýžA-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ])1(?=[a-záčďéěíňóřšťůúýžA-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ])", "l", clean_text
     )
-    clean_text = re.sub(r"\b2(?=[a-záčďéěíňóřšťůúýž])", "z", clean_text)
+    clean_text = re.sub(r"(?<![\d.,])\b2(?=[a-záčďéěíňóřšťůúýž])", "z", clean_text)
     clean_text = _RE_SPACED_CAPS.sub(_collapse_spaced_caps, clean_text)
 
     if any(marker.lower() in clean_text.lower() for marker in METADATA_MARKERS):
@@ -1164,10 +1164,17 @@ def determine_category(
     # 4. Overwhelming non-alphanumeric density
     if "rule_garbage_density" not in DISABLED_RULES:
         if garbage_density >= CATEG_GARBAGE_DENSITY_HIGH:
-            if "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
-                text_source, valid_word_ratio, word_count
+            is_siglum = word_count <= 2 and _RE_SIGLUM.match(text_source.strip())
+            if is_siglum or (
+                "rule_trailing_fill_rescue" not in DISABLED_RULES
+                and _trailing_fill_rescued(text_source, valid_word_ratio, word_count)
             ):
                 pass  # Bypass this override and allow it to route naturally
+            elif "rule_reference_floor" not in DISABLED_RULES and is_clean_reference(text_source):
+                # (#3 2026-07-22) Damage-free reference line ("Max. d. - -",
+                # "Neg. i.č,:") floors at Noisy rather than Trash on density.
+                _fire("rule_reference_floor")
+                return "Noisy", "noisy_threshold"
             else:
                 _fire("rule_garbage_density")
                 return "Trash", "trash_threshold"
@@ -1176,6 +1183,89 @@ def determine_category(
     # inverted / all-caps / garbage-density overrides above, so genuine
     # garbage is untouched — it only ever lifts a line from Trash to Noisy.
     forgiven = "rule_forgiven_headline" not in DISABLED_RULES and is_forgiven_headline(text_source, garbage_density)
+
+    # (#3 2026-07-22 calibration) Character-level damage caps a 3+ word line
+    # at Noisy. Consulted only where Clear would otherwise be returned, so it
+    # never pushes a line toward Trash.
+    damaged = "rule_damaged_token" not in DISABLED_RULES and word_count >= 3 and count_damaged_tokens(text_source) > 0
+
+    # 5a. Short lines (1-2 words): FastText confidence on 1-2 tokens is
+    # statistically meaningless, so lang_score must never decide here (it
+    # made "Poue" Clear and "Mzm." Trash purely on FastText's whim). Route
+    # on structural evidence only:
+    #   - a standalone domain siglum (Mzm., M.z.m., Tb.) is Clear;
+    #   - structural damage (weirdness, gibberish, fused vowels, garbage)
+    #     caps at Noisy;
+    #   - no recognizable word at all and no Czech evidence -> Trash;
+    #   - otherwise Clear only with positive evidence (Czech diacritics /
+    #     upright function word, or all evaluable tokens structurally valid).
+    if "rule_short_line" not in DISABLED_RULES and word_count <= 2:
+        _fire("rule_short_line")
+        stripped = text_source.strip()
+        if _RE_SIGLUM.match(stripped) and sum(c.isalpha() for c in stripped) >= 2:
+            return "Clear", "clear_threshold"
+        # (#3 2026-07-22) A solitary letter carries no content -> Trash
+        # (DS: "M" x8 = Trash; letter+digit codes "P1"/"P6" = Clear and are
+        # untouched — their core is 2 chars). Forgiven floor still honored.
+        if word_count == 1:
+            solitary = stripped.strip(_STRIP_CHARS)
+            if len(solitary) == 1 and solitary.isalpha() and "." not in stripped:
+                # (#3 2026-07-25, v8) The forgiven-headline floor used to lift
+                # these back to Noisy, and it caught every one of them in
+                # practice: all 12 solitary-letter lines in the DS annotation
+                # were forgiven, and DS rated all 12 Trash. A single letter is
+                # not a headline, so the floor does not apply here.
+                return "Trash", "trash_threshold"
+        # (#3 2026-07-25, v8) An alternating-bigram run ("IDIDIDIDIDIDUOID",
+        # "mioioioinininioiomio") is scanner noise, not damaged text — capping
+        # it at Noisy via `damage` below was too lenient and it is what let
+        # such a line climb out of Trash. No Czech word repeats a
+        # bigram three times, and a full-set scan found only 3 297 such lines
+        # (1 731 Noisy, 360 Clear), all of them garbage on inspection.
+        if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
+            return "Trash", "trash_threshold"
+        # weird >= 0.40, not 0.30: the per-word scorer flags any word whose
+        # single most frequent letter reaches 30% as "repeated" (0.35), which
+        # hits innocent Czech words like "nenalezeno" (3x n, 3x e). Real stray
+        # fragments score 0.425+ (isolated-letter penalty), so 0.40 separates
+        # them. Trailing form-fill dots ("Okr.:.... Hodonín") are not damage.
+        # The fused-word and gibberish detectors false-positive on clean
+        # Czech (syllabic-r clusters: "vrstva"; vowel runs: "obou"), so on
+        # their own they are not damage when every evaluable token is
+        # structurally valid.
+        structurally_clean = valid_word_ratio >= 1.0
+        damage = (
+            weird_ratio >= 0.40
+            # (#3 2026-07-22) "IDIDIDIDIDIDUOID" passed as a structurally
+            # valid word; an alternating-bigram run is damage regardless.
+            or any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words)
+            or ((gibberish_present or detect_fused_words(text_source) > 0) and not structurally_clean)
+            or (
+                garbage_density >= CATEG_GARBAGE_DENSITY_HIGH
+                and not _trailing_fill_rescued(text_source, valid_word_ratio, word_count)
+            )
+        )
+        if damage:
+            return "Noisy", "noisy_threshold"
+        # Abbreviation / numbered-reference floor (#3 2026-07-02): `forgiven`
+        # must be honored here too, or this Trash branch would undercut the
+        # is_forgiven_headline floor for 1-2 word lines. It is a floor, not a
+        # cap ("lifts Trash→Noisy without demoting Clear" — 3.plan.md): a
+        # correctly read siglum/unit/reference still rates Clear below.
+        if valid_word_ratio <= 0.0 and not is_upright_czech:
+            if forgiven:
+                return "Noisy", "noisy_threshold"
+            return "Trash", "trash_threshold"
+        if is_upright_czech or valid_word_ratio >= 1.0:
+            # (#3 2026-07-22) Character-level OCR damage (symbol/digit/apostrophe
+            # inside a token, vowel-less run) blocks Clear and caps at Noisy —
+            # otherwise garbage like "Ch. i6dn.283/54" reaches Clear via the
+            # inflated valid ratio. Consulted only on the Clear outcome, so it
+            # never lifts the Trash branch above.
+            if count_damaged_tokens(text_source) > 0:
+                return "Noisy", "noisy_threshold"
+            return "Clear", "clear_threshold"
+        return "Noisy", "noisy_threshold"
 
     # 5. Structural short-garbage route
     if "rule_short_garbage" not in DISABLED_RULES and not forgiven:
@@ -1194,6 +1284,9 @@ def determine_category(
             if valid_word_ratio < MOSTLY_READABLE_VALID_MIN:
                 _fire("rule_lowppl_clear")
                 return "Noisy", "noisy_threshold"
+            if damaged:
+                _fire("rule_damaged_token")
+                return "Noisy", "noisy_threshold"
             _fire("rule_lowppl_clear")
             return "Clear", "lowppl_clear"
 
@@ -1211,6 +1304,12 @@ def determine_category(
             return "Noisy", "noisy_threshold"
         if forgiven:
             _fire("rule_forgiven_headline")
+            return "Noisy", "noisy_threshold"
+        # (#3 2026-07-22) Reference floor: a damage-free catalogue/measurement
+        # line ("kont. K 101-spraš", "ad č.j. MTX …") floors at Noisy instead
+        # of Trash. Only ever lifts Trash → Noisy.
+        if "rule_reference_floor" not in DISABLED_RULES and is_clean_reference(text_source):
+            _fire("rule_reference_floor")
             return "Noisy", "noisy_threshold"
         return "Trash", "trash_threshold"
 
@@ -1242,6 +1341,36 @@ def determine_category(
             if quality_score < thresh_trash:
                 return check_rescues()
 
+    # (#3 2026-07-25, v8) Same alternating-bigram run as in the short-line
+    # gate, for lines of 3+ words that never reach it ("Jiné: Iiiiiiiiiiii").
+    if "rule_bigram_run" not in DISABLED_RULES:
+        if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
+            _fire("rule_bigram_run")
+            return check_rescues()
+
+    # (#3 2026-07-25 calibration, v8) Token-fragment route. A line whose mean
+    # token length is under two characters has been shredded into fragments
+    # ("k owpoti n", "O l", "/ ■ y i m") and carries no readable content.
+    # rule_ledger_fragmentation covers the same idea but only for 4+ word lines
+    # and with a laxer threshold, so short shredded lines slipped past it.
+    # Clean references are skipped outright rather than left to the floor in
+    # check_rescues(): a short catalogue line is legitimately made of tiny
+    # tokens ("N. č. 16" averages 1.3 characters) and must keep its Clear —
+    # the floor would only have caught it after demoting it. Measured on the
+    # DS annotation, the reference guard lifted precision 0.59 -> 0.85.
+    if "rule_fragment_tokens" not in DISABLED_RULES and not is_clean_reference(text_source):
+        # A dot-terminated abbreviation is a whole word, not a fragment, so it
+        # is measured with its dot ("N. č. 16" averages 2.0, not 1.3). This
+        # left the Noisy→Trash hits untouched and halved the wrong Clear
+        # demotions on the DS annotation (14 → 8).
+        lengths = [
+            len(core) + 1 if w.endswith(".") else len(core) for w in words for core in [w.strip(_STRIP_CHARS)] if core
+        ]
+        if lengths and (sum(lengths) / len(lengths)) < 2.0:
+            _fire("rule_fragment_tokens")
+            if quality_score < thresh_trash:
+                return check_rescues()
+
     # 7. Quality-score band routing
     if quality_score < CATEG_TRASH_SCORE_MAX:
         return check_rescues()
@@ -1253,6 +1382,9 @@ def determine_category(
             _fire("rule_mostly_readable_noisy")
             return "Noisy", "noisy_threshold"
 
+    if damaged:
+        _fire("rule_damaged_token")
+        return "Noisy", "noisy_threshold"
     return "Clear", "clear_threshold"
 
 
@@ -1401,19 +1533,174 @@ def compute_digit_ratio(text: str) -> float:
     return sum(c.isdigit() for c in text) / len(text)
 
 
+# Tokens that carry reference/measurement data rather than prose: dates,
+# volume/year/page cites, initials, sigla, abbreviations. They are
+# unjudgeable as "words", so they are excluded from both numerator and
+# denominator (neutral).
+_RE_INITIALS = re.compile(r"^([A-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ]\.?){1,3}$")
+_RE_DOTTED_ABBREV = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ſ]{1,4}(\.[A-Za-zÀ-ÖØ-öø-ſ]{1,4})*$")
+# dotless title abbrev.; dimension separator; measurement units (bare unit
+# tokens ride along with the measurement numbers they follow)
+_NEUTRAL_LEXICON = frozenset({"dr", "x", "mm", "cm", "dm", "km", "g", "dkg", "kg", "ha", "hl", "ks", "m", "l"})
+
+
+_RE_ROMAN_TOKEN = re.compile(r"^[IVXLCDM]{1,7}$")
+
+# Figure/table/object references with the number fused to the abbreviation
+# ("Obr.3", "OBR.24", "Tab,237", "no.1") — reference data, not prose.
+_RE_ABBREV_NUM = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ſ]{1,4}[.,]\d+[a-z]?$")
+
+
+def _is_neutral_token(core: str, raw: str = "", next_core: str = "") -> bool:
+    if not any(c.isalnum() for c in core):
+        return True  # pure punctuation (stray dashes, bullets)
+    if sum(c.isdigit() for c in core) / len(core) >= 0.50:
+        return True  # dates, cites, measurements (24.2.2020, /1933/32, 2.4m)
+    if _RE_INITIALS.match(core):
+        return True  # initials and sigla (Č, V, I.L.)
+    if core.lower() in _NEUTRAL_LEXICON:
+        return True
+    if _RE_ABBREV_NUM.match(core):
+        return True  # figure/table refs (Obr.3, Tab.208, no.1)
+    # Dot-terminated abbreviation: s.o., Dr., Zs., hl., Ždán. — letters/dots
+    # only, short alpha runs, and the raw token must actually end with '.'
+    # A SINGLE letter with a dot is an abbreviation only in reference context
+    # ("t. III", "š. 12,5") — before an ordinary word ("e. Hodomi") it is a
+    # stray fragment and must stay evaluable.
+    if raw.rstrip(",;:-–—/)").endswith(".") and _RE_DOTTED_ABBREV.match(core):
+        alpha = sum(c.isalpha() for c in core)
+        if 2 <= alpha <= 5:
+            return True
+        if alpha == 1 and next_core and (any(c.isdigit() for c in next_core) or _RE_ROMAN_TOKEN.match(next_core)):
+            return True
+        # form-field label ("Obj. č.:") — the colon marks a record heading,
+        # the single letter is an abbreviation there, not a stray fragment
+        if alpha == 1 and raw.rstrip().endswith(":"):
+            return True
+    return False
+
+
+# Whole-line siglum: dotted domain abbreviation standing alone (Mzm.,
+# M.z.m., Tb., č.neg.) — the standard shorthand of museum/archive records.
+_RE_SIGLUM = re.compile(r"^([A-Za-zÁČĎÉĚÍŇÓŘŠŤŮÚÝŽáčďéěíňóřšťůúýž]{1,4}\.){1,4}$")
+
+# (#3 2026-07-22 calibration) Damaged-token detector: character-level OCR
+# damage inside an otherwise plausible token — a symbol or digit lodged in a
+# word ("d^ku", "nyn5j5í"), a typographic apostrophe replacing a lost letter
+# ("malebn’m"), or a vowel-less lowercase run ("nnd"). Dot-terminated
+# abbreviations (Mzm.), uppercase acronyms (MVJ) and % | & (percentages,
+# table rules, company names) are deliberately exempt; syllabic r/l keeps
+# "vlk"/"smrt" out of the vowel-less branch.
+_DMG_SYMBOLS = frozenset("^»«■□¤§~<>#*@$")
+_RE_DMG_APOSTROPHE = re.compile(r"[^\W\d_][’‘][^\W\d_]")
+_RE_DMG_DIGIT_IN_WORD = re.compile(r"[a-záčďéěíňóřšťúůýž]{2}\d|\d[a-záčďéěíňóřšťúůýž]{2}")
+_RE_DMG_VOWELLESS = re.compile(r"[a-záčďéěíňóřšťúůýž]{3,}$")
+_CZ_VOWELS = frozenset("aeiouyáéěíóúůý")
+
+# (#3 2026-07-25 calibration, v8) Two additions to the damaged-token detector,
+# both derived from DS annotations and validated against a full-set volume scan.
+#
+# 1. Stray non-corpus symbols. A full scan of the v7 set showed which exotic
+#    characters are OCR damage and which are legitimate, and the split is not
+#    the obvious one: "ä" (27 561 Clear lines) is genuine German toponymy
+#    ('V trati "Sandäcker"'), "ô ľ ŕ ĺ Ľ Ŕ" are genuine Slovak, and "¬" plus
+#    U+00AD are end-of-line hyphenation — all deliberately excluded. What is
+#    left is unambiguous garbage.
+#    "•" was shipped in the first v8 cut and withdrawn after DS annotated the
+#    change sample: 69 of its 70 demotions there were wrong. It is a genuine
+#    form glyph throughout the collection ("mater. •", "AKCE Soubor: •",
+#    "Uloženina č.: •0208"), not a stray mark, and treating it as damage did
+#    second-order harm — it pushed count_damaged_tokens above zero, which
+#    voided is_clean_reference() on real measurement lines and dropped whole
+#    pages below PAGE_CLEAN_CLEAR_MIN, switching off the pp_page_context
+#    recovery that had been holding unrelated lines at Noisy.
+# 2. Case mix inside a token ("dalSÍ", "zjiStěna", "PřUohy"). Restricted to
+#    cores of 4+ characters and non-dot-terminated tokens, which keeps the
+#    legitimate title/code abbreviations out ("PhDr.", "ZvK", "StAŮ").
+#    Measured on 1 670 DS-annotated lines: 92 % of hits are not Clear.
+#    "±" was tried and dropped: it is a legitimate measurement tolerance
+#    ("166.76 cm ± 4.32"), and the 892 lines carrying it are not worth it.
+_DMG_SYMBOLS_V8 = frozenset("©®™।")
+_RE_DMG_CASE_MIX = re.compile(r"[a-záčďéěíňóřšťúůýž][A-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ]")
+
+
+def count_damaged_tokens(text: str) -> int:
+    """Count tokens carrying character-level OCR damage."""
+    count = 0
+    for token in text.split():
+        core = token.strip(_STRIP_CHARS)
+        if not core:
+            continue
+        if (
+            any(c in _DMG_SYMBOLS for c in core)
+            or any(c in _DMG_SYMBOLS_V8 for c in core)
+            or _RE_DMG_APOSTROPHE.search(core)
+            or _RE_DMG_DIGIT_IN_WORD.search(core)
+            or (len(core) >= 4 and not token.endswith(".") and _RE_DMG_CASE_MIX.search(core))
+            or (
+                not token.rstrip(",;:").endswith(".")
+                and _RE_DMG_VOWELLESS.match(core)
+                and not (_CZ_VOWELS & set(core))
+                and "r" not in core
+                and "l" not in core
+            )
+        ):
+            count += 1
+    return count
+
+
+# Alternating-bigram run ("IDIDID…"): the per-char repeat detector flags it,
+# but so does it flag innocent Czech ("nenalezeno", 30% single-letter rule),
+# so the short-line gate needs this narrower letters-only pattern instead.
+_RE_BIGRAM_RUN = re.compile(r"([^\W\d_]{2})\1\1")
+
+# (#3 2026-07-22 calibration) Reference floor: a correctly-read
+# catalogue/measurement/inventory record must not fall to Trash purely because
+# one fused reference token ("101-spraš", "603b/57") drops valid_word_ratio to
+# 0. Recognised by a reference marker (inv./č.j./kont./Obr./Neg./nál.č./unit)
+# and, crucially, ZERO character-level damage — so genuine garbage carrying a
+# marker word is not lifted. Lifts Trash → Noisy only; never demotes.
+_RE_REF_MARKER = re.compile(
+    r"\binv\b|\binv\.|\bkont\b|\bkont\.|\bn[áa]l\b|\bn[áa]l\.|\bobr\b|\bobr\.|"
+    r"\btab\b|\btab\.|\bneg\b|\bneg\.|\bmax\.|\bmin\.|"
+    r"č\.\s?j|č\.\s?inv|č\.\s?pl|inv\.\s?č|s\.\s?j\b",
+    re.IGNORECASE,
+)
+# Multi-character units only: single-letter m/g/l spuriously match garbage
+# fragments ("3L", "11 g e i") that merely happen to place a letter after a
+# digit, so they are deliberately excluded.
+_RE_MEASUREMENT = re.compile(
+    r"\d\s?[.,]?\s?(?:mm|cm|km|kg|ml|ha)\b",
+    re.IGNORECASE,
+)
+
+
+def is_clean_reference(text: str) -> bool:
+    """True for a catalogue/measurement/inventory line with no OCR damage."""
+    if count_damaged_tokens(text) > 0:
+        return False
+    return bool(_RE_REF_MARKER.search(text) or _RE_MEASUREMENT.search(text))
+
+
 def compute_valid_ratio(text: str, word_set: set | None = None) -> float:
     words = text.split()
     if not words:
         return 0.0
     valid = 0
-    for word in words:
+    evaluable = 0
+    for wi, word in enumerate(words):
         core = word.strip(_STRIP_CHARS)
         if not core:
             continue
         if word_set is not None:
+            evaluable += 1
             if core.lower() in word_set:
                 valid += 1
         else:
+            next_core = words[wi + 1].strip(_STRIP_CHARS) if wi + 1 < len(words) else ""
+            if _is_neutral_token(core, word, next_core):
+                continue
+            evaluable += 1
             if core.lower() in SHORT_VALID_WORDS or core in SINGLE_CHAR_ALLOWED:
                 valid += 1
                 continue
@@ -1423,7 +1710,9 @@ def compute_valid_ratio(text: str, word_set: set | None = None) -> float:
                 if _is_mid_uppercase(core):
                     continue
                 valid += 1
-    return valid / len(words)
+    if evaluable == 0:
+        return 1.0
+    return valid / evaluable
 
 
 def is_non_text(text: str) -> bool:
