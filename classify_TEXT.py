@@ -875,8 +875,11 @@ def main():
     gpu_process = mp.Process(target=gpu_inference_worker, args=(task_queue, result_dict, MODEL_NAME, gpu_dead))
     gpu_process.start()
 
+    # With this:
+    from document_hook import PROGRAM_NAME
+
     logger = ParadataLogger(
-        program="langID-classify",
+        program=PROGRAM_NAME,
         config={
             "batch_size": BATCH_SIZE,
             "max_workers": WORKERS_MAX,

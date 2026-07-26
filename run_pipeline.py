@@ -51,6 +51,7 @@ Usage
   python3 run_pipeline.py --skip-extract         # PAGE_TXT* already populated (avoids model load)
   python3 run_pipeline.py --start-from classify  # run classify + aggregate only
   python3 run_pipeline.py --dry-run              # print the resolved plan, run nothing
+  python3 run_pipeline.py --document-json-dir ./docs  # enable paradata pair accretion
 """
 
 from __future__ import annotations
@@ -163,6 +164,12 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
         getattr(args, "page_json_dir", None) or _cfg_get(cfg, "PIPELINE", "PAGE_JSON_DIR", _DEFAULTS["page_json_dir"])
     ).strip()
     paradata_dir = (args.paradata_dir or _cfg_get(cfg, "PIPELINE", "PARADATA_DIR", _DEFAULTS["paradata_dir"])).strip()
+
+    # Handle the JSON paradata pair document directory
+    document_json_dir = (
+        getattr(args, "document_json_dir", None) or _cfg_get(cfg, "PIPELINE", "DOCUMENT_JSON_DIR", "")
+    ).strip()
+
     input_csv = (args.input_csv or _cfg_get(cfg, "EXTRACT", "INPUT_CSV", _DEFAULTS["input_csv"])).strip()
     text_dir = _resolve_extract_outdir(method, cfg)
     categ_dir = (
@@ -186,6 +193,7 @@ def resolve_settings(args, cfg: configparser.ConfigParser) -> Dict:
         "page_json_dir": page_json,
         "stats_scan_dir": stats_scan_dir,
         "paradata_dir": paradata_dir,
+        "document_json_dir": document_json_dir,
         "input_csv": input_csv,
         "text_dir": text_dir,
         "skip": skip,
@@ -321,6 +329,11 @@ def main() -> int:
     ap.add_argument("--page-json-dir", default=None, help="Override [PIPELINE].PAGE_JSON_DIR (per-page JSON dir, #31).")
     ap.add_argument("--input-csv", default=None, help="Override [EXTRACT].INPUT_CSV (page-stats CSV).")
     ap.add_argument("--paradata-dir", default=None, help="Override [PIPELINE].PARADATA_DIR.")
+    ap.add_argument(
+        "--document-json-dir",
+        default=None,
+        help="Directory containing baseline AtriumDocument JSON files for accretion (enables paradata pair).",
+    )
 
     # --- Stage skipping / starting points (#6) ---
     ap.add_argument(
@@ -370,6 +383,12 @@ def main() -> int:
     os.environ["LANGID_CONFIG"] = config_path
     os.environ["LANGID_TEXT_DIR"] = settings["text_dir"]
 
+    # Document JSON directory propagation for accretion hook support
+    if settings.get("document_json_dir"):
+        doc_dir_path = Path(settings["document_json_dir"]).resolve()
+        doc_dir_path.mkdir(parents=True, exist_ok=True)
+        os.environ["DOCUMENT_JSON_DIR"] = str(doc_dir_path)
+
     run_count = sum(1 for st in plan if not st["skip"])
     skip_count = len(plan) - run_count
 
@@ -388,7 +407,8 @@ def main() -> int:
         f"Resolved settings: input_dir={settings['input_dir']} "
         f"page_alto_dir={settings['page_alto_dir']} page_json_dir={settings['page_json_dir']} "
         f"input_csv={settings['input_csv']} "
-        f"text_dir={settings['text_dir']} paradata_dir={settings['paradata_dir']}"
+        f"text_dir={settings['text_dir']} paradata_dir={settings['paradata_dir']} "
+        f"document_json_dir={settings['document_json_dir']}"
     )
 
     # Pre-flight: a skipped stage's output must already exist for downstream stages.

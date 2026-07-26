@@ -275,8 +275,11 @@ def main():
         print("No CSV files found.")
         sys.exit(0)
 
+    # With this:
+    from document_hook import PROGRAM_NAME
+
     logger = ParadataLogger(
-        program="langID-aggregate",
+        program=PROGRAM_NAME,
         config=vars(args),
         paradata_dir="paradata",
         output_types=["csv"],

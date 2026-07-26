@@ -3,6 +3,7 @@ service/text_api.py
 FastAPI wrapper for the ATRIUM text processing service.
 """
 
+import json
 import os
 import shutil
 import sys
@@ -14,6 +15,9 @@ from typing import Any, Dict, Union
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+from atrium_paradata import ParadataLogger
+from document_hook import PROGRAM_NAME, write_document_block
 
 # Add this file's own directory (service/) to sys.path BEFORE importing the
 # sibling `text_inference` module, so the bare import resolves in every launch
@@ -82,6 +86,9 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
+# Resolve the absolute path to setup/para_config.txt
+PARA_CONFIG_PATH = str(Path(__file__).resolve().parent.parent / "setup" / "para_config.txt")
+
 
 @app.get("/", response_model=None)
 async def root() -> Union[HTMLResponse, Dict[str, str]]:
@@ -124,6 +131,7 @@ async def info() -> Dict[str, Any]:
 async def process_document(
     file: UploadFile = File(...),
     task_type: str = Form("auto"),
+    document_record: UploadFile = File(None),  # Added optional input
 ) -> JSONResponse:
     """
     Upload an ALTO XML, plain-text, or generic JSON file.
@@ -146,13 +154,13 @@ async def process_document(
       category        (str)   – Clear | Noisy | Trash | Non-text | Empty
                                 Assigned dynamically using the unified penalty system.
     """
-    # §4.4: missing upload metadata is a client error (422), not a server 500.
     if not file.filename:
         raise HTTPException(status_code=422, detail="Filename is missing from the upload.")
     if not file.content_type:
         raise HTTPException(status_code=422, detail="Content-Type is missing from the upload.")
 
     filename = file.filename.lower()
+    doc_id = Path(filename).stem  # Extract doc_id for the record
 
     if task_type == "auto":
         if filename.endswith(".xml"):
@@ -167,15 +175,18 @@ async def process_document(
                 detail="Cannot auto-detect file type. Set task_type='alto', 'text', or 'json'.",
             )
 
+    # Initialize ParadataLogger with the required config argument and unified program name
+    para_logger = ParadataLogger(config=PARA_CONFIG_PATH, program=PROGRAM_NAME)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
 
     try:
-        # §4.3/§4.4: enforce the canonical upload limit (413).
         if os.path.getsize(tmp_path) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_UPLOAD_MB} MB.")
 
+        # Execute text inference
         if task_type == "alto":
             result = text_manager.process_alto(tmp_path)
         elif task_type == "json":
@@ -184,10 +195,40 @@ async def process_document(
             result = text_manager.process_text_file(tmp_path)
 
         result["filename"] = file.filename
+
+        # --- Paradata Pair Accretion Hook ---
+        if document_record:
+            with tempfile.TemporaryDirectory() as doc_tmp_dir:
+                baseline_path = os.path.join(doc_tmp_dir, f"{doc_id}.document.json")
+
+                # Save the uploaded baseline JSON
+                with open(baseline_path, "wb") as bf:
+                    shutil.copyfileobj(document_record.file, bf)
+
+                # Extract page metrics and lines from the result to populate the record
+                page_metrics = [
+                    {"page": "1", "quality_score": result.get("doc_quality", 1.0)}
+                ]  # Adapt to actual result structure
+                lines_metrics = result.get("lines", [])
+
+                # Write the block using the repo-local hook
+                write_document_block(
+                    document_json_dir=doc_tmp_dir,
+                    doc_id=doc_id,
+                    run_id=para_logger.run_id,
+                    paradata_ref="",  # Left empty for stateless API responses
+                    set_blocks={"pages": page_metrics, "lines": lines_metrics},
+                )
+
+                # Read back the accreted record and attach it to the response
+                with open(baseline_path, "r", encoding="utf-8") as bf:
+                    result["document_json_out"] = json.load(bf)
+        # ------------------------------------
+
+        para_logger.finalize()
         return JSONResponse(content=result)
 
     except HTTPException:
-        # Never re-wrap an intentional 4xx (413/422) as a 500.
         raise
     except Exception as exc:
         import traceback
@@ -198,6 +239,66 @@ async def process_document(
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+# @app.post("/process")
+# async def process_document(
+#     file: UploadFile = File(...),
+#     task_type: str = Form("auto"),
+# ) -> JSONResponse:
+#
+#     # §4.4: missing upload metadata is a client error (422), not a server 500.
+#     if not file.filename:
+#         raise HTTPException(status_code=422, detail="Filename is missing from the upload.")
+#     if not file.content_type:
+#         raise HTTPException(status_code=422, detail="Content-Type is missing from the upload.")
+#
+#     filename = file.filename.lower()
+#
+#     if task_type == "auto":
+#         if filename.endswith(".xml"):
+#             task_type = "alto"
+#         elif filename.endswith(".txt"):
+#             task_type = "text"
+#         elif filename.endswith(".json"):
+#             task_type = "json"
+#         else:
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail="Cannot auto-detect file type. Set task_type='alto', 'text', or 'json'.",
+#             )
+#
+#     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
+#         shutil.copyfileobj(file.file, tmp)
+#         tmp_path = tmp.name
+#
+#     try:
+#         # §4.3/§4.4: enforce the canonical upload limit (413).
+#         if os.path.getsize(tmp_path) > MAX_UPLOAD_BYTES:
+#             raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_UPLOAD_MB} MB.")
+#
+#         if task_type == "alto":
+#             result = text_manager.process_alto(tmp_path)
+#         elif task_type == "json":
+#             result = text_manager.process_json(tmp_path)
+#         else:
+#             result = text_manager.process_text_file(tmp_path)
+#
+#         result["filename"] = file.filename
+#         return JSONResponse(content=result)
+#
+#     except HTTPException:
+#         # Never re-wrap an intentional 4xx (413/422) as a 500.
+#         raise
+#     except Exception as exc:
+#         import traceback
+#
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=f"Processing failed: {exc}") from exc
+#
+#     finally:
+#         if os.path.exists(tmp_path):
+#             os.remove(tmp_path)
 
 
 if __name__ == "__main__":
