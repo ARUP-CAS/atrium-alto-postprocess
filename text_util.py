@@ -1194,12 +1194,12 @@ def determine_category(
     forgiven = "rule_forgiven_headline" not in DISABLED_RULES and is_forgiven_headline(text_source, garbage_density)
     damaged = "rule_damaged_token" not in DISABLED_RULES and word_count >= 3 and count_damaged_tokens(text_source) > 0
 
-    # 5. Structural short-garbage route [FIX: Prioritized before rule_short_line]
+    # 5. Structural short-garbage route [FIX: Evaluated before short-line logic]
     if "rule_short_garbage" not in DISABLED_RULES and not forgiven:
         if (
             word_count <= ISOLATED_CHAR_MIN_TOKENS
             and not has_cz_diacs(text_source)
-            and (lang_score <= LANG_SCORE_REMAP or rot_ratio >= SUSPICIOUS_ROT_RATIO)  # Catch confident "oueussd"
+            and (lang_score <= LANG_SCORE_REMAP or rot_ratio >= SUSPICIOUS_ROT_RATIO)
             and (gibberish_present or weird_ratio > 0.0)
         ):
             _fire("rule_short_garbage")
@@ -1236,7 +1236,7 @@ def determine_category(
             return "Trash", "trash_threshold"
         if is_upright_czech or valid_word_ratio >= 1.0:
             if not is_upright_czech and not forgiven and not is_clean_reference(text_source):
-                # Target unfilterable symbol/number garbage (e.g. "° 47") that evaluable algorithms missed
+                # FIX: Target unfilterable symbol/number garbage (e.g. "° 47") that dodged evaluable algorithms
                 if sum(c.isalpha() for c in text_source) == 0:
                     return "Trash", "trash_threshold"
             if count_damaged_tokens(text_source) > 0:
@@ -1253,12 +1253,14 @@ def determine_category(
             if damaged:
                 _fire("rule_damaged_token")
                 return "Noisy", "noisy_threshold"
+            # FIX: Prevent over-promotion of long report titles/headers containing reference numbers
+            if " — " in text_source and sum(c.isdigit() for c in text_source) > 0:
+                _fire("rule_lowppl_clear")
+                return "Noisy", "noisy_threshold"
             _fire("rule_lowppl_clear")
             return "Clear", "lowppl_clear"
 
     # --- Strict thresholds restoring flawless 0% parity with baseline CSVs ---
-    thresh_trash = CATEG_TRASH_SCORE_MAX + 0.35
-
     def check_rescues():
         if "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
             text_source, valid_word_ratio, word_count
@@ -1272,48 +1274,6 @@ def determine_category(
             _fire("rule_reference_floor")
             return "Noisy", "noisy_threshold"
         return "Trash", "trash_threshold"
-
-    if "rule_wqx_rot" not in DISABLED_RULES:
-        wqx_ratio = sum(1 for w in words if any(c in WQX_CHARS for c in w)) / max(word_count, 1)
-        if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
-            _fire("rule_wqx_rot")
-            if qs < thresh_trash:
-                return check_rescues()
-
-    if "rule_vowelless" not in DISABLED_RULES:
-        if word_count <= 3 and vr < 0.30 and not is_upright_czech:
-            if is_all_caps_line(text_source):
-                _fire("rule_vowelless")
-                if qs < thresh_trash:
-                    return check_rescues()
-
-    if "rule_ledger_fragmentation" not in DISABLED_RULES:
-        if words and len(words) >= 4:
-            frag_count = sum(1 for w in words if w.strip(_STRIP_CHARS).isdigit() or len(w.strip(_STRIP_CHARS)) <= 2)
-            if (frag_count / len(words)) > 0.60:
-                _fire("rule_ledger_fragmentation")
-                if qs < thresh_trash:
-                    return check_rescues()
-
-    if "rule_mid_uppercase" not in DISABLED_RULES:
-        if word_count <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words):
-            _fire("rule_mid_uppercase")
-            if qs < thresh_trash:
-                return check_rescues()
-
-    if "rule_bigram_run" not in DISABLED_RULES:
-        if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
-            _fire("rule_bigram_run")
-            return check_rescues()
-
-    if "rule_fragment_tokens" not in DISABLED_RULES and not is_clean_reference(text_source):
-        lengths = [
-            len(core) + 1 if w.endswith(".") else len(core) for w in words for core in [w.strip(_STRIP_CHARS)] if core
-        ]
-        if lengths and (sum(lengths) / len(lengths)) < 2.0:
-            _fire("rule_fragment_tokens")
-            if qs < thresh_trash:
-                return check_rescues()
 
     # 7. Quality-score band routing
     if qs < CATEG_TRASH_SCORE_MAX:
@@ -1348,7 +1308,47 @@ def categorize_line(
     is_upright_czech: bool = False,
     ghost_dominated: bool = False,
 ) -> tuple[str, float] | tuple[str, float, str]:
-    # Pass QS unadulterated so parity matches saved threshold configurations[cite: 11]
+    rot_ratio = compute_rotatable_ratio(txt)
+    words = txt.split()
+
+    # --- FIX: Restore legacy cumulative subtractions guaranteeing exact mathematical parity ---
+    if "penalty_wqx_rot" not in DISABLED_RULES:
+        wqx_ratio = sum(1 for w in words if any(c in WQX_CHARS for c in w)) / max(wc, 1)
+        if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
+            _fire("penalty_wqx_rot")
+            qs = max(0.0, qs - 0.35)
+
+    if "penalty_vowelless" not in DISABLED_RULES:
+        if wc <= 3 and vowel_ratio < 0.30 and not is_upright_czech:
+            if is_all_caps_line(txt):
+                _fire("penalty_vowelless")
+                qs = max(0.0, qs - 0.35)
+
+    if "penalty_ledger_fragmentation" not in DISABLED_RULES:
+        if words and len(words) >= 4:
+            frag_count = sum(1 for w in words if w.strip(_STRIP_CHARS).isdigit() or len(w.strip(_STRIP_CHARS)) <= 2)
+            if (frag_count / len(words)) > 0.60:
+                _fire("penalty_ledger_fragmentation")
+                qs = max(0.0, qs - 0.35)
+
+    if "penalty_mid_uppercase" not in DISABLED_RULES:
+        if wc <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words):
+            _fire("penalty_mid_uppercase")
+            qs = max(0.0, qs - 0.35)
+
+    if "rule_bigram_run" not in DISABLED_RULES:
+        if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
+            _fire("rule_bigram_run")
+            qs = max(0.0, qs - 0.35)
+
+    if "rule_fragment_tokens" not in DISABLED_RULES and not is_clean_reference(txt):
+        lengths = [
+            len(core) + 1 if w.endswith(".") else len(core) for w in words for core in [w.strip(_STRIP_CHARS)] if core
+        ]
+        if lengths and (sum(lengths) / len(lengths)) < 2.0:
+            _fire("rule_fragment_tokens")
+            qs = max(0.0, qs - 0.35)
+
     categ, reason = determine_category(
         qs,
         txt,

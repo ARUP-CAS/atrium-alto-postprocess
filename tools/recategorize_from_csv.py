@@ -183,7 +183,7 @@ def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
     if wc <= 2 and ppl_val > _tu.SHORT_PPL_CAP:
         ppl_val = _tu.SHORT_PPL_CAP
 
-    # RESTORE PARITY: Calculate density and vowels using original_text, not text_content
+    # RESTORE PARITY: Calculate density and vowels using original_text
     g_density = compute_garbage_density(original_text)
     vowel_ratio = compute_vowel_ratio(original_text)
 
@@ -277,118 +277,6 @@ def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
         }
     )
     return out
-
-    # text_content = str(row.get("text", "") or "")
-    # # original_text = str(row.get("original_text", "") or "")
-    # wc = len(text_content.split())
-    # cc = len(text_content)
-    #
-    # original_lang = str(row.get("original_lang", "") or "")
-    # try:
-    #     original_lang_score = float(row.get("orig_lang_score", 0.0) or 0.0)
-    # except (ValueError, TypeError):
-    #     original_lang_score = 0.0
-    #
-    # # (#3 A1) remap CAP on the frozen raw FastText guess.
-    # new_lang, new_score = remap_lang(
-    #     original_lang,
-    #     original_lang_score,
-    #     known_bases,
-    #     expected_langs[0] if expected_langs else "ces",
-    # )
-    #
-    # try:
-    #     ppl_val = float(row.get("perplex", 0.0) or 0.0)
-    # except (ValueError, TypeError):
-    #     ppl_val = 0.0
-    # if wc <= 2 and ppl_val > _tu.SHORT_PPL_CAP:
-    #     ppl_val = _tu.SHORT_PPL_CAP
-    #
-    # # Fix: Calculate density and vowels using pre-filtered text_content
-    # g_density = compute_garbage_density(text_content)
-    # vowel_ratio = compute_vowel_ratio(text_content)
-    #
-    # upper_count = detect_mid_uppercase(text_content)
-    # rep_count = detect_repeated_chars(text_content)
-    # fuse_count = detect_letter_digit_letter(text_content)
-    # fused_words = detect_fused_words(text_content)
-    # gibb_count = detect_gibberish_words(text_content)
-    # wx_count = detect_wx_words(text_content)
-    #
-    # rot_ratio = compute_rotatable_ratio(text_content)
-    # is_upright_czech, ghost_dominated = analyze_rotation_signals(text_content)
-    #
-    # caps_header = is_all_caps_line(text_content)
-    # weird_ratio = compute_word_weird_ratio(score_words_in_line(text_content))
-    # valid_ratio = compute_valid_ratio(text_content)
-    #
-    # q_score = compute_quality_score(
-    #     valid_word_ratio=valid_ratio,
-    #     perplexity=ppl_val,
-    #     text_length=cc,
-    #     weird_ratio=weird_ratio,
-    #     vowel_ratio=vowel_ratio,
-    #     garbage_density=g_density,
-    #     lang_score=new_score,
-    #     gibberish_ratio=(gibb_count + wx_count) / max(wc, 1),
-    #     fused_ratio=fused_words / max(wc, 1),
-    #     is_upright_czech=is_upright_czech,
-    # )
-    #
-    # # (#3 A2/B) post-cap score + gibberish flag into the categoriser.
-    # categ, q_score, reason = categorize_line(
-    #     q_score,
-    #     text_content,
-    #     wc,
-    #     vowel_ratio,
-    #     ppl_val,
-    #     weird_ratio=weird_ratio,
-    #     return_reason=True,
-    #     valid_word_ratio=valid_ratio,
-    #     lang_score=new_score,
-    #     orig_lang_score=original_lang_score,
-    #     gibberish_present=(gibb_count + wx_count) > 0,
-    #     garbage_density=g_density,
-    #     is_upright_czech=is_upright_czech,
-    #     ghost_dominated=ghost_dominated,
-    # )
-    #
-    # out = dict(row)
-    # out.update(
-    #     {
-    #         "categ": categ,
-    #         "quality_score": f"{q_score:.4f}",
-    #         "lang": new_lang,
-    #         "lang_score": f"{new_score:.4f}",
-    #         "original_lang": original_lang,
-    #         "orig_lang_score": f"{original_lang_score:.4f}",
-    #         "perplex": f"{ppl_val:.2f}",
-    #         "word_count": wc,
-    #         "char_count": cc,
-    #         "garbage_density": f"{g_density:.4f}",
-    #         "upper": upper_count,
-    #         "repeated": rep_count,
-    #         "ldl_fuses": fuse_count,
-    #         "fused_words": fused_words,
-    #         "gibberish": gibb_count,
-    #         "weird_wx": wx_count,
-    #         "word_weird": f"{weird_ratio:.4f}",
-    #         "vowel_ratio": f"{vowel_ratio:.4f}",
-    #         "rot_ratio": f"{rot_ratio:.4f}",
-    #         "caps_header": caps_header,
-    #         "allcaps_novowel": reason == "allcaps_novowel",
-    #         "lowppl_clear": reason == "lowppl_clear",
-    #         "cleanprose_clear": reason == "cleanprose_clear",
-    #         "trash_threshold": reason in TRASH_REASONS,
-    #         "noisy_threshold": reason == "noisy_threshold",
-    #         "clear_threshold": reason == "clear_threshold",
-    #         "pp_dedup": False,
-    #         "pp_surrounded_trash": False,
-    #         "pp_inverted_run": False,
-    #         "pp_page_context": False,
-    #     }
-    # )
-    # return out
 
 
 # def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
