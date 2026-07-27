@@ -888,6 +888,65 @@ def evaluate_per_document(
     return out
 
 
+def find_parity_mismatches(
+    df: pd.DataFrame,
+    constants: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """
+    Return line-level category mismatches between stored categories and the
+    production-equivalent re-score.
+
+    Parameters
+    ----------
+    df:
+        Input DataFrame containing the original stored categories and the
+        columns required by ``recategorize_dataframe``.
+
+    constants:
+        Optional constants override. If None, the live/default constants are
+        used.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per mismatching line. The returned DataFrame contains the
+        original input columns plus:
+
+        ``stored_category``
+            Normalized category from the input corpus.
+
+        ``predicted_category``
+            Normalized category produced by the re-scorer.
+
+        ``category_changed``
+            Always True for rows in the returned DataFrame.
+
+    Notes
+    -----
+    This helper intentionally delegates all categorization to the real
+    ``recategorize_dataframe`` implementation. It does not duplicate or
+    approximate production categorization logic.
+    """
+    predicted = recategorize_dataframe(df, constants)
+
+    if len(predicted) != len(df):
+        raise ValueError(
+            f"recategorize_dataframe changed the number of rows: input={len(df)}, predicted={len(predicted)}"
+        )
+
+    result = df.copy()
+
+    stored = result["categ"].map(normalize_category)
+    predicted_categories = predicted["categ"].map(normalize_category)
+
+    result["stored_category"] = stored.to_numpy()
+    result["predicted_category"] = predicted_categories.to_numpy()
+
+    result["category_changed"] = result["stored_category"] != result["predicted_category"]
+
+    return result.loc[result["category_changed"]].copy()
+
+
 # ---------------------------------------------------------------------------
 # Diff report (CLI)
 # ---------------------------------------------------------------------------

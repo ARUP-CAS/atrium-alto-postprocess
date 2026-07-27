@@ -1120,53 +1120,6 @@ def is_forgiven_headline(text: str, garbage_density: float) -> bool:
     return has_content and has_context
 
 
-
-# def _short_garbage_exempt(text_source: str) -> bool:
-#     """Return True for short lines that should not be caught by the short-garbage route."""
-#     stripped = text_source.strip()
-#     return (
-#         bool(_RE_SIGLUM.match(stripped))
-#         or is_clean_reference(text_source)
-#         or any(c.isdigit() for c in stripped)
-#     )
-
-
-def _looks_like_narrow_dash_reference(text_source: str) -> bool:
-    """
-    Conservative replacement for the ad hoc ' — ' + digit guard.
-
-    This is intentionally narrower than the old check:
-    - it still requires an em dash separator and at least one digit;
-    - it accepts already-recognized clean references immediately;
-    - otherwise it only fires for short, title-like lines whose right-hand side
-      looks reference-like or measurement-like.
-    """
-    stripped = " ".join(text_source.split())
-    if " — " not in stripped or not any(c.isdigit() for c in stripped):
-        return False
-
-    if is_clean_reference(stripped):
-        return True
-
-    left, sep, right = stripped.partition(" — ")
-    if not sep:
-        return False
-
-    left_words = [w for w in left.split() if any(ch.isalpha() for ch in w)]
-    right_words = [w for w in right.split() if any(ch.isalpha() for ch in w)]
-    if not left_words or not right_words:
-        return False
-
-    if len(left_words) > 8 or len(right_words) > 8:
-        return False
-
-    titleish_left = sum(w[:1].isupper() for w in left_words) / len(left_words) >= 0.60
-    right_has_ref_signal = bool(_RE_REF_MARKER.search(right)) or bool(_RE_MEASUREMENT.search(right))
-    right_has_digits = sum(ch.isdigit() for ch in right) >= 2
-
-    return titleish_left and (right_has_ref_signal or right_has_digits)
-
-
 def determine_category(
     qs: float,
     text_source: str,
@@ -1192,10 +1145,11 @@ def determine_category(
     3. Obvious all-caps vowel-less garbage.
     4. Extreme garbage density.
     5. Structured-line protection.
-    6. Short-line garbage routing.
-    7. High-confidence LM override.
-    8. Explicit diagnostic rules.
-    9. Quality-score fallback.
+    6. Zero-alphabetic-content routing.
+    7. Short-line garbage routing.
+    8. High-confidence LM override.
+    9. Explicit diagnostic rules.
+    10. Quality-score fallback.
 
     Important design principle:
 
@@ -1224,26 +1178,17 @@ def determine_category(
     # 1. Hard sweep
     # ------------------------------------------------------------
     if "rule_hard_sweep" not in DISABLED_RULES:
-        if (
-            orig_lang_score < HARD_SWEEP_LANG_MAX
-            and ppl > HARD_SWEEP_PPL_MIN
-        ):
+        if orig_lang_score < HARD_SWEEP_LANG_MAX and ppl > HARD_SWEEP_PPL_MIN:
             _fire("rule_hard_sweep")
             return "Trash", "trash_hard_sweep"
 
     if "rule_extreme_ppl" not in DISABLED_RULES:
-        if (
-            ppl >= PPL_EXTREME_MIN
-            and orig_lang_score < EXTREME_LANG_CONF
-        ):
+        if ppl >= PPL_EXTREME_MIN and orig_lang_score < EXTREME_LANG_CONF:
             _fire("rule_extreme_ppl")
             return "Trash", "trash_hard_sweep"
 
     if "rule_absolute_ppl" not in DISABLED_RULES:
-        if (
-            ppl >= PPL_GARBAGE_ABSOLUTE
-            and not is_upright_czech
-        ):
+        if ppl >= PPL_GARBAGE_ABSOLUTE and not is_upright_czech:
             _fire("rule_absolute_ppl")
             return "Trash", "trash_hard_sweep"
 
@@ -1267,11 +1212,7 @@ def determine_category(
     # 3. All-caps vowel-less scramble
     # ------------------------------------------------------------
     if "rule_allcaps" not in DISABLED_RULES:
-        if (
-            vr < 0.10
-            and is_all_caps_line(text_source)
-            and not structured
-        ):
+        if vr < 0.10 and is_all_caps_line(text_source) and not structured:
             _fire("rule_allcaps")
             return "Trash", "allcaps_novowel"
 
@@ -1280,25 +1221,16 @@ def determine_category(
     # ------------------------------------------------------------
     if "rule_garbage_density" not in DISABLED_RULES:
         if garbage_density >= CATEG_GARBAGE_DENSITY_HIGH:
-            is_siglum = (
-                word_count <= 2
-                and _RE_SIGLUM.match(stripped)
-            )
+            is_siglum = word_count <= 2 and _RE_SIGLUM.match(stripped)
 
-            if (
-                structured
-                or is_siglum
-            ):
+            if structured or is_siglum:
                 # Do not immediately Trash structured content.
                 pass
 
-            elif (
-                "rule_trailing_fill_rescue" not in DISABLED_RULES
-                and _trailing_fill_rescued(
-                    text_source,
-                    valid_word_ratio,
-                    word_count,
-                )
+            elif "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
+                text_source,
+                valid_word_ratio,
+                word_count,
             ):
                 pass
 
@@ -1309,41 +1241,54 @@ def determine_category(
     # ------------------------------------------------------------
     # 5. Determine structural state
     # ------------------------------------------------------------
-    forgiven = (
-        "rule_forgiven_headline" not in DISABLED_RULES
-        and is_forgiven_headline(
-            text_source,
-            garbage_density,
-        )
+    forgiven = "rule_forgiven_headline" not in DISABLED_RULES and is_forgiven_headline(
+        text_source,
+        garbage_density,
     )
 
-    damaged = (
-        "rule_damaged_token" not in DISABLED_RULES
-        and word_count >= 3
-        and count_damaged_tokens(text_source) > 0
-    )
+    damaged = "rule_damaged_token" not in DISABLED_RULES and word_count >= 3 and count_damaged_tokens(text_source) > 0
+
+    # ------------------------------------------------------------
+    # 5b. Zero-alphabetic content
+    #
+    # A line with no letters at all ("° 47") carries no prose to validate.
+    # compute_valid_ratio's vacuous 1.0 default for an all-neutral line
+    # (every token classified as punctuation/date/measurement noise) then
+    # reads as "clean" even though nothing was actually checked, which lets
+    # the short-line and low-perplexity routes below wave it through to
+    # Clear regardless of perplexity or language confidence.
+    #
+    # `structured` (checked above) already protects genuine references,
+    # measurements, dates, and catalogue codes, and `is_upright_czech`
+    # protects genuine rotation-cleared Czech; a forgiven headline still
+    # lands on Noisy rather than Trash, matching every other rescue in this
+    # function. Only a line with no letters and no rescue signal at all is
+    # routed to Trash.
+    # ------------------------------------------------------------
+    if (
+        "rule_zero_alpha" not in DISABLED_RULES
+        and not structured
+        and not is_upright_czech
+        and not any(c.isalpha() for c in text_source)
+    ):
+        _fire("rule_zero_alpha")
+
+        if forgiven:
+            return "Noisy", "noisy_threshold"
+
+        return "Trash", "trash_threshold"
 
     # ------------------------------------------------------------
     # 6. Short-line garbage
     #
     # Structured lines are exempt BEFORE the generic garbage route.
     # ------------------------------------------------------------
-    if (
-        "rule_short_garbage" not in DISABLED_RULES
-        and not forgiven
-        and not structured
-    ):
+    if "rule_short_garbage" not in DISABLED_RULES and not forgiven and not structured:
         if (
             word_count <= ISOLATED_CHAR_MIN_TOKENS
             and not has_cz_diacs(text_source)
-            and (
-                lang_score <= LANG_SCORE_REMAP
-                or rot_ratio >= SUSPICIOUS_ROT_RATIO
-            )
-            and (
-                gibberish_present
-                or weird_ratio > 0.0
-            )
+            and (lang_score <= LANG_SCORE_REMAP or rot_ratio >= SUSPICIOUS_ROT_RATIO)
+            and (gibberish_present or weird_ratio > 0.0)
         ):
             _fire("rule_short_garbage")
             return "Trash", "trash_threshold"
@@ -1351,34 +1296,19 @@ def determine_category(
     # ------------------------------------------------------------
     # 7. Short lines (1-2 words)
     # ------------------------------------------------------------
-    if (
-        "rule_short_line" not in DISABLED_RULES
-        and word_count <= 2
-    ):
+    if "rule_short_line" not in DISABLED_RULES and word_count <= 2:
         _fire("rule_short_line")
 
-        if (
-            _RE_SIGLUM.match(stripped)
-            and sum(c.isalpha() for c in stripped) >= 2
-        ):
+        if _RE_SIGLUM.match(stripped) and sum(c.isalpha() for c in stripped) >= 2:
             return "Clear", "clear_threshold"
 
         if word_count == 1:
             solitary = stripped.strip(_STRIP_CHARS)
 
-            if (
-                len(solitary) == 1
-                and solitary.isalpha()
-                and "." not in stripped
-            ):
+            if len(solitary) == 1 and solitary.isalpha() and "." not in stripped:
                 return "Trash", "trash_threshold"
 
-        if any(
-            _RE_BIGRAM_RUN.search(
-                w.strip(_STRIP_CHARS)
-            )
-            for w in words
-        ):
+        if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
             if _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
@@ -1395,22 +1325,8 @@ def determine_category(
 
         damage = (
             weird_ratio >= 0.40
-            or (
-                any(
-                    _RE_BIGRAM_RUN.search(
-                        w.strip(_STRIP_CHARS)
-                    )
-                    for w in words
-                )
-                and not structured
-            )
-            or (
-                (
-                    gibberish_present
-                    or detect_fused_words(text_source) > 0
-                )
-                and not structurally_clean
-            )
+            or (any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words) and not structured)
+            or ((gibberish_present or detect_fused_words(text_source) > 0) and not structurally_clean)
             or (
                 garbage_density >= CATEG_GARBAGE_DENSITY_HIGH
                 and not _trailing_fill_rescued(
@@ -1425,28 +1341,14 @@ def determine_category(
         if damage:
             return "Noisy", "noisy_threshold"
 
-        if (
-            valid_word_ratio <= 0.0
-            and not is_upright_czech
-            and not structured
-        ):
+        if valid_word_ratio <= 0.0 and not is_upright_czech and not structured:
             if forgiven:
                 return "Noisy", "noisy_threshold"
 
             return "Trash", "trash_threshold"
 
-        if (
-            is_upright_czech
-            or valid_word_ratio >= 1.0
-            or structured
-        ):
-            if (
-                count_damaged_tokens(text_source) > 0
-                or (
-                    not is_upright_czech
-                    and weird_ratio >= 0.40
-                )
-            ):
+        if is_upright_czech or valid_word_ratio >= 1.0 or structured:
+            if count_damaged_tokens(text_source) > 0 or (not is_upright_czech and weird_ratio >= 0.40):
                 return "Noisy", "noisy_threshold"
 
             return "Clear", "clear_threshold"
@@ -1457,24 +1359,13 @@ def determine_category(
     # 8. High-confidence LM override
     # ------------------------------------------------------------
     if "rule_lowppl_clear" not in DISABLED_RULES:
-        if (
-            ppl < LOWPPL_CLEAR_MAX
-            and word_count >= 3
-        ):
+        if ppl < LOWPPL_CLEAR_MAX and word_count >= 3:
             if valid_word_ratio < MOSTLY_READABLE_VALID_MIN:
                 _fire("rule_lowppl_clear")
                 return "Noisy", "noisy_threshold"
 
             if damaged:
                 _fire("rule_damaged_token")
-                return "Noisy", "noisy_threshold"
-
-            # Item 4 remains intentionally conservative.
-            #
-            # Do not broaden or alter the existing dash+digit logic here
-            # until the corresponding fixture/failure mode is isolated.
-            if _looks_like_narrow_dash_reference(text_source):
-                _fire("rule_lowppl_clear")
                 return "Noisy", "noisy_threshold"
 
             _fire("rule_lowppl_clear")
@@ -1486,13 +1377,10 @@ def determine_category(
     thresh_trash = CATEG_TRASH_SCORE_MAX + 0.35
 
     def check_rescues() -> tuple[str, str]:
-        if (
-            "rule_trailing_fill_rescue" not in DISABLED_RULES
-            and _trailing_fill_rescued(
-                text_source,
-                valid_word_ratio,
-                word_count,
-            )
+        if "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
+            text_source,
+            valid_word_ratio,
+            word_count,
         ):
             _fire("rule_trailing_fill_rescue")
             return "Noisy", "noisy_threshold"
@@ -1501,10 +1389,7 @@ def determine_category(
             _fire("rule_forgiven_headline")
             return "Noisy", "noisy_threshold"
 
-        if (
-            "rule_reference_floor" not in DISABLED_RULES
-            and is_clean_reference(text_source)
-        ):
+        if "rule_reference_floor" not in DISABLED_RULES and is_clean_reference(text_source):
             _fire("rule_reference_floor")
             return "Noisy", "noisy_threshold"
 
@@ -1514,37 +1399,20 @@ def determine_category(
     # 9a. WQX / rotation
     # ------------------------------------------------------------
     if "rule_wqx_rot" not in DISABLED_RULES:
-        wqx_ratio = (
-            sum(
-                1
-                for w in words
-                if any(c in WQX_CHARS for c in w)
-            )
-            / max(word_count, 1)
-        )
+        wqx_ratio = sum(1 for w in words if any(c in WQX_CHARS for c in w)) / max(word_count, 1)
 
-        if (
-            (
-                rot_ratio > 0.50
-                or wqx_ratio > 0.10
-            )
-            and orig_lang_score < 0.75
-            and not is_upright_czech
-        ):
+        if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
             _fire("rule_wqx_rot")
 
-            if (
-                qs < thresh_trash
-                and _has_strong_garbage_evidence(
-                    text_source,
-                    valid_word_ratio=valid_word_ratio,
-                    lang_score=lang_score,
-                    orig_lang_score=orig_lang_score,
-                    gibberish_present=gibberish_present,
-                    garbage_density=garbage_density,
-                    weird_ratio=weird_ratio,
-                    is_upright_czech=is_upright_czech,
-                )
+            if qs < thresh_trash and _has_strong_garbage_evidence(
+                text_source,
+                valid_word_ratio=valid_word_ratio,
+                lang_score=lang_score,
+                orig_lang_score=orig_lang_score,
+                gibberish_present=gibberish_present,
+                garbage_density=garbage_density,
+                weird_ratio=weird_ratio,
+                is_upright_czech=is_upright_czech,
             ):
                 return check_rescues()
 
@@ -1552,27 +1420,18 @@ def determine_category(
     # 9b. Vowelless / all-caps
     # ------------------------------------------------------------
     if "rule_vowelless" not in DISABLED_RULES:
-        if (
-            word_count <= 3
-            and vr < 0.30
-            and not is_upright_czech
-            and is_all_caps_line(text_source)
-            and not structured
-        ):
+        if word_count <= 3 and vr < 0.30 and not is_upright_czech and is_all_caps_line(text_source) and not structured:
             _fire("rule_vowelless")
 
-            if (
-                qs < thresh_trash
-                and _has_strong_garbage_evidence(
-                    text_source,
-                    valid_word_ratio=valid_word_ratio,
-                    lang_score=lang_score,
-                    orig_lang_score=orig_lang_score,
-                    gibberish_present=gibberish_present,
-                    garbage_density=garbage_density,
-                    weird_ratio=weird_ratio,
-                    is_upright_czech=is_upright_czech,
-                )
+            if qs < thresh_trash and _has_strong_garbage_evidence(
+                text_source,
+                valid_word_ratio=valid_word_ratio,
+                lang_score=lang_score,
+                orig_lang_score=orig_lang_score,
+                gibberish_present=gibberish_present,
+                garbage_density=garbage_density,
+                weird_ratio=weird_ratio,
+                is_upright_czech=is_upright_czech,
             ):
                 return check_rescues()
 
@@ -1581,32 +1440,20 @@ def determine_category(
     # ------------------------------------------------------------
     if "rule_ledger_fragmentation" not in DISABLED_RULES:
         if len(words) >= 4:
-            frag_count = sum(
-                1
-                for w in words
-                if (
-                    w.strip(_STRIP_CHARS).isdigit()
-                    or len(w.strip(_STRIP_CHARS)) <= 2
-                )
-            )
+            frag_count = sum(1 for w in words if (w.strip(_STRIP_CHARS).isdigit() or len(w.strip(_STRIP_CHARS)) <= 2))
 
-            if (
-                frag_count / len(words)
-            ) > 0.60:
+            if (frag_count / len(words)) > 0.60:
                 _fire("rule_ledger_fragmentation")
 
-                if (
-                    qs < thresh_trash
-                    and _has_strong_garbage_evidence(
-                        text_source,
-                        valid_word_ratio=valid_word_ratio,
-                        lang_score=lang_score,
-                        orig_lang_score=orig_lang_score,
-                        gibberish_present=gibberish_present,
-                        garbage_density=garbage_density,
-                        weird_ratio=weird_ratio,
-                        is_upright_czech=is_upright_czech,
-                    )
+                if qs < thresh_trash and _has_strong_garbage_evidence(
+                    text_source,
+                    valid_word_ratio=valid_word_ratio,
+                    lang_score=lang_score,
+                    orig_lang_score=orig_lang_score,
+                    gibberish_present=gibberish_present,
+                    garbage_density=garbage_density,
+                    weird_ratio=weird_ratio,
+                    is_upright_czech=is_upright_czech,
                 ):
                     return check_rescues()
 
@@ -1614,30 +1461,18 @@ def determine_category(
     # 9d. Mid-uppercase
     # ------------------------------------------------------------
     if "rule_mid_uppercase" not in DISABLED_RULES:
-        if (
-            word_count <= 2
-            and any(
-                _is_mid_uppercase(
-                    w.strip(_STRIP_CHARS)
-                )
-                for w in words
-            )
-            and not structured
-        ):
+        if word_count <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words) and not structured:
             _fire("rule_mid_uppercase")
 
-            if (
-                qs < thresh_trash
-                and _has_strong_garbage_evidence(
-                    text_source,
-                    valid_word_ratio=valid_word_ratio,
-                    lang_score=lang_score,
-                    orig_lang_score=orig_lang_score,
-                    gibberish_present=gibberish_present,
-                    garbage_density=garbage_density,
-                    weird_ratio=weird_ratio,
-                    is_upright_czech=is_upright_czech,
-                )
+            if qs < thresh_trash and _has_strong_garbage_evidence(
+                text_source,
+                valid_word_ratio=valid_word_ratio,
+                lang_score=lang_score,
+                orig_lang_score=orig_lang_score,
+                gibberish_present=gibberish_present,
+                garbage_density=garbage_density,
+                weird_ratio=weird_ratio,
+                is_upright_czech=is_upright_czech,
             ):
                 return check_rescues()
 
@@ -1645,28 +1480,20 @@ def determine_category(
     # 9e. Bigram run
     # ------------------------------------------------------------
     if "rule_bigram_run" not in DISABLED_RULES:
-        has_bigram_run = any(
-            _RE_BIGRAM_RUN.search(
-                w.strip(_STRIP_CHARS)
-            )
-            for w in words
-        )
+        has_bigram_run = any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words)
 
         if has_bigram_run:
             _fire("rule_bigram_run")
 
-            if (
-                qs < thresh_trash
-                and _has_strong_garbage_evidence(
-                    text_source,
-                    valid_word_ratio=valid_word_ratio,
-                    lang_score=lang_score,
-                    orig_lang_score=orig_lang_score,
-                    gibberish_present=gibberish_present,
-                    garbage_density=garbage_density,
-                    weird_ratio=weird_ratio,
-                    is_upright_czech=is_upright_czech,
-                )
+            if qs < thresh_trash and _has_strong_garbage_evidence(
+                text_source,
+                valid_word_ratio=valid_word_ratio,
+                lang_score=lang_score,
+                orig_lang_score=orig_lang_score,
+                gibberish_present=gibberish_present,
+                garbage_density=garbage_density,
+                weird_ratio=weird_ratio,
+                is_upright_czech=is_upright_czech,
             ):
                 return check_rescues()
 
@@ -1675,34 +1502,23 @@ def determine_category(
     # ------------------------------------------------------------
     if "rule_fragment_tokens" not in DISABLED_RULES:
         lengths = [
-            len(core) + 1 if w.endswith(".") else len(core)
-            for w in words
-            for core in [w.strip(_STRIP_CHARS)]
-            if core
+            len(core) + 1 if w.endswith(".") else len(core) for w in words for core in [w.strip(_STRIP_CHARS)] if core
         ]
 
-        fragment_like = bool(
-            lengths
-            and (
-                sum(lengths) / len(lengths)
-            ) < 2.0
-        )
+        fragment_like = bool(lengths and (sum(lengths) / len(lengths)) < 2.0)
 
         if fragment_like:
             _fire("rule_fragment_tokens")
 
-            if (
-                qs < thresh_trash
-                and _has_strong_garbage_evidence(
-                    text_source,
-                    valid_word_ratio=valid_word_ratio,
-                    lang_score=lang_score,
-                    orig_lang_score=orig_lang_score,
-                    gibberish_present=gibberish_present,
-                    garbage_density=garbage_density,
-                    weird_ratio=weird_ratio,
-                    is_upright_czech=is_upright_czech,
-                )
+            if qs < thresh_trash and _has_strong_garbage_evidence(
+                text_source,
+                valid_word_ratio=valid_word_ratio,
+                lang_score=lang_score,
+                orig_lang_score=orig_lang_score,
+                gibberish_present=gibberish_present,
+                garbage_density=garbage_density,
+                weird_ratio=weird_ratio,
+                is_upright_czech=is_upright_czech,
             ):
                 return check_rescues()
 
@@ -1713,18 +1529,16 @@ def determine_category(
         return check_rescues()
 
     if "rule_mostly_readable_noisy" not in DISABLED_RULES:
-        if (
-            valid_word_ratio < MOSTLY_READABLE_VALID_MIN
-            and not _lm_confident_czech(
-                is_upright_czech,
-                ppl,
-                garbage_density,
-            )
+        if valid_word_ratio < MOSTLY_READABLE_VALID_MIN and not _lm_confident_czech(
+            is_upright_czech,
+            ppl,
+            garbage_density,
         ):
             _fire("rule_mostly_readable_noisy")
             return "Noisy", "noisy_threshold"
 
     return "Clear", "clear_threshold"
+
 
 def categorize_line(
     qs: float,
@@ -1771,7 +1585,6 @@ def categorize_line(
     if return_reason:
         return categ, aligned_score, reason
     return categ, aligned_score
-
 
 
 def _has_strong_garbage_evidence(
@@ -1825,15 +1638,10 @@ def _has_strong_garbage_evidence(
     # If the text is not upright Czech and has both poor language evidence
     # and a substantial amount of OCR weirdness, treat the combination as
     # strong evidence of garbage.
-    if (
-        not is_upright_czech
-        and lang_score <= 0.40
-        and weird_ratio >= 0.40
-    ):
+    if not is_upright_czech and lang_score <= 0.40 and weird_ratio >= 0.40:
         return True
 
     return False
-
 
 
 def _looks_like_measurement(text_source: str) -> bool:
@@ -1882,11 +1690,7 @@ def _looks_like_measurement(text_source: str) -> bool:
 
     lowered = stripped.lower()
 
-    keyword_hits = sum(
-        1
-        for keyword in measurement_keywords
-        if keyword in lowered
-    )
+    keyword_hits = sum(1 for keyword in measurement_keywords if keyword in lowered)
 
     # Measurement units commonly encountered in the corpus.
     has_unit = bool(
@@ -1930,7 +1734,6 @@ def _looks_like_measurement(text_source: str) -> bool:
         return True
 
     return False
-
 
 
 def _looks_like_catalogue_reference(text_source: str) -> bool:
@@ -2014,6 +1817,7 @@ def _looks_like_catalogue_reference(text_source: str) -> bool:
         r"čís[.]?|"
         r"inv[.]?|"
         r"kat[.]?|"
+        r"\bčp[.]?|"
         r"ref[.]?)"
         r"\s*[A-Z0-9/-]*\d",
         flags=re.IGNORECASE,
@@ -2023,7 +1827,6 @@ def _looks_like_catalogue_reference(text_source: str) -> bool:
         return True
 
     return False
-
 
 
 def _looks_like_date_or_document_reference(text_source: str) -> bool:
@@ -2090,6 +1893,51 @@ def _looks_like_date_or_document_reference(text_source: str) -> bool:
     return False
 
 
+# Table-of-contents style entries: "<n>. <Title> <page>" or "<n>, <Title>
+# <page range>". Archaeological report front matter numbers its sections and
+# pairs each with a page or page-range at the end of the line, e.g.
+# "1. Dějiny objektu 1", "3. Vyhodnocení nálezu 3 - 4", "7, Plánky 1 - 2".
+# The middle "\S.*\s" requires actual title text between the entry number
+# and the trailing page reference, so a bare "3. 4" (no title) does not
+# qualify — that is genuinely ambiguous, not a recognizable TOC shape.
+_RE_TOC_ENTRY = re.compile(r"^\d{1,2}[.,]\s+\S.*\s(?:\d{1,3}|\S{1,2}\s*[-–]\s*\d{1,3})$")
+
+
+# Bare report/administrative section-header words that stand alone as a
+# heading line ("Obsah :", "Úvod", "Závěr") and carry no digit to anchor on,
+# unlike _looks_like_date_or_document_reference's marker-plus-number check.
+# Deliberately a small curated allowlist, not a general keyword scan: this
+# is scaffolding text the report itself supplies, not prose to be judged for
+# word-validity, and it is not evidence enough to protect longer or
+# multi-word lines built around the same word.
+_DOCUMENT_HEADER_LABELS = frozenset(
+    {
+        "obsah",
+        "úvod",
+        "závěr",
+        "literatura",
+        "seznam",
+        "přílohy",
+        "příloha",
+        "poznámka",
+        "shrnutí",
+        "resumé",
+    }
+)
+
+
+def _looks_like_document_structure_label(text_source: str) -> bool:
+    """
+    Detect a bare report-structure heading line such as "Obsah :" (Contents:),
+    standing alone with no other content.
+    """
+    stripped = " ".join(text_source.split())
+    if not stripped:
+        return False
+    core = stripped.rstrip(" :;.-–—")
+    return core.lower() in _DOCUMENT_HEADER_LABELS
+
+
 def is_structured_line(text_source: str) -> bool:
     """
     Return True when a line appears to contain structured archaeological,
@@ -2149,455 +1997,17 @@ def is_structured_line(text_source: str) -> bool:
     if _looks_like_date_or_document_reference(stripped):
         return True
 
+    # Numbered table-of-contents entries.
+    if _RE_TOC_ENTRY.match(stripped):
+        return True
+
+    # Bare report/administrative section-header labels.
+    if _looks_like_document_structure_label(stripped):
+        return True
+
     return False
 
 
-def _short_garbage_exempt(text_source: str) -> bool:
-    """
-    Return True when a short line should be protected from the generic
-    short-garbage route.
-
-    The exemption is intentionally delegated to is_structured_line()
-    rather than using a broad digit-based condition.
-
-    This prevents the short-garbage rule from discarding:
-      - sigla,
-      - catalogue identifiers,
-      - archaeological references,
-      - measurements,
-      - dates,
-      - document metadata.
-
-    At the same time, arbitrary digit-containing OCR remains eligible
-    for the garbage route.
-    """
-    return is_structured_line(text_source)
-
-
-
-# def determine_category(
-#     quality_score: float,
-#     text_source: str,
-#     word_count: int,
-#     vr: float,
-#     ppl: float,
-#     weird_ratio: float = 0.0,
-#     valid_word_ratio: float = 1.0,
-#     lang_score: float = 1.0,
-#     orig_lang_score: float = 1.0,
-#     gibberish_present: bool = False,
-#     garbage_density: float = 0.0,
-#     is_upright_czech: bool = False,
-#     ghost_dominated: bool = False,
-# ) -> tuple[str, str]:
-#     if word_count == 0 or not text_source.strip():
-#         return "Empty", "empty"
-#
-#     rot_ratio = compute_rotatable_ratio(text_source)
-#     words = text_source.split()
-#
-#     # (#3 2026-07-02 calibration) rule_wqx_rot / rule_vowelless /
-#     # rule_ledger_fragmentation / rule_mid_uppercase used to short-circuit here,
-#     # ahead of rules 1-6 and ahead of the `forgiven` computation below. That made
-#     # the "moved down" copies of these same rules (right before the QS-band
-#     # routing, guarded by `check_rescues()`) unreachable dead code, so a forgiven
-#     # short-abbreviation/numbered-headline line that also happened to match one
-#     # of these four conditions was hard-routed to Trash with no chance of rescue
-#     # — exactly the DanaKriv-flagged failure mode (e.g. "mm", "2, Popis nálezu
-#     # i - 3", "7, Plánky 1 - 2" all tripped this in practice). Removed here; the
-#     # single authoritative check now lives immediately before QS-band routing.
-#
-#     # 1. Hard sweep
-#     if "rule_hard_sweep" not in DISABLED_RULES:
-#         if orig_lang_score < HARD_SWEEP_LANG_MAX and ppl > HARD_SWEEP_PPL_MIN:
-#             _fire("rule_hard_sweep")
-#             return "Trash", "trash_hard_sweep"
-#     if "rule_extreme_ppl" not in DISABLED_RULES:
-#         if ppl >= PPL_EXTREME_MIN and orig_lang_score < EXTREME_LANG_CONF:
-#             _fire("rule_extreme_ppl")
-#             return "Trash", "trash_hard_sweep"
-#     if "rule_absolute_ppl" not in DISABLED_RULES:
-#         if ppl >= PPL_GARBAGE_ABSOLUTE and not is_upright_czech:
-#             _fire("rule_absolute_ppl")
-#             return "Trash", "trash_hard_sweep"
-#
-#     # 2. Inverted / mirrored scan
-#     if "rule_inverted" not in DISABLED_RULES:
-#         if not is_upright_czech and (
-#             ghost_dominated
-#             or (
-#                 not has_cz_diacs(text_source)
-#                 and compute_rotatable_ratio(text_source) >= SUSPICIOUS_ROT_RATIO
-#                 and ppl >= PPL_INVERTED_MIN
-#                 and ghost_word_share(text_source)[0] >= GHOST_HITS_INVERTED_MIN
-#             )
-#         ):
-#             _fire("rule_inverted")
-#             return "Trash", "trash_inverted"
-#
-#     # 3. All-caps vowel-less scramble
-#     # Evaluating vr < 0.10 first fail-fast is cheaper than checking is_all_caps_line
-#     if "rule_allcaps" not in DISABLED_RULES:
-#         if vr < 0.10 and is_all_caps_line(text_source):
-#             _fire("rule_allcaps")
-#             return "Trash", "allcaps_novowel"
-#
-#     # 4. Overwhelming non-alphanumeric density
-#     if "rule_garbage_density" not in DISABLED_RULES:
-#         if garbage_density >= CATEG_GARBAGE_DENSITY_HIGH:
-#             is_siglum = word_count <= 2 and _RE_SIGLUM.match(text_source.strip())
-#             if is_siglum or (
-#                 "rule_trailing_fill_rescue" not in DISABLED_RULES
-#                 and _trailing_fill_rescued(text_source, valid_word_ratio, word_count)
-#             ):
-#                 pass  # Bypass this override and allow it to route naturally
-#             elif "rule_reference_floor" not in DISABLED_RULES and is_clean_reference(text_source):
-#                 # (#3 2026-07-22) Damage-free reference line ("Max. d. - -",
-#                 # "Neg. i.č,:") floors at Noisy rather than Trash on density.
-#                 _fire("rule_reference_floor")
-#                 return "Noisy", "noisy_threshold"
-#             else:
-#                 _fire("rule_garbage_density")
-#                 return "Trash", "trash_threshold"
-#
-#     # (#3 2026-07-02 calibration) computed once, after the hard-sweep /
-#     # inverted / all-caps / garbage-density overrides above, so genuine
-#     # garbage is untouched — it only ever lifts a line from Trash to Noisy.
-#     forgiven = "rule_forgiven_headline" not in DISABLED_RULES and is_forgiven_headline(text_source, garbage_density)
-#
-#     # (#3 2026-07-22 calibration) Character-level damage caps a 3+ word line
-#     # at Noisy. Consulted only where Clear would otherwise be returned, so it
-#     # never pushes a line toward Trash.
-#     damaged = "rule_damaged_token" not in DISABLED_RULES and word_count >= 3 and count_damaged_tokens(text_source) > 0
-#
-#     # 5a. Short lines (1-2 words): FastText confidence on 1-2 tokens is
-#     # statistically meaningless, so lang_score must never decide here (it
-#     # made "Poue" Clear and "Mzm." Trash purely on FastText's whim). Route
-#     # on structural evidence only:
-#     #   - a standalone domain siglum (Mzm., M.z.m., Tb.) is Clear;
-#     #   - structural damage (weirdness, gibberish, fused vowels, garbage)
-#     #     caps at Noisy;
-#     #   - no recognizable word at all and no Czech evidence -> Trash;
-#     #   - otherwise Clear only with positive evidence (Czech diacritics /
-#     #     upright function word, or all evaluable tokens structurally valid).
-#     if "rule_short_line" not in DISABLED_RULES and word_count <= 2:
-#         _fire("rule_short_line")
-#         stripped = text_source.strip()
-#         if _RE_SIGLUM.match(stripped) and sum(c.isalpha() for c in stripped) >= 2:
-#             return "Clear", "clear_threshold"
-#         # (#3 2026-07-22) A solitary letter carries no content -> Trash
-#         # (DS: "M" x8 = Trash; letter+digit codes "P1"/"P6" = Clear and are
-#         # untouched — their core is 2 chars). Forgiven floor still honored.
-#         if word_count == 1:
-#             solitary = stripped.strip(_STRIP_CHARS)
-#             if len(solitary) == 1 and solitary.isalpha() and "." not in stripped:
-#                 # (#3 2026-07-25, v8) The forgiven-headline floor used to lift
-#                 # these back to Noisy, and it caught every one of them in
-#                 # practice: all 12 solitary-letter lines in the DS annotation
-#                 # were forgiven, and DS rated all 12 Trash. A single letter is
-#                 # not a headline, so the floor does not apply here.
-#                 return "Trash", "trash_threshold"
-#         # (#3 2026-07-25, v8) An alternating-bigram run ("IDIDIDIDIDIDUOID",
-#         # "mioioioinininioiomio") is scanner noise, not damaged text — capping
-#         # it at Noisy via `damage` below was too lenient and it is what let
-#         # such a line climb out of Trash. No Czech word repeats a
-#         # bigram three times, and a full-set scan found only 3 297 such lines
-#         # (1 731 Noisy, 360 Clear), all of them garbage on inspection.
-#         if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
-#             return "Trash", "trash_threshold"
-#         # weird >= 0.40, not 0.30: the per-word scorer flags any word whose
-#         # single most frequent letter reaches 30% as "repeated" (0.35), which
-#         # hits innocent Czech words like "nenalezeno" (3x n, 3x e). Real stray
-#         # fragments score 0.425+ (isolated-letter penalty), so 0.40 separates
-#         # them. Trailing form-fill dots ("Okr.:.... Hodonín") are not damage.
-#         # The fused-word and gibberish detectors false-positive on clean
-#         # Czech (syllabic-r clusters: "vrstva"; vowel runs: "obou"), so on
-#         # their own they are not damage when every evaluable token is
-#         # structurally valid.
-#         structurally_clean = valid_word_ratio >= 1.0
-#         damage = (
-#             weird_ratio >= 0.40
-#             # (#3 2026-07-22) "IDIDIDIDIDIDUOID" passed as a structurally
-#             # valid word; an alternating-bigram run is damage regardless.
-#             or any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words)
-#             or ((gibberish_present or detect_fused_words(text_source) > 0) and not structurally_clean)
-#             or (
-#                 garbage_density >= CATEG_GARBAGE_DENSITY_HIGH
-#                 and not _trailing_fill_rescued(text_source, valid_word_ratio, word_count)
-#             )
-#         )
-#         if damage:
-#             return "Noisy", "noisy_threshold"
-#         # Abbreviation / numbered-reference floor (#3 2026-07-02): `forgiven`
-#         # must be honored here too, or this Trash branch would undercut the
-#         # is_forgiven_headline floor for 1-2 word lines. It is a floor, not a
-#         # cap ("lifts Trash→Noisy without demoting Clear" — 3.plan.md): a
-#         # correctly read siglum/unit/reference still rates Clear below.
-#         if valid_word_ratio <= 0.0 and not is_upright_czech:
-#             if forgiven:
-#                 return "Noisy", "noisy_threshold"
-#             return "Trash", "trash_threshold"
-#         if is_upright_czech or valid_word_ratio >= 1.0:
-#             # (#3 2026-07-22) Character-level OCR damage (symbol/digit/apostrophe
-#             # inside a token, vowel-less run) blocks Clear and caps at Noisy —
-#             # otherwise garbage like "Ch. i6dn.283/54" reaches Clear via the
-#             # inflated valid ratio. Consulted only on the Clear outcome, so it
-#             # never lifts the Trash branch above.
-#             if count_damaged_tokens(text_source) > 0:
-#                 return "Noisy", "noisy_threshold"
-#             return "Clear", "clear_threshold"
-#         return "Noisy", "noisy_threshold"
-#
-#     # 5. Structural short-garbage route
-#     if "rule_short_garbage" not in DISABLED_RULES and not forgiven:
-#         if (
-#             word_count <= ISOLATED_CHAR_MIN_TOKENS
-#             and not has_cz_diacs(text_source)
-#             and lang_score <= LANG_SCORE_REMAP
-#             and (gibberish_present or weird_ratio > 0.0)
-#         ):
-#             _fire("rule_short_garbage")
-#             return "Trash", "trash_threshold"
-#
-#     # 6. High-confidence LM override
-#     if "rule_lowppl_clear" not in DISABLED_RULES:
-#         if ppl < LOWPPL_CLEAR_MAX and word_count >= 3:
-#             if valid_word_ratio < MOSTLY_READABLE_VALID_MIN:
-#                 _fire("rule_lowppl_clear")
-#                 return "Noisy", "noisy_threshold"
-#             if damaged:
-#                 _fire("rule_damaged_token")
-#                 return "Noisy", "noisy_threshold"
-#             _fire("rule_lowppl_clear")
-#             return "Clear", "lowppl_clear"
-#
-#     # --- Strict thresholds replacing legacy cumulative penalties ---
-#     # Moved down to immediately precede QS band routing. Rules 1-6 ignore QS
-#     # and must take precedence. This restores parity by mimicking the priority
-#     # of the legacy cumulative subtraction.
-#     thresh_trash = CATEG_TRASH_SCORE_MAX + 0.35
-#
-#     def check_rescues():
-#         if "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
-#             text_source, valid_word_ratio, word_count
-#         ):
-#             _fire("rule_trailing_fill_rescue")
-#             return "Noisy", "noisy_threshold"
-#         if forgiven:
-#             _fire("rule_forgiven_headline")
-#             return "Noisy", "noisy_threshold"
-#         # (#3 2026-07-22) Reference floor: a damage-free catalogue/measurement
-#         # line ("kont. K 101-spraš", "ad č.j. MTX …") floors at Noisy instead
-#         # of Trash. Only ever lifts Trash → Noisy.
-#         if "rule_reference_floor" not in DISABLED_RULES and is_clean_reference(text_source):
-#             _fire("rule_reference_floor")
-#             return "Noisy", "noisy_threshold"
-#         return "Trash", "trash_threshold"
-#
-#     if "rule_wqx_rot" not in DISABLED_RULES:
-#         wqx_ratio = sum(1 for w in words if any(c in WQX_CHARS for c in w)) / max(word_count, 1)
-#         if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
-#             _fire("rule_wqx_rot")
-#             if quality_score < thresh_trash:
-#                 return check_rescues()
-#
-#     if "rule_vowelless" not in DISABLED_RULES:
-#         if word_count <= 3 and vr < 0.30 and not is_upright_czech:
-#             if is_all_caps_line(text_source):
-#                 _fire("rule_vowelless")
-#                 if quality_score < thresh_trash:
-#                     return check_rescues()
-#
-#     if "rule_ledger_fragmentation" not in DISABLED_RULES:
-#         if words and len(words) >= 4:
-#             frag_count = sum(1 for w in words if w.strip(_STRIP_CHARS).isdigit() or len(w.strip(_STRIP_CHARS)) <= 2)
-#             if (frag_count / len(words)) > 0.60:
-#                 _fire("rule_ledger_fragmentation")
-#                 if quality_score < thresh_trash:
-#                     return check_rescues()
-#
-#     if "rule_mid_uppercase" not in DISABLED_RULES:
-#         if word_count <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words):
-#             _fire("rule_mid_uppercase")
-#             if quality_score < thresh_trash:
-#                 return check_rescues()
-#
-#     # (#3 2026-07-25, v8) Same alternating-bigram run as in the short-line
-#     # gate, for lines of 3+ words that never reach it ("Jiné: Iiiiiiiiiiii").
-#     if "rule_bigram_run" not in DISABLED_RULES:
-#         if any(_RE_BIGRAM_RUN.search(w.strip(_STRIP_CHARS)) for w in words):
-#             _fire("rule_bigram_run")
-#             return check_rescues()
-#
-#     # (#3 2026-07-25 calibration, v8) Token-fragment route. A line whose mean
-#     # token length is under two characters has been shredded into fragments
-#     # ("k owpoti n", "O l", "/ ■ y i m") and carries no readable content.
-#     # rule_ledger_fragmentation covers the same idea but only for 4+ word lines
-#     # and with a laxer threshold, so short shredded lines slipped past it.
-#     # Clean references are skipped outright rather than left to the floor in
-#     # check_rescues(): a short catalogue line is legitimately made of tiny
-#     # tokens ("N. č. 16" averages 1.3 characters) and must keep its Clear —
-#     # the floor would only have caught it after demoting it. Measured on the
-#     # DS annotation, the reference guard lifted precision 0.59 -> 0.85.
-#     if "rule_fragment_tokens" not in DISABLED_RULES and not is_clean_reference(text_source):
-#         # A dot-terminated abbreviation is a whole word, not a fragment, so it
-#         # is measured with its dot ("N. č. 16" averages 2.0, not 1.3). This
-#         # left the Noisy→Trash hits untouched and halved the wrong Clear
-#         # demotions on the DS annotation (14 → 8).
-#         lengths = [
-#             len(core) + 1 if w.endswith(".") else len(core) for w in words for core in [w.strip(_STRIP_CHARS)] if core
-#         ]
-#         if lengths and (sum(lengths) / len(lengths)) < 2.0:
-#             _fire("rule_fragment_tokens")
-#             if quality_score < thresh_trash:
-#                 return check_rescues()
-#
-#     # 7. Quality-score band routing
-#     if quality_score < CATEG_TRASH_SCORE_MAX:
-#         return check_rescues()
-#
-#     if "rule_mostly_readable_noisy" not in DISABLED_RULES:
-#         if valid_word_ratio < MOSTLY_READABLE_VALID_MIN and not _lm_confident_czech(
-#             is_upright_czech, ppl, garbage_density
-#         ):
-#             _fire("rule_mostly_readable_noisy")
-#             return "Noisy", "noisy_threshold"
-#
-#     if damaged:
-#         _fire("rule_damaged_token")
-#         return "Noisy", "noisy_threshold"
-#     return "Clear", "clear_threshold"
-#
-#
-# def categorize_line(
-#     qs: float,
-#     txt: str,
-#     wc: int,
-#     vowel_ratio: float,
-#     perplexity: float,
-#     weird_ratio: float = 0.0,
-#     return_reason: bool = False,
-#     valid_word_ratio: float = 1.0,
-#     lang_score: float = 1.0,
-#     orig_lang_score: float = 1.0,
-#     gibberish_present: bool = False,
-#     garbage_density: float = 0.0,
-#     is_upright_czech: bool = False,
-#     ghost_dominated: bool = False,
-# ) -> tuple[str, float] | tuple[str, float, str]:
-#     # Delegate immediately to the strict thresholds rather than applying
-#     # cumulative subtraction modifiers to the quality score.
-#     categ, reason = determine_category(
-#         qs,
-#         txt,
-#         wc,
-#         vowel_ratio,
-#         perplexity,
-#         weird_ratio,
-#         valid_word_ratio,
-#         lang_score,
-#         orig_lang_score,
-#         gibberish_present,
-#         garbage_density,
-#         is_upright_czech,
-#         ghost_dominated,
-#     )
-#
-#     if categ == "Trash":
-#         aligned_score = min(qs, CATEG_TRASH_SCORE_MAX - 0.0001)
-#     elif categ == "Noisy":
-#         aligned_score = max(qs, CATEG_TRASH_SCORE_MAX)
-#         aligned_score = min(aligned_score, CATEG_NOISY_SCORE_MAX - 0.0001)
-#     elif categ == "Clear":
-#         aligned_score = max(qs, CATEG_NOISY_SCORE_MAX)
-#     else:
-#         aligned_score = qs
-#
-#     if return_reason:
-#         return categ, aligned_score, reason
-#     return categ, aligned_score
-
-
-# def categorize_line(
-#     qs: float,
-#     txt: str,
-#     wc: int,
-#     vowel_ratio: float,
-#     perplexity: float,
-#     weird_ratio: float = 0.0,
-#     return_reason: bool = False,
-#     valid_word_ratio: float = 1.0,
-#     lang_score: float = 1.0,
-#     orig_lang_score: float = 1.0,
-#     gibberish_present: bool = False,
-#     garbage_density: float = 0.0,
-#     is_upright_czech: bool = False,
-#     ghost_dominated: bool = False,
-# ) -> tuple[str, float] | tuple[str, float, str]:
-#     rot_ratio = compute_rotatable_ratio(txt)
-#     words = txt.split()
-#
-#     # --- FIX 1: Sneaky leaks (WQX & Rotation) ---
-#     if "penalty_wqx_rot" not in DISABLED_RULES:
-#         wqx_ratio = sum(1 for w in words if any(c in "wqxWQX" for c in w)) / max(wc, 1)
-#         if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
-#             _fire("penalty_wqx_rot")
-#             qs = max(0.0, qs - 0.35)
-#
-#     # --- FIX 2: Vowelless/Acronym gibberish ("WVL A") ---
-#     if "penalty_vowelless" not in DISABLED_RULES:
-#         if wc <= 3 and vowel_ratio < 0.30 and not is_upright_czech:
-#             if is_all_caps_line(txt):
-#                 _fire("penalty_vowelless")
-#                 qs = max(0.0, qs - 0.35)
-#
-#     # --- FIX 3: Ledger / Table Fragmentation Loophole ---
-#     if "penalty_ledger_fragmentation" not in DISABLED_RULES:
-#         if words and len(words) >= 4:
-#             frag_count = sum(1 for w in words if w.strip(_STRIP_CHARS).isdigit() or len(w.strip(_STRIP_CHARS)) <= 2)
-#             if (frag_count / len(words)) > 0.60:
-#                 _fire("penalty_ledger_fragmentation")
-#                 qs = max(0.0, qs - 0.35)
-#
-#     # --- FIX 4: Isolated Mid-Uppercase Fragments ("ClAŕ") ---
-#     if "penalty_mid_uppercase" not in DISABLED_RULES:
-#         if wc <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words):
-#             _fire("penalty_mid_uppercase")
-#             qs = max(0.0, qs - 0.35)
-#
-#     categ, reason = determine_category(
-#         qs,
-#         txt,
-#         wc,
-#         vowel_ratio,
-#         perplexity,
-#         weird_ratio,
-#         valid_word_ratio,
-#         lang_score,
-#         orig_lang_score,
-#         gibberish_present,
-#         garbage_density,
-#         is_upright_czech,
-#         ghost_dominated,
-#     )
-#
-#     if categ == "Trash":
-#         aligned_score = min(qs, CATEG_TRASH_SCORE_MAX - 0.0001)
-#     elif categ == "Noisy":
-#         aligned_score = max(qs, CATEG_TRASH_SCORE_MAX)
-#         aligned_score = min(aligned_score, CATEG_NOISY_SCORE_MAX - 0.0001)
-#     elif categ == "Clear":
-#         aligned_score = max(qs, CATEG_NOISY_SCORE_MAX)
-#     else:
-#         aligned_score = qs
-#
-#     if return_reason:
-#         return categ, aligned_score, reason
-#     return categ, aligned_score
-
-
-# ---------------------------------------------------------------------------
-# Simple Ratio & General Helpers
 # ---------------------------------------------------------------------------
 
 

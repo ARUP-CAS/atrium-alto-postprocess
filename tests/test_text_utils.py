@@ -355,5 +355,3 @@ class TestCategorizeLineReason:
         qs = CATEG_NOISY_SCORE_MAX + 0.02
         cat, score, reason = categorize_line(qs, "čistý text", 2, 0.4, 200.0, return_reason=True)
         assert cat == "Clear" and reason == "clear_threshold" and score >= CATEG_NOISY_SCORE_MAX
-
-
