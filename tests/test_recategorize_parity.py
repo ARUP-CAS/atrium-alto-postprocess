@@ -43,6 +43,42 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Rozměry : v - 112mm,pr.okraje - 145) pr. dna - 7",
+        "Tb. IX. ,2. č.neg.430. -",
+        "Tb. X. ,1. Č. neg. 432. .",
+        "Obsah :",
+        "2, Popis nálezu i - 3",
+        "V Prase 15. 1. 1995",
+        "Trať čp. 34, 35, 36",
+    ],
+)
+def test_structured_archaeological_lines_are_not_short_garbage(text):
+    from tools.recategorize_from_csv import is_structured_line
+
+    assert is_structured_line(text)
+
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "olie",
+        "oueussd",
+        "pbqdnuwmoxszeyv!!",
+        "NINNNIC",
+    ],
+)
+def test_obvious_garbage_is_not_structured(text):
+    from tools.recategorize_from_csv import is_structured_line
+
+    assert not is_structured_line(text)
+
+
+
 @pytest.fixture(scope="module")
 def corpus():
     return R.load_csvs(_SAMPLE_DIR)
@@ -183,7 +219,19 @@ def test_evaluate_dataframe_baseline_is_zero_flip(corpus):
 def test_evaluate_is_document_aware(corpus):
     per_doc = R.evaluate_per_document(corpus, R.DEFAULT_CONSTANTS)
     assert len(per_doc) == corpus["file"].nunique()
-    assert all(d["flip_rate"] <= 0.05 for d in per_doc.values())
+    violations = {
+        doc_id: stats
+        for doc_id, stats in per_doc.items()
+        if stats["flip_rate"] > 0.05
+    }
+
+    assert not violations, (
+            "Document-aware parity exceeded 5% flip rate for:\n"
+            + "\n".join(
+        f"  {doc_id}: {stats}"
+        for doc_id, stats in violations.items()
+    )
+    )
 
 
 def test_default_constants_reproduce_stored_categories(corpus):
@@ -202,3 +250,187 @@ def test_default_constants_reproduce_stored_categories(corpus):
 def test_qs_garbage_norm_max_default_is_parity(corpus):
     metrics = R.evaluate_dataframe(corpus, R.DEFAULT_CONSTANTS)
     assert metrics["flip_rate"] <= 0.02, "QS_GARBAGE_NORM_MAX at default should preserve parity"
+
+
+
+def test_print_document_aware_parity_violations(corpus, capsys):
+    """
+    Diagnostic test for document-level parity.
+
+    This test intentionally does not assert a threshold. It prints every
+    document whose default-config re-score exceeds the 5% flip-rate budget,
+    together with its aggregate statistics.
+
+    Remove or convert into a strict assertion once the underlying parity
+    issue has been resolved.
+    """
+    per_doc = R.evaluate_per_document(corpus, R.DEFAULT_CONSTANTS)
+
+    violations = {
+        doc_id: stats
+        for doc_id, stats in per_doc.items()
+        if stats["flip_rate"] > 0.05
+    }
+
+    if not violations:
+        return
+
+    print("\n=== DOCUMENT-AWARE PARITY VIOLATIONS ===")
+
+    for doc_id, stats in sorted(
+        violations.items(),
+        key=lambda item: item[1]["flip_rate"],
+        reverse=True,
+    ):
+        print(
+            f"{doc_id}: "
+            f"flip_rate={stats['flip_rate']:.2%}, "
+            f"changed={stats.get('changed', '?')}, "
+            f"total={stats.get('total', '?')}"
+        )
+
+    print("==========================================")
+
+
+def find_parity_mismatches(
+    df,
+    constants=None,
+):
+    """
+    Return line-level category mismatches between stored categories and the
+    production-equivalent re-score.
+
+    Parameters
+    ----------
+    df:
+        Input DataFrame containing the original stored categories and the
+        columns required by ``recategorize_dataframe``.
+
+    constants:
+        Optional constants override. If None, the live/default constants are
+        used.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per mismatching line. The returned DataFrame contains the
+        original input columns plus:
+
+        ``stored_category``
+            Normalized category from the input corpus.
+
+        ``predicted_category``
+            Normalized category produced by the re-scorer.
+
+        ``category_changed``
+            Always True for rows in the returned DataFrame.
+
+    Notes
+    -----
+    This helper intentionally delegates all categorization to the real
+    ``recategorize_dataframe`` implementation. It does not duplicate or
+    approximate production categorization logic.
+    """
+    import pandas as pd
+
+    predicted = recategorize_dataframe(df, constants)
+
+    if len(predicted) != len(df):
+        raise ValueError(
+            "recategorize_dataframe changed the number of rows: "
+            f"input={len(df)}, predicted={len(predicted)}"
+        )
+
+    result = df.copy()
+
+    stored = result["categ"].map(normalize_category)
+    predicted_categories = predicted["categ"].map(normalize_category)
+
+    result["stored_category"] = stored.to_numpy()
+    result["predicted_category"] = predicted_categories.to_numpy()
+
+    result["category_changed"] = (
+        result["stored_category"] != result["predicted_category"]
+    )
+
+    return result.loc[
+        result["category_changed"]
+    ].copy()
+
+
+def test_report_document_aware_parity_violations(corpus):
+    """
+    Diagnostic report for document-level parity failures.
+
+    The test fails if any document exceeds the 5% flip-rate budget and prints
+    the exact mismatching lines responsible for the violation.
+    """
+    mismatches = R.find_parity_mismatches(
+        corpus,
+        R.DEFAULT_CONSTANTS,
+    )
+
+    if mismatches.empty:
+        return
+
+    per_doc = (
+        mismatches.groupby("file", dropna=False)
+        .size()
+        .rename("changed")
+        .to_frame()
+    )
+
+    totals = (
+        corpus.groupby("file", dropna=False)
+        .size()
+        .rename("total")
+        .to_frame()
+    )
+
+    report = per_doc.join(totals)
+
+    report["flip_rate"] = (
+        report["changed"] / report["total"]
+    )
+
+    violations = report.loc[
+        report["flip_rate"] > 0.05
+    ].sort_values(
+        ["flip_rate", "changed"],
+        ascending=False,
+    )
+
+    if violations.empty:
+        return
+
+    print("\n=== DOCUMENT-AWARE PARITY VIOLATIONS ===")
+
+    for doc_id, stats in violations.iterrows():
+        print(
+            f"\n{doc_id}: "
+            f"{int(stats['changed'])}/{int(stats['total'])} "
+            f"({stats['flip_rate']:.2%})"
+        )
+
+        doc_mismatches = mismatches.loc[
+            mismatches["file"] == doc_id
+        ]
+
+        for _, row in doc_mismatches.iterrows():
+            file_name = row.get("file", doc_id)
+            line_num = row.get("line_num", "?")
+            text = str(row.get("text", ""))
+
+            print(
+                f"  L{line_num}: "
+                f"{row['stored_category']} -> "
+                f"{row['predicted_category']} | "
+                f"{text[:300]}"
+            )
+
+    print("\n==========================================")
+
+    assert False, (
+        "Document-aware parity exceeded 5% flip rate for one or more "
+        "documents. See diagnostic output above."
+    )
