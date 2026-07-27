@@ -6,20 +6,11 @@ Tests for the B5 rule-fire coverage instrumentation.
 Verifies four properties:
 
 1. **Parity** — with ``RULE_FIRE_COUNTS = None`` (the default) the engine
-   output is byte-identical to the pre-instrumentation behaviour.  The
-   existing ``test_recategorize_parity.py`` already covers the full-corpus
-   parity guarantee; these tests cover the instrumentation itself.
-
+   output is byte-identical to the pre-instrumentation behaviour.
 2. **Correct fire registration** — inside ``rule_fire_capture()`` a crafted
-   line that is known to trip a specific rule increments exactly that rule's
-   counter and leaves all others at zero.
-
-3. **Context-manager stack safety** — nested ``rule_fire_capture()`` calls
-   restore the outer context on exit; an exception inside the block does not
-   permanently enable counting.
-
-4. **End-to-end smoke** — ``run_coverage`` completes on the sample fixture
-   without error and returns a plausible result dict.
+   line increments exactly that rule's counter.
+3. **Context-manager stack safety** — nested calls stack properly.
+4. **End-to-end smoke** — ``run_coverage`` completes on the sample fixture.
 
 All tests are pure-Python; the GPU/ML stack is stubbed.
 """
@@ -67,7 +58,6 @@ def test_rule_fire_counts_default_is_none():
 def test_fire_noop_outside_capture():
     """_fire() must be a no-op when RULE_FIRE_COUNTS is None."""
     _fire("rule_hard_sweep")
-    # No exception, no side-effect.
     assert tu.RULE_FIRE_COUNTS is None
 
 
@@ -120,8 +110,7 @@ def test_fire_increments_counter():
 
 
 def test_rule_fire_capture_yields_live_dict():
-    """The yielded dict is the live RULE_FIRE_COUNTS — mutations inside the
-    block are immediately visible through the yielded reference."""
+    """The yielded dict is the live RULE_FIRE_COUNTS."""
     with rule_fire_capture() as counts:
         assert tu.RULE_FIRE_COUNTS is counts
         _fire("rule_extreme_ppl")
@@ -136,14 +125,14 @@ def test_hard_sweep_fires_for_low_lang_high_ppl():
     with rule_fire_capture() as counts:
         categ, _ = categorize_line(
             qs=0.2,
-            txt="klm klm klm",  # Updated to avoid triggering rule_wqx_rot early
+            txt="klm klm klm",
             wc=3,
             vowel_ratio=0.05,
             perplexity=99000.0,
             weird_ratio=0.9,
             valid_word_ratio=0.0,
             lang_score=0.1,
-            orig_lang_score=0.1,  # < HARD_SWEEP_LANG_MAX (0.45)
+            orig_lang_score=0.1,
             gibberish_present=True,
             garbage_density=0.05,
             is_upright_czech=False,
@@ -174,7 +163,7 @@ def test_lowppl_clear_fires_for_low_perplexity():
             txt="Toto je velmi dobrý český text.",
             wc=6,
             vowel_ratio=0.40,
-            perplexity=10.0,  # < LOWPPL_CLEAR_MAX (50.0)
+            perplexity=10.0,
             weird_ratio=0.05,
             valid_word_ratio=0.95,
             lang_score=0.92,
@@ -209,7 +198,6 @@ def test_nested_capture_restores_outer():
             _fire("rule_extreme_ppl")
             assert inner_counts.get("rule_extreme_ppl", 0) == 1
             assert inner_counts.get("rule_hard_sweep", 0) == 0
-        # After inner exits, outer context is restored.
         assert tu.RULE_FIRE_COUNTS is outer_counts
         _fire("rule_hard_sweep")
 
@@ -229,8 +217,7 @@ def test_capture_restores_on_exception():
 
 
 def test_disabled_rules_override_suppresses_fire():
-    """When a rule is in DISABLED_RULES (via override_constants), its _fire()
-    call is never reached — so no count is registered."""
+    """When a rule is in DISABLED_RULES, its _fire() call is never reached."""
     from text_util import categorize_line
 
     with override_constants({"DISABLED_RULES": frozenset(["rule_hard_sweep"])}):
@@ -262,25 +249,23 @@ def test_disabled_rules_override_suppresses_fire():
 @pytest.mark.skipif(not _HAS_SAMPLES, reason="no DOC_LINE_CATEG sample CSVs present")
 def test_run_coverage_smoke():
     """run_coverage must complete without error on the smoke fixture and return
-    a dict with all 15 rules, each having the expected keys."""
+    a dict with all registered rules."""
     from rule_coverage_report import RULES, run_coverage
 
     results = run_coverage(
         raw_path=str(_SAMPLE_DIR),
-        skip_loo=True,  # skip LOO for speed in unit tests
+        skip_loo=True,
         quiet=True,
     )
 
     assert set(results.keys()) == set(RULES), f"Unexpected rule keys: {set(results.keys()) ^ set(RULES)}"
-    for rule, data in results.items():
-        assert "fire_count" in data, f"Missing fire_count for {rule}"
-        assert "fire_rate" in data, f"Missing fire_rate for {rule}"
-        assert "decisive_count" in data, f"Missing decisive_count for {rule}"
-        assert "clear_loss" in data, f"Missing clear_loss for {rule}"
-        assert "class" in data, f"Missing class for {rule}"
-        assert data["class"] in {"DEAD", "REDUNDANT-HERE", "LOAD-BEARING"}, (
-            f"Unexpected class value for {rule}: {data['class']}"
-        )
+    for _rule, data in results.items():
+        assert "fire_count" in data
+        assert "fire_rate" in data
+        assert "decisive_count" in data
+        assert "clear_loss" in data
+        assert "class" in data
+        assert data["class"] in {"DEAD", "REDUNDANT-HERE", "LOAD-BEARING"}
         assert isinstance(data["fire_count"], int)
         assert isinstance(data["fire_rate"], float)
         assert data["fire_rate"] >= 0.0
@@ -301,10 +286,7 @@ def test_run_coverage_with_loo_smoke():
     for rule in RULES:
         assert results[rule]["decisive_count"] >= 0
         assert results[rule]["clear_loss"] >= 0
-        # clear_loss can never exceed decisive_count
-        assert results[rule]["clear_loss"] <= results[rule]["decisive_count"], (
-            f"clear_loss > decisive_count for {rule}: {results[rule]['clear_loss']} > {results[rule]['decisive_count']}"
-        )
+        assert results[rule]["clear_loss"] <= results[rule]["decisive_count"]
 
 
 @pytest.mark.skipif(not _HAS_SAMPLES, reason="no DOC_LINE_CATEG sample CSVs present")
@@ -312,7 +294,7 @@ def test_run_coverage_json_output(tmp_path):
     """run_coverage must write valid JSON to the --output path."""
     import json
 
-    from rule_coverage_report import run_coverage
+    from rule_coverage_report import RULES, run_coverage
 
     out_file = tmp_path / "rule_coverage.json"
     run_coverage(
@@ -327,29 +309,5 @@ def test_run_coverage_json_output(tmp_path):
     assert "n_lines" in payload
     assert "n_scored" in payload
     assert "rules" in payload
-    assert len(payload["rules"]) == 15
-
-
-# def test_rule_wqx_rot_fires():
-#     """The WQX/rotation rule must fire for a suspicious line."""
-#     from text_util import categorize_line
-#
-#     with rule_fire_capture() as counts:
-#         categ, qs = categorize_line(
-#             qs=0.80,  # <-- Lowered to fall within the thresh_trash limit
-#             txt="wqx bqd mow nuw zzz",
-#             wc=5,
-#             vowel_ratio=0.10,
-#             perplexity=300.0,
-#             weird_ratio=0.5,
-#             valid_word_ratio=0.1,
-#             lang_score=0.30,
-#             orig_lang_score=0.30,
-#             gibberish_present=True,
-#             garbage_density=0.1,
-#             is_upright_czech=False,
-#             ghost_dominated=False,
-#         )
-#
-#     assert counts.get("rule_wqx_rot", 0) == 1, "rule_wqx_rot should have fired"
-#     assert categ == "Trash", f"Expected Trash category after rule_wqx_rot threshold, got {categ}"
+    # Dynamically match RULES length so test survives when new rules are added.
+    assert len(payload["rules"]) == len(RULES)

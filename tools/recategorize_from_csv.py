@@ -20,39 +20,7 @@ imported from ``text_util`` / ``classify_TEXT``. Different constant
 values are explored by temporarily overriding the module-level tunables with
 ``text_util.override_constants`` (see ``recategorize_dataframe``) — never a
 parallel re-implementation — so the offline numbers match production by
-construction. At the default config the re-score reproduces the stored ``categ``
-(``flip_rate`` ~ 0); see ``tests/test_recategorize_parity.py``.
-
-This is a measurement/calibration aid, not part of the production pipeline.
-
-Usage
------
-    # diff report: re-score one CSV (or a dir) at the CURRENT config
-    python tools/recategorize_from_csv.py data_samples/DOC_LINE_CATEG/
-
-    # re-score a whole directory into a SEPARATE output dir (inputs untouched)
-    python tools/recategorize_from_csv.py data_samples/DOC_LINE_CATEG/ \
-        --out data_samples/DOC_LINE_CATEG_recat
-
-    # apply a different constant set (config file and/or KEY=VALUE overrides)
-    python tools/recategorize_from_csv.py data_samples/DOC_LINE_CATEG/ \
-        --config config.txt \
-        --override CATEG_TRASH_SCORE_MAX=0.45 LOWPPL_CLEAR_MAX=60.0 \
-        --out /tmp/rescored
-
-    # report only (do not write re-scored CSVs)
-    python tools/recategorize_from_csv.py data_samples/DOC_LINE_CATEG/ --report-only
-
-Caveats
--------
-* Fast-track rows (Empty / Non-text written by ``pre_filter_line`` with
-  ``word_count == 0``) are passed through unchanged — they never went through the
-  scoring path, so re-scoring them would be wrong. (Pre-filter-only constants
-  such as ANCHOR_* / ISOLATED_* therefore have no effect offline and are not
-  exposed as tunables.)
-* The re-scorer reflects ONLY logic reachable from the frozen signals; it cannot
-  re-derive anything that depended on the live FastText label distribution beyond
-  the stored top-1 guess (which is all the production path used anyway).
+construction.
 """
 
 from __future__ import annotations
@@ -277,134 +245,6 @@ def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
         }
     )
     return out
-
-
-# def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
-#     """Recompute one previously-scored line from its frozen signals.
-#
-#     Reads tunables through the live module (``_tu.SHORT_PPL_CAP``) and calls the
-#     real ``compute_quality_score`` / ``categorize_line`` so a surrounding
-#     ``override_constants`` block is honoured.
-#     """
-#     text_content = str(row.get("text", "") or "")
-#     original_text = str(row.get("original_text", "") or "")
-#     wc = len(text_content.split())
-#     cc = len(text_content)
-#
-#     original_lang = str(row.get("original_lang", "") or "")
-#     try:
-#         original_lang_score = float(row.get("orig_lang_score", 0.0) or 0.0)
-#     except (ValueError, TypeError):
-#         original_lang_score = 0.0
-#
-#     # (#3 A1) remap CAP on the frozen raw FastText guess.
-#     new_lang, new_score = remap_lang(
-#         original_lang,
-#         original_lang_score,
-#         known_bases,
-#         expected_langs[0] if expected_langs else "ces",
-#     )
-#
-#     try:
-#         ppl_val = float(row.get("perplex", 0.0) or 0.0)
-#     except (ValueError, TypeError):
-#         ppl_val = 0.0
-#     if wc <= 2 and ppl_val > _tu.SHORT_PPL_CAP:
-#         ppl_val = _tu.SHORT_PPL_CAP
-#
-#     g_density = compute_garbage_density(original_text)
-#     vowel_ratio = compute_vowel_ratio(original_text)
-#     upper_count = detect_mid_uppercase(text_content)
-#     rep_count = detect_repeated_chars(text_content)
-#     fuse_count = detect_letter_digit_letter(text_content)
-#     fused_words = detect_fused_words(text_content)
-#     gibb_count = detect_gibberish_words(text_content)
-#     wx_count = detect_wx_words(text_content)
-#
-#     rot_ratio = compute_rotatable_ratio(text_content)
-#     is_upright_czech, ghost_dominated = analyze_rotation_signals(text_content)
-#
-#     caps_header = is_all_caps_line(text_content)
-#     weird_ratio = compute_word_weird_ratio(score_words_in_line(text_content))
-#     valid_ratio = compute_valid_ratio(text_content)
-#
-#     # ALIGNMENT FIX: Two-tier Trust System over flat remapping
-#     base_lang = _lang_base(original_lang)
-#     if base_lang in known_bases:
-#         if base_lang in expected_langs:
-#             trust_lang_score = original_lang_score
-#         else:
-#             trust_lang_score = original_lang_score * 0.85
-#     else:
-#         trust_lang_score = original_lang_score * 0.50
-#
-#     q_score = compute_quality_score(
-#         valid_word_ratio=valid_ratio,
-#         perplexity=ppl_val,
-#         text_length=cc,
-#         weird_ratio=weird_ratio,
-#         vowel_ratio=vowel_ratio,
-#         garbage_density=g_density,
-#         lang_score=trust_lang_score,
-#         gibberish_ratio=(gibb_count + wx_count) / max(wc, 1),
-#         fused_ratio=fused_words / max(wc, 1),
-#         is_upright_czech=is_upright_czech,
-#     )
-#
-#     # (#3 A2/B) post-cap score + gibberish flag into the categoriser.
-#     categ, q_score, reason = categorize_line(
-#         q_score,
-#         text_content,
-#         wc,
-#         vowel_ratio,
-#         ppl_val,
-#         weird_ratio=weird_ratio,
-#         return_reason=True,
-#         valid_word_ratio=valid_ratio,
-#         lang_score=trust_lang_score,
-#         orig_lang_score=original_lang_score,
-#         gibberish_present=(gibb_count + wx_count) > 0,
-#         garbage_density=g_density,
-#         is_upright_czech=is_upright_czech,
-#         ghost_dominated=ghost_dominated,
-#     )
-#
-#     out = dict(row)  # keep any columns we do not recompute
-#     out.update(
-#         {
-#             "categ": categ,
-#             "quality_score": f"{q_score:.4f}",
-#             "lang": new_lang,
-#             "lang_score": f"{new_score:.4f}",
-#             "original_lang": original_lang,
-#             "orig_lang_score": f"{original_lang_score:.4f}",
-#             "perplex": f"{ppl_val:.2f}",
-#             "word_count": wc,
-#             "char_count": cc,
-#             "garbage_density": f"{g_density:.4f}",
-#             "upper": upper_count,
-#             "repeated": rep_count,
-#             "ldl_fuses": fuse_count,
-#             "fused_words": fused_words,
-#             "gibberish": gibb_count,
-#             "weird_wx": wx_count,
-#             "word_weird": f"{weird_ratio:.4f}",
-#             "vowel_ratio": f"{vowel_ratio:.4f}",
-#             "rot_ratio": f"{rot_ratio:.4f}",
-#             "caps_header": caps_header,
-#             "allcaps_novowel": reason == "allcaps_novowel",
-#             "lowppl_clear": reason == "lowppl_clear",
-#             "cleanprose_clear": reason == "cleanprose_clear",
-#             "trash_threshold": reason in TRASH_REASONS,
-#             "noisy_threshold": reason == "noisy_threshold",
-#             "clear_threshold": reason == "clear_threshold",
-#             "pp_dedup": False,
-#             "pp_surrounded_trash": False,
-#             "pp_inverted_run": False,
-#             "pp_page_context": False,
-#         }
-#     )
-#     return out
 
 
 def _coerce_locators(df: pd.DataFrame) -> pd.DataFrame:
@@ -854,8 +694,7 @@ def evaluate_dataframe(
 ) -> dict[str, Any]:
     """Faithfully re-categorise ``df`` under ``constants`` and score it against the
     stored categories. The evaluation runs the real production engine
-    (document-aware, with page post-processing), so at the default config the
-    flip_rate is ~0 by construction.
+    (document-aware, with page post-processing).
     """
     if original_category_column in df.columns:
         original = df[original_category_column].map(normalize_category).to_numpy()
@@ -895,37 +734,6 @@ def find_parity_mismatches(
     """
     Return line-level category mismatches between stored categories and the
     production-equivalent re-score.
-
-    Parameters
-    ----------
-    df:
-        Input DataFrame containing the original stored categories and the
-        columns required by ``recategorize_dataframe``.
-
-    constants:
-        Optional constants override. If None, the live/default constants are
-        used.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per mismatching line. The returned DataFrame contains the
-        original input columns plus:
-
-        ``stored_category``
-            Normalized category from the input corpus.
-
-        ``predicted_category``
-            Normalized category produced by the re-scorer.
-
-        ``category_changed``
-            Always True for rows in the returned DataFrame.
-
-    Notes
-    -----
-    This helper intentionally delegates all categorization to the real
-    ``recategorize_dataframe`` implementation. It does not duplicate or
-    approximate production categorization logic.
     """
     predicted = recategorize_dataframe(df, constants)
 
