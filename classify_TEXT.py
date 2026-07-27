@@ -75,6 +75,7 @@ from text_util import (
     compute_valid_ratio,
     compute_vowel_ratio,
     compute_word_weird_ratio,
+    count_damaged_tokens,
     detect_fused_words,
     detect_gibberish_words,
     detect_letter_digit_letter,
@@ -83,6 +84,7 @@ from text_util import (
     detect_wx_words,
     has_cz_diacs,
     is_all_caps_line,
+    is_structured_line,
     parse_line_splits,
     pre_filter_line,
     remap_lang,
@@ -130,6 +132,9 @@ CSV_HEADER = [
     "word_weird",
     "vowel_ratio",
     "rot_ratio",
+    "valid_word_ratio",
+    "structured",
+    "damaged",
     "caps_header",
     "allcaps_novowel",
     "lowppl_clear",
@@ -396,6 +401,9 @@ def process_and_write_batch_cpu(
             ghost_dominated=ghost_dominated,
         )
 
+        structured_flag = is_structured_line(text_content)
+        damaged_flag = count_damaged_tokens(text_content) > 0
+
         row_dict = {
             "categ": categ,
             "quality_score": f"{q_score:.4f}",
@@ -414,7 +422,6 @@ def process_and_write_batch_cpu(
             "word_count": wc,
             "char_count": cc,
             "garbage_density": f"{g_density:.4f}",
-            # "symbol": sym_count,
             "upper": upper_count,
             "repeated": rep_count,
             "ldl_fuses": fuse_count,
@@ -424,6 +431,9 @@ def process_and_write_batch_cpu(
             "word_weird": f"{weird_ratio:.4f}",
             "vowel_ratio": f"{vowel_ratio:.4f}",
             "rot_ratio": f"{rot_ratio:.4f}",
+            "valid_word_ratio": f"{valid_ratio:.4f}",
+            "structured": structured_flag,
+            "damaged": damaged_flag,
             "caps_header": caps_header,
             "allcaps_novowel": reason == "allcaps_novowel",
             "lowppl_clear": reason == "lowppl_clear",
@@ -434,7 +444,7 @@ def process_and_write_batch_cpu(
             "pp_dedup": False,
             "pp_surrounded_trash": False,
             "pp_inverted_run": False,
-            "pp_page_context": False,  # <-- ADD THIS MISSING KEY
+            "pp_page_context": False,
         }
         results.append(_row_from_dict(row_dict))
 
@@ -465,7 +475,6 @@ def _fast_track_row(file_id, page_id, line_num, clean_text, original_text, split
         "word_count": 0,
         "char_count": len(clean_text),
         "garbage_density": "0.0000",
-        # "symbol": 0,
         "upper": 0,
         "repeated": 0,
         "ldl_fuses": 0,
@@ -475,6 +484,9 @@ def _fast_track_row(file_id, page_id, line_num, clean_text, original_text, split
         "word_weird": "0.0000",
         "vowel_ratio": "0.0000",
         "rot_ratio": "0.0000",
+        "valid_word_ratio": "0.0000",
+        "structured": False,
+        "damaged": False,
         "caps_header": False,
         "allcaps_novowel": False,
         "lowppl_clear": False,

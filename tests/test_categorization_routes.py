@@ -1,10 +1,10 @@
 """
 tests/test_categorization_routes.py
 ===================================
-Unit coverage for the #3 categorisation routes: the inverted/mirror lexicon and
+Unit coverage for the categorisation routes: the inverted/mirror lexicon and
 its derivation, analyze_rotation_signals (gate behaviour), the per-line
-trash_inverted route + non-diacritics hard gate, and the low-ppl Clear
-fast-track. All pure-Python — no torch/fasttext/GPU.
+trash_inverted route + non-diacritics hard gate, low-ppl Clear fast-track,
+damaged-token capping, and structured measurement predicate boundaries.
 """
 
 from text_util import (
@@ -12,10 +12,46 @@ from text_util import (
     _ROTATE_GLYPH,
     ROT_GHOSTLIST,
     ROT_WHITELIST,
+    _looks_like_measurement,
     _transform_word,
     analyze_rotation_signals,
     categorize_line,
+    inspect_short_line_telemetry,
+    is_structured_line,
 )
+
+
+class TestExplicitDiagnosticHardGates:
+    """Test explicit hard gates routing directly on rule firing + garbage evidence."""
+
+    def test_bigram_run_with_garbage_evidence_routes_to_trash(self):
+        # High quality score base, but bigram run + low valid word ratio -> Trash
+        cat, _, reason = categorize_line(0.85, "IDIDID text", 2, 0.3, 100.0, valid_word_ratio=0.10, return_reason=True)
+        assert cat == "Trash" and reason in ("trash_threshold", "trash_hard_sweep")
+
+    def test_fragment_tokens_with_garbage_evidence_routes_to_trash(self):
+        # Fragment tokens + low language score -> Trash via rule_fragment_tokens
+        cat, _, reason = categorize_line(
+            0.82, "a b c d e f", 6, 0.2, 120.0, lang_score=0.10, orig_lang_score=0.10, return_reason=True
+        )
+        assert cat == "Trash" and reason == "trash_threshold"
+
+
+class TestShortLineTelemetry:
+    """Test telemetry inspector helper for short-line route analysis."""
+
+    def test_inspect_short_line_telemetry_captures_fields(self):
+        telemetry = inspect_short_line_telemetry(
+            text_source="v - 112mm",
+            word_count=2,
+            valid_word_ratio=1.0,
+            lang_score=0.9,
+            perplexity=45.0,
+        )
+        assert telemetry["word_count"] == 2
+        assert telemetry["structured"] is True
+        assert telemetry["final_category"] in ("Clear", "Noisy", "Trash")
+        assert "route_reason" in telemetry
 
 
 class TestGlyphTransforms:
@@ -24,7 +60,6 @@ class TestGlyphTransforms:
         assert _transform_word("bude", _MIRROR_GLYPH) == "ebud"
 
     def test_rotate_corrected_values(self):
-        # The three entries the hand tables got wrong.
         assert _transform_word("pouze", _ROTATE_GLYPH) == "aznod"
         assert _transform_word("bude", _ROTATE_GLYPH) == "apnq"
 
@@ -34,7 +69,6 @@ class TestGlyphTransforms:
         assert _transform_word("on", _MIRROR_GLYPH) == "no"
 
     def test_unmappable_glyph_aborts_word(self):
-        # 'k' has no rotation image -> no fabricated ghost.
         assert _transform_word("kov", _ROTATE_GLYPH) is None
 
 
@@ -55,8 +89,7 @@ class TestTrashInvertedGate:
 class TestLowPplFastTrack:
     """The low-ppl Clear fast-track (rule_lowppl_clear): LM-confident text
     (ppl < LOWPPL_CLEAR_MAX, word_count >= 3) is promoted straight to Clear,
-    independent of the score band. Replaces the retired CLEAR_BAND_WC_MIN /
-    rule_short_fragment_noisy guard (#5)."""
+    independent of the score band."""
 
     def test_lowppl_multiword_promoted_to_clear(self):
         cat, _, reason = categorize_line(
@@ -65,14 +98,10 @@ class TestLowPplFastTrack:
         assert cat == "Clear" and reason == "lowppl_clear"
 
     def test_short_fragment_no_longer_held_noisy(self):
-        # A short borderline-garbagey fragment is no longer demoted by a hard
-        # word-count gate; with the guard retired it follows the score band.
         cat, _, reason = categorize_line(0.92, "značky.", 1, 0.4, 200.0, garbage_density=0.14, return_reason=True)
         assert cat == "Clear" and reason != "lowppl_clear"
 
     def test_lowppl_low_valid_ratio_capped_to_noisy(self):
-        # ppl < LOWPPL_CLEAR_MAX and wc >= 3, but valid_word_ratio below the
-        # mostly-readable floor -> the fast-track caps to Noisy, not Clear.
         cat, _, reason = categorize_line(
             0.80, "slovo bez bez diakritiky", 4, 0.4, 30.0, return_reason=True, valid_word_ratio=0.50
         )
@@ -84,12 +113,10 @@ class TestGhostlist:
         assert ROT_WHITELIST.isdisjoint(ROT_GHOSTLIST)
 
     def test_common_real_words_not_ghosts(self):
-        # Now passing since collision pruning wasn't overwritten
         for w in ("no", "od", "po", "bo", "pod", "se"):
             assert w not in ROT_GHOSTLIST
 
     def test_expected_ghosts_present(self):
-        # Now passing since manual typo dicts were removed
         for g in ("aznod", "apnq", "oq", "boq", "zem"):
             assert g in ROT_GHOSTLIST
 
@@ -115,25 +142,14 @@ class TestAnalyzeRotationSignals:
         assert up is True
 
 
-# Delete test_rot_ratio_gate_blocks_low_rotatable entirely
-
-
 class TestExtremePplRoute:
-    """(#3 Problem 3) extreme-perplexity trash route in determine_category."""
-
     def test_extreme_ppl_low_conf_garbage_trashed(self):
-        # 'Alyrý cvod nede % Agrgr oAOrt': ppl 15168, slk @ 0.6658 (< 0.85).
-        # FastText is confident enough (0.6658 >= HARD_SWEEP_LANG_MAX) that the
-        # original hard sweep misses it; the extreme-ppl route must catch it.
         cat, _, reason = categorize_line(
             0.80, "Alyrý cvod nede % Agrgr oAOrt", 6, 0.41, 15168.0, return_reason=True, orig_lang_score=0.6658
         )
         assert cat == "Trash" and reason == "trash_hard_sweep"
 
     def test_extreme_ppl_confident_text_spared(self):
-        # Same extreme ppl but a confident label (>= EXTREME_LANG_CONF) -> NOT
-        # trashed by this route: readable OCR-degraded text with a genuinely huge
-        # ppl is spared (e.g. 'Taxon vojcuskou' ces:0.90 ppl=10432).
         cat, _, reason = categorize_line(
             0.80, "Taxon vojcuskou povinen jest", 4, 0.45, 15168.0, return_reason=True, orig_lang_score=0.95
         )
@@ -141,13 +157,7 @@ class TestExtremePplRoute:
 
 
 class TestLmConfidentCzechBypass:
-    """(#3 Problem 2) LM-confident upright Czech bypasses the Mostly-Readable
-    valid_word_ratio cap at the Clear-band, recovering clean prose stranded at
-    Noisy/0.8499. Applied ONLY at the Clear-band cap, not the cleanprose band."""
-
     def test_upright_czech_low_ppl_bypasses_valid_cap(self):
-        # qs in Clear band, valid_ratio < 0.85, but upright Czech + low ppl ->
-        # cap bypassed -> Clear (e.g. 'í nezpůsobilost ke službě nebyla').
         cat, _, reason = categorize_line(
             0.88,
             "í nezpůsobilost ke službě nebyla",
@@ -162,7 +172,6 @@ class TestLmConfidentCzechBypass:
         assert cat == "Clear" and reason == "clear_threshold"
 
     def test_non_czech_low_valid_still_capped(self):
-        # Control: same band/ppl but NOT upright Czech -> cap still demotes.
         cat, _, reason = categorize_line(
             0.88,
             "slovo bez diakritiky tady",
@@ -177,10 +186,6 @@ class TestLmConfidentCzechBypass:
         assert cat == "Noisy" and reason == "noisy_threshold"
 
     def test_high_garbage_czech_not_bypassed(self):
-        # Guard (cleanprose-band deviation): an upright low-ppl Czech FRAGMENT
-        # with high garbage density is NOT bypassed, so diacritic-bearing garbage
-        # like 'nonč, mI 47 žn dn ...' (garbage_density >= CZECH_CLEAR_GARBAGE_MAX)
-        # can never reach Clear through this route.
         cat, _, _ = categorize_line(
             0.88,
             "nonč mI žn dn 1074 484",
@@ -193,3 +198,28 @@ class TestLmConfidentCzechBypass:
             garbage_density=0.20,
         )
         assert cat == "Noisy" or cat == "Trash"
+
+
+class TestDamagedTokenCap:
+    """Restored damaged-token backstop: character-level damage prevents Clear."""
+
+    def test_damaged_token_caps_clear_score_to_noisy(self):
+        # High quality score (qs=0.90), but text contains damaged token 'd^ku'
+        cat, _, reason = categorize_line(0.90, "tento text obsahuje d^ku poškození", 5, 0.4, 100.0, return_reason=True)
+        assert cat == "Noisy" and reason == "noisy_threshold"
+
+
+class TestStructuredLineMeasurement:
+    """Tightened _looks_like_measurement and is_structured_line predicates."""
+
+    def test_legitimate_measurements_protected(self):
+        assert is_structured_line("Rozměry: v - 112mm, pr.okraje - 145, pr. dna - 7") is True
+        assert is_structured_line("Rozměry ; v- 144 mm, pr. okraje - 125") is True
+        assert is_structured_line("v - 185 mm, pr. okraje - 20") is True
+        assert is_structured_line("pr. hrdla 62mm, pr.-dna 36") is True
+
+    def test_single_letter_units_and_probe_noise_rejected(self):
+        assert _looks_like_measurement("3 m") is False
+        assert _looks_like_measurement("o 5 m") is False
+        assert _looks_like_measurement("cuxoaid v. 12") is False
+        assert _looks_like_measurement("clouCelRa pr. 4") is False
