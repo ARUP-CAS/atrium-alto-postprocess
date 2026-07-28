@@ -62,6 +62,7 @@ from text_util import (  # noqa: E402
     compute_valid_ratio,
     compute_vowel_ratio,
     compute_word_weird_ratio,
+    count_damaged_tokens,  # <-- ADDED
     detect_fused_words,
     detect_gibberish_words,
     detect_letter_digit_letter,
@@ -69,6 +70,7 @@ from text_util import (  # noqa: E402
     detect_repeated_chars,
     detect_wx_words,
     is_all_caps_line,
+    is_structured_line,  # <-- ADDED
     override_constants,
     remap_lang,
     score_words_in_line,
@@ -169,6 +171,10 @@ def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
     weird_ratio = compute_word_weird_ratio(score_words_in_line(text_content))
     valid_ratio = compute_valid_ratio(text_content)
 
+    # ALIGNMENT FIX: Evaluate missing signals
+    structured = is_structured_line(text_content)
+    damaged = count_damaged_tokens(text_content) > 0
+
     # ALIGNMENT FIX: Apply Two-tier Trust System to perfectly match classify_TEXT.py
     base_lang = _lang_base(original_lang)
     if base_lang in known_bases:
@@ -221,6 +227,9 @@ def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
             "perplex": f"{ppl_val:.2f}",
             "word_count": wc,
             "char_count": cc,
+            "valid_word_ratio": f"{valid_ratio:.4f}",  # <-- ADDED
+            "structured": structured,  # <-- ADDED
+            "damaged": damaged,  # <-- ADDED
             "garbage_density": f"{g_density:.4f}",
             "upper": upper_count,
             "repeated": rep_count,
