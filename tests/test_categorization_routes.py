@@ -223,3 +223,30 @@ class TestStructuredLineMeasurement:
         assert _looks_like_measurement("o 5 m") is False
         assert _looks_like_measurement("cuxoaid v. 12") is False
         assert _looks_like_measurement("clouCelRa pr. 4") is False
+
+    def test_dotted_descriptor_matches_regardless_of_trailing_space(self):
+        # A trailing \b directly after a literal "." only holds when the dot is
+        # glued to a following word/digit char, so OCR inserting (or not) a
+        # space after "pr."/"rozm." must not change the verdict. Isolated,
+        # minimal inputs only -- unlike test_legitimate_measurements_protected,
+        # none of these may trip has_measurement_separator or has_unit as a
+        # side channel, so each one actually isolates the dotted-keyword path.
+        assert _looks_like_measurement("pr.okraje - 145") is True
+        assert _looks_like_measurement("pr. okraje - 145") is True
+        assert _looks_like_measurement("rozm.12") is True
+        assert _looks_like_measurement("rozm. 12") is True
+        assert _looks_like_measurement("pr. dna - 7") is True
+        # A single dotted-descriptor hit still isn't corroboration on its own.
+        assert _looks_like_measurement("pr. 4") is False
+
+    def test_glued_bare_metre_unit_protected_but_spaced_unit_is_not(self):
+        # The metre is this corpus's single most common unit by a wide margin
+        # (far ahead of "mm"), so a digit glued directly to "m" is a real
+        # measurement signal -- but a *spaced* bare unit ("3 m") stays
+        # unmatched, since that alone is too weak a signal (see the rejected
+        # probes above).
+        assert _looks_like_measurement("0,2-0,4m") is True
+        assert _looks_like_measurement("0,4-0,6m") is True
+        assert _looks_like_measurement("Max, sila: 0,46m") is True
+        assert _looks_like_measurement("3 m") is False
+        assert _looks_like_measurement("o 5 m") is False

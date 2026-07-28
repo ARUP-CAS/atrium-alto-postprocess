@@ -884,6 +884,40 @@ def _trailing_fill_rescued(text_source: str, valid_word_ratio: float, word_count
 
 
 def is_forgiven_headline(text: str, garbage_density: float) -> bool:
+    """(#3 2026-07-02 calibration) Recognise short numbered headlines/captions
+    (``"2, Popis nálezu i - 3"``, ``"Plánek č. 1"``) and bare domain
+    abbreviations (``mm``, ``Tb.``, ``č.neg.``) that would otherwise mis-route
+    to Trash/Non-text purely because the digits/symbols around one or two real
+    words drag ``valid_word_ratio`` down.
+
+    Every token is classified as one of:
+      * NUMBERING  — a pure digit (short numbering only, see
+        ``HEADLINE_MAX_DIGITS``) or a roman numeral. Supplies *context*.
+      * ABBREV     — a known unit/abbreviation (``SHORT_EXCEPTION_TOKENS``), an
+        academic title, or a ``METADATA_MARKERS`` marker. Supplies both
+        *content* and *context* (a bare ``mm`` line qualifies on its own).
+      * FUNCTION   — a whitelisted short Czech word (``SHORT_VALID_WORDS`` /
+        ``SINGLE_CHAR_ALLOWED``). Real *content*, but no context by itself.
+      * CLEAN WORD — passes the same acceptance test as ``compute_valid_ratio``'s
+        inner branch, plus a vowel-bearing check. Real *content*, no context.
+        Multi-token lines only: a single bare "clean-looking" word is exactly the
+        profile of an inverted-scan / short-garbage token (``oueussd``, ``olie``)
+        that rule_inverted / rule_short_garbage exist to catch.
+      * STRUCTURAL — pure punctuation: no information either way.
+      * GARBAGE    — anything else, and disqualifies the whole line.
+
+    A line is forgiven only when it carries BOTH real *content* (a clean word,
+    abbreviation, or function word) AND genuine numbering/abbreviation *context*
+    (a digit, roman numeral, or domain abbreviation). Requiring the context term
+    is what keeps a bare short prose fragment (``"popel dřevo kůstky"``) — no
+    numbering, no abbreviation — out of the forgiveness path; those must route on
+    their own quality score, exactly as before this pass. Every DanaKriv example
+    carries such context (``2, ...``, ``4. ...``, ``Plánek č. 1``, ``mm``).
+
+    Deliberately tight: a single OCR-mangled token (``oAOrt``, ``vyt1ačená``)
+    or an over-long digit run (an archive/stamp code, not a caption number)
+    disqualifies the line, so genuine garbage is never rescued.
+    """
     tokens = text.split()
     if not tokens or len(tokens) > HEADLINE_MAX_WORDS:
         return False
@@ -891,14 +925,17 @@ def is_forgiven_headline(text: str, garbage_density: float) -> bool:
         return False
 
     multi_token = len(tokens) >= 2
-    has_content = False
-    has_context = False
+    has_content = False  # a clean word, abbreviation, or function word
+    has_context = False  # numbering (digit / roman) or a domain abbreviation
     for tok in tokens:
         core = tok.strip(_STRIP_CHARS)
 
+        # STRUCTURAL — pure punctuation (no alnum at all) carries no
+        # information either way.
         if not core or not any(c.isalnum() for c in core):
             continue
-
+        # NUMBERING — short numbering only; longer digit runs are archive/stamp
+        # codes, not caption numbers.
         if core.isdigit():
             if len(core) > HEADLINE_MAX_DIGITS:
                 return False
@@ -907,6 +944,8 @@ def is_forgiven_headline(text: str, garbage_density: float) -> bool:
 
         normalized = core.lower().replace(".", "").replace(",", "")
 
+        # ABBREV — a domain unit/marker/title supplies both content and context,
+        # so a bare "mm" / "Tb." / "č.neg." line qualifies on its own.
         if (
             normalized in SHORT_EXCEPTION_TOKENS
             or core.rstrip(".") in ACADEMIC_TITLES
@@ -916,14 +955,21 @@ def is_forgiven_headline(text: str, garbage_density: float) -> bool:
             has_context = True
             continue
 
+        # NUMBERING — roman numeral (checked after ABBREV so real abbreviations
+        # built only of I/V/X/L/C/D/M aren't misread as numbering). A lone
+        # ambiguous glyph ("v", "i", "l", ...) is a Czech function word, not a
+        # numeral, so genuine roman numbering needs at least two glyphs.
         if len(core.rstrip(".")) >= 2 and RE_ROMAN_NUMERAL.match(core):
             has_context = True
             continue
 
+        # FUNCTION — a whitelisted short Czech word / single char is real
+        # content, but is NOT numbering/abbreviation context on its own.
         if core.lower() in SHORT_VALID_WORDS or core in SINGLE_CHAR_ALLOWED:
             has_content = True
             continue
 
+        # CLEAN WORD — multi-token lines only (see docstring).
         if multi_token:
             alpha = sum(c.isalpha() for c in core)
             has_strange = any(not c.isalnum() and c not in ALLOWED_INTERNAL for c in core)
@@ -937,6 +983,7 @@ def is_forgiven_headline(text: str, garbage_density: float) -> bool:
                 has_content = True
                 continue
 
+        # GARBAGE
         return False
 
     return has_content and has_context
@@ -1834,11 +1881,22 @@ def _looks_like_measurement(text_source: str) -> bool:
 
     This predicate is deliberately conservative. It requires either:
       - an explicit measurement keyword with numeric context, or
-      - multi-character measurement units (mm, cm, km, kg, ml, ha), or
+      - multi-character measurement units (mm, cm, km, kg, ml, ha), or a
+        bare metre unit glued directly to its number (0,4m), or
       - explicit measurement separator structures (e.g. v - 112, pr.okraje - 145).
 
     It strictly avoids classifying arbitrary digit-containing OCR or weak
     single-letter substrings/units as structured.
+
+    Keyword/descriptor entries ending in a literal "." (rozm., pr., hl.) are
+    matched WITHOUT a trailing \\b. A "." is a non-word character, so a
+    trailing \\b can only hold when the abbreviation happens to be glued to a
+    following word/digit character ("pr.okraje") — it silently fails whenever
+    OCR (correctly) leaves a space or line-end after the dot ("pr. okraje",
+    "rozm. 12", "pr. dna - 7"). The leading \\b is unaffected and still keeps
+    these from matching mid-word; a lone hit still isn't enough on its own
+    ("clouCelRa pr. 4" stays unmatched — one descriptor hit is below the
+    corroboration threshold below).
     """
     stripped = " ".join(text_source.split())
 
@@ -1848,19 +1906,28 @@ def _looks_like_measurement(text_source: str) -> bool:
     lowered = stripped.lower()
 
     # [STEP 3] Token-bounded full Czech measurement keywords.
-    # Excludes bare single-letter abbreviations (v., š., d.) from generic keyword match.
-    full_measurement_keywords = r"\b(?:rozměry?|rozm\.|výška|šířka|délka|hloubka|průměr)\b"
+    # Word-form entries keep a trailing boundary (avoids matching inside a
+    # longer word); dot-terminated abbreviations must NOT have one — see
+    # the docstring note on why \b cannot follow a literal "." into
+    # whitespace or line-end.
+    full_measurement_keywords = r"\brozm\." r"|\b(?:rozměry?|výška|šířka|délka|hloubka|průměr)\b"
     has_full_keyword = bool(re.search(full_measurement_keywords, lowered))
 
     # Secondary measurement descriptors (require multiple hits or numeric context).
-    descriptor_keywords = r"\b(?:pr\.|hl\.|dna|hrdla|okraje)\b"
+    # Same dotted/word split as above, same reason.
+    descriptor_keywords = r"\b(?:pr|hl)\." r"|\b(?:dna|hrdla|okraje)\b"
     descriptor_hits = len(re.findall(descriptor_keywords, lowered))
 
-    # [STEP 3] Multi-character measurement units only.
-    # Excludes bare single-letter units (m, g, l) to prevent matching "3 m" or "o 5 m".
+    # [STEP 3] Multi-character measurement units, or a bare metre unit glued
+    # directly to its number (0,4m / 145-167m). A *spaced* bare unit ("3 m",
+    # "o 5 m") stays unmatched — too weak a signal alone — but a glued bare
+    # "m" is this corpus's single most common unit (far ahead of "mm"), so
+    # excluding it outright cost real protection on genuine depth/height
+    # readings; only the multi-character units are excluded from the
+    # space-tolerant branch.
     has_unit = bool(
         re.search(
-            r"\b\d+(?:[.,]\d+)?\s*(?:mm|cm|km|kg|ml|ha)\b",
+            r"\b\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|km|kg|ml|ha)\b|m\b)",
             lowered,
         )
     )
