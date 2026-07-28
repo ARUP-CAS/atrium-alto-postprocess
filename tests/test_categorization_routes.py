@@ -13,6 +13,7 @@ from text_util import (
     ROT_GHOSTLIST,
     ROT_WHITELIST,
     _looks_like_measurement,
+    _looks_like_plot_probe_header,
     _transform_word,
     analyze_rotation_signals,
     categorize_line,
@@ -250,3 +251,38 @@ class TestStructuredLineMeasurement:
         assert _looks_like_measurement("Max, sila: 0,46m") is True
         assert _looks_like_measurement("3 m") is False
         assert _looks_like_measurement("o 5 m") is False
+
+
+class TestPlotProbeHeaderCandidate:
+    """
+    `_looks_like_plot_probe_header` is a candidate rule for the "sonda: XIV."
+    finding, NOT wired into `is_structured_line`/`_looks_like_catalogue_reference`
+    (see the module-level comment above its definition). These tests pin the
+    unit's own behaviour against the four variants quoted in the issue thread,
+    independent of the wiring decision.
+    """
+
+    def test_reported_variants_match(self):
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda: XIV.") is True
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda: V.") is True
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda: SXIV.") is True
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda: IV.") is True
+
+    def test_other_plot_numbers_and_spacing_match(self):
+        assert _looks_like_plot_probe_header("Plocha:12; sonda:II.") is True
+        assert _looks_like_plot_probe_header("PLOCHA : 7 ; SONDA : IX.") is True
+
+    def test_malformed_or_unrelated_lines_rejected(self):
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda XIV.") is False  # missing colon
+        assert _looks_like_plot_probe_header("sonda: XIV.") is False  # missing Plocha field
+        assert _looks_like_plot_probe_header("Plocha: sonda: XIV.") is False  # missing plot number
+        assert _looks_like_plot_probe_header("Plocha: 3; sonda: XIVQ.") is False  # non-roman letter
+        assert _looks_like_plot_probe_header("Plocha 3, sonda XIV") is False  # no trailing dot
+        assert _looks_like_plot_probe_header("Nádoba 2* Zvoncový pohár") is False  # unrelated prose
+
+    def test_not_yet_wired_into_is_structured_line(self):
+        # Documents the current (deliberate) dormancy. If this starts failing
+        # because someone wired the rule in, that's progress -- update this
+        # test alongside the wiring change, once the corpus re-run in the
+        # comment above `_looks_like_plot_probe_header` has actually happened.
+        assert is_structured_line("Plocha: 3; sonda: XIV.") is False
