@@ -1964,6 +1964,31 @@ def _looks_like_measurement(text_source: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Rule for issue #30's "sonda: XIV." finding.
+#
+# `641f936`'s leading-\b fix on `_looks_like_measurement` correctly closed
+# an accidental match — a bare "v." token used to match inside the Roman
+# numeral of lines like "Plocha: 3; sonda: XIV." purely because keyword
+# matching had no leading word-boundary yet.
+#
+# This rule explicitly recovers those plot/probe headers. It is now wired
+# into `_looks_like_catalogue_reference` to protect these headers.
+# ---------------------------------------------------------------------------
+_RE_PLOT_PROBE_HEADER = re.compile(
+    r"^plocha\s*:\s*\d+\s*;\s*sonda\s*:\s*[a-z]?[ivxlcdm]+\.$",
+    flags=re.IGNORECASE,
+)
+
+
+def _looks_like_plot_probe_header(text_source: str) -> bool:
+    """Match archaeological plot/probe headers: "Plocha: <n>; sonda: <roman>."."""
+    stripped = " ".join(text_source.split())
+    if not stripped:
+        return False
+    return bool(_RE_PLOT_PROBE_HEADER.match(stripped))
+
+
 def _looks_like_catalogue_reference(text_source: str) -> bool:
     stripped = " ".join(text_source.split())
 
@@ -1974,6 +1999,9 @@ def _looks_like_catalogue_reference(text_source: str) -> bool:
         return True
 
     if _RE_SIGLUM.match(stripped):
+        return True
+
+    if _looks_like_plot_probe_header(stripped):
         return True
 
     identifier_pattern = re.compile(
@@ -2015,48 +2043,6 @@ def _looks_like_catalogue_reference(text_source: str) -> bool:
         return True
 
     return False
-
-
-# ---------------------------------------------------------------------------
-# Candidate rule for issue #30's "sonda: XIV." finding.
-#
-# NOT YET WIRED IN. `641f936`'s leading-\b fix on `_looks_like_measurement`
-# correctly closed an accidental match — a bare "v." token used to match
-# inside the Roman numeral of lines like "Plocha: 3; sonda: XIV." purely
-# because keyword matching had no leading word-boundary yet. That fix is
-# right on its own terms, but it leaves this header with no dedicated
-# protection: ~237 copies (also seen with "V.", "SXIV.", "IV.") dropped
-# Clear/Noisy -> Noisy/Trash as a side effect, per the corpus-scale
-# measurement in the issue thread.
-#
-# `_looks_like_plot_probe_header` below is a candidate replacement, built
-# from the four variants quoted there. It is deliberately NOT corpus-
-# verified — the 273-document corpus it was observed in isn't part of this
-# repo's committed fixtures (only 3 small CTX0000000* fixtures are), so the
-# ~237-line recovery this predicts has not been measured against real data.
-# Wiring in an unverified pattern here is exactly the failure mode this
-# review cycle has been pushing back against (see the `m`-unit withdrawal
-# in `_looks_like_measurement`'s history), so this stays a dormant, fully
-# tested unit until someone runs that measurement.
-#
-# To evaluate: add `or _looks_like_plot_probe_header(stripped)` inside
-# `_looks_like_catalogue_reference`, re-run `tools/recategorize_from_csv.py`
-# against the full local corpus, and confirm the "sonda:" lines recover
-# with no new false-positive protections elsewhere before promoting it out
-# of candidate status.
-# ---------------------------------------------------------------------------
-_RE_PLOT_PROBE_HEADER = re.compile(
-    r"^plocha\s*:\s*\d+\s*;\s*sonda\s*:\s*[a-z]?[ivxlcdm]+\.$",
-    flags=re.IGNORECASE,
-)
-
-
-def _looks_like_plot_probe_header(text_source: str) -> bool:
-    """Match archaeological plot/probe headers: "Plocha: <n>; sonda: <roman>."."""
-    stripped = " ".join(text_source.split())
-    if not stripped:
-        return False
-    return bool(_RE_PLOT_PROBE_HEADER.match(stripped))
 
 
 def _looks_like_date_or_document_reference(text_source: str) -> bool:

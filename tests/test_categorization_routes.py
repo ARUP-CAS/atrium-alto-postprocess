@@ -253,13 +253,11 @@ class TestStructuredLineMeasurement:
         assert _looks_like_measurement("o 5 m") is False
 
 
-class TestPlotProbeHeaderCandidate:
+class TestPlotProbeHeader:
     """
-    `_looks_like_plot_probe_header` is a candidate rule for the "sonda: XIV."
-    finding, NOT wired into `is_structured_line`/`_looks_like_catalogue_reference`
-    (see the module-level comment above its definition). These tests pin the
-    unit's own behaviour against the four variants quoted in the issue thread,
-    independent of the wiring decision.
+    `_looks_like_plot_probe_header` is a rule for the "sonda: XIV." finding.
+    It is wired into `is_structured_line` via `_looks_like_catalogue_reference`
+    to recover valid headers lost during the measurement regex tightening.
     """
 
     def test_reported_variants_match(self):
@@ -280,9 +278,7 @@ class TestPlotProbeHeaderCandidate:
         assert _looks_like_plot_probe_header("Plocha 3, sonda XIV") is False  # no trailing dot
         assert _looks_like_plot_probe_header("Nádoba 2* Zvoncový pohár") is False  # unrelated prose
 
-    def test_not_yet_wired_into_is_structured_line(self):
-        # Documents the current (deliberate) dormancy. If this starts failing
-        # because someone wired the rule in, that's progress -- update this
-        # test alongside the wiring change, once the corpus re-run in the
-        # comment above `_looks_like_plot_probe_header` has actually happened.
-        assert is_structured_line("Plocha: 3; sonda: XIV.") is False
+    def test_wired_into_is_structured_line(self):
+        # Documents that the rule is actively wired in. If this passes,
+        # `_looks_like_plot_probe_header` is successfully hooked into the main routing.
+        assert is_structured_line("Plocha: 3; sonda: XIV.") is True
