@@ -1254,6 +1254,8 @@ def determine_category(
     # ------------------------------------------------------------
     # 9. Explicit diagnostic hard gates [STEP 5]
     # ------------------------------------------------------------
+    thresh_trash = CATEG_TRASH_SCORE_MAX + 0.35
+
     def check_rescues() -> tuple[str, str]:
         if "rule_trailing_fill_rescue" not in DISABLED_RULES and _trailing_fill_rescued(
             text_source,
@@ -1280,7 +1282,7 @@ def determine_category(
         if (rot_ratio > 0.50 or wqx_ratio > 0.10) and orig_lang_score < 0.75 and not is_upright_czech:
             _fire("rule_wqx_rot")
 
-            if _has_strong_garbage_evidence(
+            if qs < thresh_trash and _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
                 lang_score=lang_score,
@@ -1297,7 +1299,7 @@ def determine_category(
         if word_count <= 3 and vr < 0.30 and not is_upright_czech and is_all_caps_line(text_source) and not structured:
             _fire("rule_vowelless")
 
-            if _has_strong_garbage_evidence(
+            if qs < thresh_trash and _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
                 lang_score=lang_score,
@@ -1317,7 +1319,7 @@ def determine_category(
             if (frag_count / len(words)) > 0.60:
                 _fire("rule_ledger_fragmentation")
 
-                if _has_strong_garbage_evidence(
+                if qs < thresh_trash and _has_strong_garbage_evidence(
                     text_source,
                     valid_word_ratio=valid_word_ratio,
                     lang_score=lang_score,
@@ -1334,7 +1336,7 @@ def determine_category(
         if word_count <= 2 and any(_is_mid_uppercase(w.strip(_STRIP_CHARS)) for w in words) and not structured:
             _fire("rule_mid_uppercase")
 
-            if _has_strong_garbage_evidence(
+            if qs < thresh_trash and _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
                 lang_score=lang_score,
@@ -1353,7 +1355,7 @@ def determine_category(
         if has_bigram_run:
             _fire("rule_bigram_run")
 
-            if _has_strong_garbage_evidence(
+            if qs < thresh_trash and _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
                 lang_score=lang_score,
@@ -1376,7 +1378,7 @@ def determine_category(
         if fragment_like:
             _fire("rule_fragment_tokens")
 
-            if _has_strong_garbage_evidence(
+            if qs < thresh_trash and _has_strong_garbage_evidence(
                 text_source,
                 valid_word_ratio=valid_word_ratio,
                 lang_score=lang_score,
@@ -1962,6 +1964,53 @@ def _looks_like_measurement(text_source: str) -> bool:
         return True
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# Candidate refinement to `_looks_like_measurement`'s `has_unit` branch.
+#
+# `has_unit` currently accepts a bare "m" only when glued directly to its
+# number (`0,46m`), not when spaced (`3 m`) -- the latter stayed unmatched
+# because a bare spaced unit alone is too weak a signal (see
+# test_single_letter_units_and_probe_noise_rejected: "3 m", "o 5 m").
+# Measurement against the 273-doc corpus found that restriction is now
+# costing real coverage: 1,155 spaced-metre lines are unrecovered, and the
+# quoted examples ("2,10 m", "215,5 193,120 m", "Z /193,445 m/",
+# "Rovina profilu Z-V 214 192,740 m") are levelling/elevation readings, not
+# noise. All of them carry a decimal separator in the number itself, which
+# the rejected probes never do -- so a spaced bare "m" can be allowed
+# specifically when the number is decimal-marked, without reopening the
+# bare-integer case the pinned test guards against.
+#
+# NOT YET WIRED IN. Verified here to preserve every existing
+# _looks_like_measurement assertion (glued forms, both pinned "3 m"/"o 5 m"
+# rejections) and to recover the four quoted corpus lines, but the 1,155
+# figure above describes the *unrecovered* count under the current, narrower
+# regex -- how much of it is actually decimal-marked (vs. some other spaced
+# shape) hasn't been measured. Wiring this in means replacing `has_unit`'s
+# regex with the one below and re-running `tools/recategorize_from_csv.py`
+# against the full local corpus to confirm the recovery and check for new
+# false positives before promoting it out of candidate status.
+# ---------------------------------------------------------------------------
+# Dormant candidate for the remaining metre-spacing gap observed in issue #30.
+#
+# This is intentionally *not* wired into the live measurement detector yet.
+# It exists as a probe that can be measured against the full corpus with
+# `tools/recategorize_from_csv.py` before any promotion to production logic.
+# ---------------------------------------------------------------------------
+_RE_UNIT_CANDIDATE = re.compile(
+    r"\b\d+(?:[.,]\d+\s*m\b|\s*(?:mm|cm|km|kg|ml|ha)\b|m\b)",
+)
+
+
+def _has_unit_with_spaced_decimal_metre_candidate(lowered: str) -> bool:
+    """Probe for the dormant metre-spacing candidate on already-lowercased text."""
+    return bool(_RE_UNIT_CANDIDATE.search(lowered))
+
+
+def probe_spaced_decimal_metre_candidate(text_source: str) -> bool:
+    """Return True when `text_source` matches the dormant metre-spacing probe."""
+    return _has_unit_with_spaced_decimal_metre_candidate(text_source.lower())
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from text_util import (
     _ROTATE_GLYPH,
     ROT_GHOSTLIST,
     ROT_WHITELIST,
+    _has_unit_with_spaced_decimal_metre_candidate,
     _looks_like_measurement,
     _looks_like_plot_probe_header,
     _transform_word,
@@ -36,6 +37,30 @@ class TestExplicitDiagnosticHardGates:
             0.82, "a b c d e f", 6, 0.2, 120.0, lang_score=0.10, orig_lang_score=0.10, return_reason=True
         )
         assert cat == "Trash" and reason == "trash_threshold"
+
+    def test_high_quality_score_exempts_wqx_rot_from_trash(self):
+        # Each of the six section-9 gates (rule_wqx_rot, rule_vowelless,
+        # rule_ledger_fragmentation, rule_mid_uppercase, rule_bigram_run,
+        # rule_fragment_tokens) must only escalate to check_rescues() when
+        # qs < thresh_trash (CATEG_TRASH_SCORE_MAX + 0.35) -- a real corpus
+        # line ("Sonda valem 2008": rot_ratio=0.70, orig_lang_score=0.45,
+        # damaged=0, garbage_density=0.0, valid_word_ratio=1.0) fires
+        # rule_wqx_rot and satisfies _has_strong_garbage_evidence on its own,
+        # but at qs=0.95 -- well clear of the 0.90 threshold -- it must stay
+        # Clear rather than fall through to Trash.
+        cat, _, reason = categorize_line(
+            0.95,
+            "Sonda valem 2008",
+            3,
+            0.30,
+            55.0,
+            valid_word_ratio=1.0,
+            lang_score=0.15,
+            orig_lang_score=0.45,
+            garbage_density=0.0,
+            return_reason=True,
+        )
+        assert cat == "Clear" and reason == "clear_threshold"
 
 
 class TestShortLineTelemetry:
@@ -251,6 +276,35 @@ class TestStructuredLineMeasurement:
         assert _looks_like_measurement("Max, sila: 0,46m") is True
         assert _looks_like_measurement("3 m") is False
         assert _looks_like_measurement("o 5 m") is False
+
+
+class TestSpacedDecimalMetreCandidate:
+    """
+    `_has_unit_with_spaced_decimal_metre_candidate` is a candidate refinement
+    to `_looks_like_measurement`'s `has_unit` branch, recovering spaced bare
+    metre readings ("2,10 m") that carry a decimal separator, without
+    reopening the bare-integer spaced case ("3 m") the existing pinned test
+    rejects. NOT YET WIRED IN -- see the comment above its definition.
+    """
+
+    def test_reported_corpus_lines_recovered(self):
+        assert _has_unit_with_spaced_decimal_metre_candidate("2,10 m") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("215,5 193,120 m") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("z /193,445 m/") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("rovina profilu z-v 214 192,740 m") is True
+
+    def test_existing_glued_and_rejected_cases_unchanged(self):
+        assert _has_unit_with_spaced_decimal_metre_candidate("0,2-0,4m") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("0,4-0,6m") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("max, sila: 0,46m") is True
+        assert _has_unit_with_spaced_decimal_metre_candidate("3 m") is False
+        assert _has_unit_with_spaced_decimal_metre_candidate("o 5 m") is False
+
+    def test_not_yet_wired_into_looks_like_measurement(self):
+        # Tripwire: if this starts failing, someone wired the candidate in
+        # without updating this test -- update the assertion and promote the
+        # docstring/comment above the candidate accordingly.
+        assert _looks_like_measurement("2,10 m") is False
 
 
 class TestPlotProbeHeader:

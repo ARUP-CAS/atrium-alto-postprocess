@@ -62,7 +62,7 @@ from text_util import (  # noqa: E402
     compute_valid_ratio,
     compute_vowel_ratio,
     compute_word_weird_ratio,
-    count_damaged_tokens,  # <-- ADDED
+    count_damaged_tokens,
     detect_fused_words,
     detect_gibberish_words,
     detect_letter_digit_letter,
@@ -70,8 +70,9 @@ from text_util import (  # noqa: E402
     detect_repeated_chars,
     detect_wx_words,
     is_all_caps_line,
-    is_structured_line,  # <-- ADDED
+    is_structured_line,
     override_constants,
+    probe_spaced_decimal_metre_candidate,
     remap_lang,
     score_words_in_line,
 )
@@ -112,6 +113,17 @@ def _is_fast_track(row) -> bool:
     except (ValueError, TypeError):
         wc = 0
     return row.get("categ") in ("Empty", "Non-text") and wc == 0
+
+
+def _text_for_probe(row: Mapping[str, Any]) -> str:
+    """Prefer the original OCR text when probing dormant heuristics."""
+    text = str(row.get("original_text", "") or "")
+    return text if text else str(row.get("text", "") or "")
+
+
+def _count_spaced_decimal_metre_candidates(frame: pd.DataFrame) -> int:
+    """Count rows that hit the dormant metre-spacing probe without scoring."""
+    return sum(1 for _, row in frame.iterrows() if probe_spaced_decimal_metre_candidate(_text_for_probe(row)))
 
 
 def _rescore_row(row: dict, expected_langs, known_bases) -> dict:
@@ -829,6 +841,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override individual constants, e.g. CATEG_TRASH_SCORE_MAX=0.45.",
     )
     ap.add_argument("--report-only", action="store_true", help="Print the diff report but do not write CSVs.")
+    ap.add_argument(
+        "--probe-metre-candidate",
+        action="store_true",
+        help="Also report hits for the dormant spaced-decimal metre probe.",
+    )
     return ap
 
 
@@ -871,6 +888,11 @@ def main(argv=None):
     for csv_path in csvs:
         old, new = rescore_csv(csv_path, constants)
         total_changed += _report(csv_path, old, new)
+
+        if args.probe_metre_candidate:
+            candidate_hits = _count_spaced_decimal_metre_candidates(old)
+            print(f"  dormant metre-spacing probe hits: {candidate_hits}")
+
         for k, v in _category_counts(old).items():
             grand_old[k] = grand_old.get(k, 0) + v
         for k, v in _category_counts(new).items():
