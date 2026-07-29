@@ -35,10 +35,31 @@ yaml = pytest.importorskip("yaml", reason="pyyaml is required to parse the CI co
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 DEPENDABOT_PATH = REPO_ROOT / ".github" / "dependabot.yml"
+ROOT_REQUIREMENTS_TEST = REPO_ROOT / "requirements-test.txt"
+CANONICAL_REQUIREMENTS_TEST = "setup/requirements-test.txt"
 
 
 def _workflow_files() -> list[pathlib.Path]:
     return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+
+
+def _requirement_lines(path: pathlib.Path) -> list[str]:
+    """Non-blank, non-comment lines of a requirements file."""
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def _is_include_only(path: pathlib.Path) -> bool:
+    """True when a requirements file only forwards to others (`-r other.txt`).
+
+    Such a file pins nothing itself, so Dependabot has nothing to scan in its
+    directory — it follows the include to the real file instead.
+    """
+    lines = _requirement_lines(path)
+    return bool(lines) and all(line.startswith(("-r", "--requirement")) for line in lines)
 
 
 def test_workflows_directory_is_not_empty():
@@ -115,11 +136,48 @@ def test_dependabot_scans_every_requirements_directory():
     expected = {
         "/" + str(path.parent.relative_to(REPO_ROOT)).strip(".").strip("/")
         for path in REPO_ROOT.glob("**/requirements*.txt")
-        if ".git" not in path.parts and "node_modules" not in path.parts
+        if ".git" not in path.parts
+        and "node_modules" not in path.parts
+        # Include-only files (`-r other.txt`) declare no dependencies of their own.
+        and not _is_include_only(path)
     }
 
     unscanned = expected - scanned
     assert not unscanned, (
         f"requirements files live in {sorted(unscanned)} but Dependabot has no pip "
         f"entry for them (declared: {sorted(scanned)}). Add an entry or remove the file."
+    )
+
+
+def test_root_requirements_test_is_an_include_of_setup():
+    """The root requirements-test.txt must exist and forward to setup/.
+
+    Both halves are load-bearing, and both have already gone wrong once:
+
+    * **Deleting it breaks CI.** The hub's api-contract.reusable.yml runs
+      ``[ -f requirements-test.txt ] && pip install -r requirements-test.txt``.
+      That hardcodes this root path, and the ``[ -f ]`` guard makes a missing
+      file install nothing *silently* — the job then dies at ``pytest: command
+      not found`` (exit 127), which points nowhere near the cause.
+    * **Copying the real list into it creates drift.** Two dependency lists that
+      must stay in sync will not.
+
+    An include satisfies the hub's check while keeping one source of truth.
+    """
+    assert ROOT_REQUIREMENTS_TEST.is_file(), (
+        "requirements-test.txt is missing from the repo root. The hub's "
+        "api-contract.reusable.yml installs test deps from this exact path and "
+        "silently installs nothing when it is absent, so removing it turns the "
+        "API Meta-Contract job into 'pytest: command not found'. Restore it as "
+        f"an include of {CANONICAL_REQUIREMENTS_TEST}."
+    )
+
+    lines = _requirement_lines(ROOT_REQUIREMENTS_TEST)
+    assert _is_include_only(ROOT_REQUIREMENTS_TEST), (
+        f"requirements-test.txt must only forward to {CANONICAL_REQUIREMENTS_TEST}, "
+        f"not declare packages itself (found: {lines}). Two copies of the same "
+        f"dependency list drift; edit setup/requirements-test.txt instead."
+    )
+    assert any(CANONICAL_REQUIREMENTS_TEST in line for line in lines), (
+        f"requirements-test.txt forwards to {lines}, expected an include of {CANONICAL_REQUIREMENTS_TEST}."
     )
