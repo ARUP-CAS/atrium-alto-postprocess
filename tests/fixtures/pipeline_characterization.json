@@ -1,0 +1,334 @@
+{
+  "_comment": "Golden file for tests/test_pipeline_parity.py. Regenerate ONLY for an intentional categorisation change: python -m tests.test_pipeline_parity --regenerate",
+  "edge_cases": {
+    "empty": [
+      "Empty",
+      0.0,
+      "empty",
+      []
+    ],
+    "whitespace_only": [
+      "Empty",
+      0.0,
+      "empty",
+      []
+    ],
+    "hard_sweep_low_lang_high_ppl": [
+      "Trash",
+      0.2,
+      "trash_hard_sweep",
+      [
+        "rule_hard_sweep"
+      ]
+    ],
+    "extreme_ppl_mid_lang_conf": [
+      "Trash",
+      0.3,
+      "trash_hard_sweep",
+      [
+        "rule_extreme_ppl"
+      ]
+    ],
+    "absolute_ppl": [
+      "Trash",
+      0.3,
+      "trash_hard_sweep",
+      [
+        "rule_absolute_ppl"
+      ]
+    ],
+    "inverted_ghost_dominated": [
+      "Trash",
+      0.4,
+      "trash_inverted",
+      [
+        "rule_inverted"
+      ]
+    ],
+    "allcaps_novowel": [
+      "Trash",
+      0.5,
+      "allcaps_novowel",
+      [
+        "rule_allcaps"
+      ]
+    ],
+    "garbage_density_high": [
+      "Trash",
+      0.25,
+      "trash_threshold",
+      [
+        "rule_garbage_density"
+      ]
+    ],
+    "zero_alpha_digits_only": [
+      "Trash",
+      0.2,
+      "trash_threshold",
+      [
+        "rule_zero_alpha"
+      ]
+    ],
+    "short_garbage": [
+      "Trash",
+      0.25,
+      "trash_threshold",
+      [
+        "rule_short_garbage"
+      ]
+    ],
+    "short_line_clear": [
+      "Clear",
+      0.95,
+      "clear_threshold",
+      [
+        "rule_short_line"
+      ]
+    ],
+    "short_line_catalogue": [
+      "Clear",
+      0.8,
+      "clear_threshold",
+      [
+        "rule_short_line"
+      ]
+    ],
+    "short_line_measurement_glued_metre": [
+      "Clear",
+      0.8,
+      "clear_threshold",
+      [
+        "rule_short_line"
+      ]
+    ],
+    "short_line_single_solitary_letter": [
+      "Trash",
+      0.4,
+      "trash_threshold",
+      [
+        "rule_short_line"
+      ]
+    ],
+    "lowppl_clear": [
+      "Clear",
+      0.85,
+      "lowppl_clear",
+      [
+        "rule_lowppl_clear"
+      ]
+    ],
+    "lowppl_capped_to_noisy": [
+      "Noisy",
+      0.7999,
+      "noisy_threshold",
+      [
+        "rule_lowppl_clear"
+      ]
+    ],
+    "wqx_rotation": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      [
+        "rule_wqx_rot"
+      ]
+    ],
+    "vowelless_allcaps_short": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      [
+        "rule_vowelless"
+      ]
+    ],
+    "ledger_fragmentation": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      [
+        "rule_ledger_fragmentation"
+      ]
+    ],
+    "bigram_run": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      [
+        "rule_bigram_run"
+      ]
+    ],
+    "fragment_tokens": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      [
+        "rule_fragment_tokens"
+      ]
+    ],
+    "rescue_trailing_fill": [
+      "Noisy",
+      0.55,
+      "noisy_threshold",
+      [
+        "rule_trailing_fill_rescue"
+      ]
+    ],
+    "rescue_forgiven_headline": [
+      "Noisy",
+      0.55,
+      "noisy_threshold",
+      [
+        "rule_forgiven_headline"
+      ]
+    ],
+    "rescue_reference_floor": [
+      "Noisy",
+      0.55,
+      "noisy_threshold",
+      [
+        "rule_reference_floor"
+      ]
+    ],
+    "rescue_none_falls_to_trash": [
+      "Trash",
+      0.3,
+      "trash_threshold",
+      []
+    ],
+    "damaged_token_caps_to_noisy": [
+      "Noisy",
+      0.7999,
+      "noisy_threshold",
+      [
+        "rule_damaged_token"
+      ]
+    ],
+    "mostly_readable_noisy": [
+      "Noisy",
+      0.7999,
+      "noisy_threshold",
+      [
+        "rule_mostly_readable_noisy"
+      ]
+    ],
+    "clean_czech_headline_clear": [
+      "Clear",
+      0.96,
+      "clear_threshold",
+      []
+    ],
+    "lm_confident_czech_relaxation": [
+      "Clear",
+      0.82,
+      "clear_threshold",
+      []
+    ],
+    "clean_prose_clear": [
+      "Clear",
+      0.93,
+      "clear_threshold",
+      []
+    ],
+    "boundary_just_below_trash_max": [
+      "Trash",
+      0.5499,
+      "trash_threshold",
+      []
+    ],
+    "boundary_at_trash_max": [
+      "Clear",
+      0.8,
+      "clear_threshold",
+      []
+    ],
+    "boundary_just_below_noisy_max": [
+      "Clear",
+      0.8,
+      "clear_threshold",
+      []
+    ],
+    "boundary_at_noisy_max": [
+      "Clear",
+      0.8,
+      "clear_threshold",
+      []
+    ]
+  },
+  "samples": {
+    "CTX000000001:1:1": [
+      "Clear",
+      0.9559,
+      "lowppl_clear"
+    ],
+    "CTX000000001:1:2": [
+      "Clear",
+      0.968,
+      "lowppl_clear"
+    ],
+    "CTX000000001:2:1": [
+      "Clear",
+      0.9751,
+      "lowppl_clear"
+    ],
+    "CTX000000001:2:2": [
+      "Clear",
+      0.9607,
+      "lowppl_clear"
+    ],
+    "CTX000000002:1:1": [
+      "Clear",
+      0.9652,
+      "clear_threshold"
+    ],
+    "CTX000000002:1:2": [
+      "Clear",
+      0.9083,
+      "clear_threshold"
+    ],
+    "CTX000000002:1:3": [
+      "Clear",
+      0.9639,
+      "clear_threshold"
+    ],
+    "CTX000000002:2:1": [
+      "Clear",
+      0.963,
+      "clear_threshold"
+    ],
+    "CTX000000002:2:2": [
+      "Trash",
+      0.3889,
+      "trash_threshold"
+    ],
+    "CTX000000002:3:1": [
+      "Clear",
+      0.958,
+      "clear_threshold"
+    ],
+    "CTX000000002:3:2": [
+      "Trash",
+      0.5499,
+      "trash_threshold"
+    ],
+    "CTX000000002:4:1": [
+      "Clear",
+      0.9701,
+      "lowppl_clear"
+    ],
+    "CTX000000002:4:2": [
+      "Non-text",
+      null,
+      "fast_track"
+    ],
+    "CTX000000003:1:1": [
+      "Clear",
+      0.9045,
+      "clear_threshold"
+    ],
+    "CTX000000003:1:2": [
+      "Non-text",
+      null,
+      "fast_track"
+    ]
+  }
+}

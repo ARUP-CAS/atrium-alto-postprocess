@@ -311,3 +311,35 @@ def test_run_coverage_json_output(tmp_path):
     assert "rules" in payload
     # Dynamically match RULES length so test survives when new rules are added.
     assert len(payload["rules"]) == len(RULES)
+
+
+# ---------------------------------------------------------------------------
+# 5. Registry / call-site parity
+# ---------------------------------------------------------------------------
+
+
+def test_rules_registry_matches_fire_call_sites():
+    """rule_coverage_report.RULES must equal the _fire() call-sites in text_util.
+
+    This used to be a "keep in sync" comment with nothing enforcing it, and it
+    drifted: the five rules introduced by the issue #30 work (rule_short_line,
+    rule_damaged_token, rule_reference_floor, rule_bigram_run,
+    rule_fragment_tokens) never made it into the registry, so every coverage
+    report and every ablation sweep run after PR #32 quietly measured 16 of the
+    21 rules. A stale registry does not fail loudly — it just under-reports,
+    which is why this needs a test rather than a comment.
+    """
+    import re
+
+    from rule_coverage_report import RULES
+
+    source = (_ROOT / "text_util.py").read_text(encoding="utf-8")
+    call_sites = set(re.findall(r'_fire\("([a-z_]+)"\)', source))
+
+    declared = set(RULES)
+    assert declared == call_sites, (
+        f"registry out of sync with text_util.py\n"
+        f"  fired but not declared: {sorted(call_sites - declared)}\n"
+        f"  declared but never fired: {sorted(declared - call_sites)}"
+    )
+    assert len(RULES) == len(declared), "RULES contains duplicates"

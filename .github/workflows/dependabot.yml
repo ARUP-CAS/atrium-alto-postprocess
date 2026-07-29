@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "test"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Runtime + test deps for the pipeline scripts. This entry previously sat at
+  # directory "/", where the only requirements file was a duplicate of
+  # setup/requirements-test.txt — so setup/ and service/ (the files the Dockerfile
+  # and the CI workflows actually install) were never scanned. One entry per real
+  # requirements directory.
+  - package-ecosystem: "pip"
+    directory: "/setup"
+    schedule:
+      interval: "weekly"
+    target-branch: "test"
+    groups:
+      setup-deps:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "transformers"
+        versions: [">= 5.0.0"]
+
+  # FastAPI service layer.
+  - package-ecosystem: "pip"
+    directory: "/service"
+    schedule:
+      interval: "weekly"
+    target-branch: "test"
+    groups:
+      service-deps:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "transformers"
+        versions: [">= 5.0.0"]

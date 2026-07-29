@@ -52,7 +52,6 @@ STANDARD_COLS = Clear,Noisy,Trash,Non-text,Empty
 
 [TEXT_UTILS]
 LANG_SCORE_ROUGH = 0.45
-LANG_SCORE_CLEAR = 0.75
 ALLOWED_INTERNAL = .-,+()"'—–:%;?!/
 STRIP_CHARS = .,;:!?()[]"'\/\
 METADATA_MARKERS = Tb.,č.neg,neg.,obr.,obr ,neg ,Tb ,č. neg,č.neg.,č.,str.,Datum

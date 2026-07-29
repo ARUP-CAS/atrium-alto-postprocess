@@ -79,7 +79,13 @@ from tools.recategorize_from_csv import (  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Canonical rule / penalty registry
-# Keep in sync with _fire() call-sites in text_util.py.
+#
+# Must match the _fire() call-sites in text_util.py exactly. That used to be a
+# comment asking for manual upkeep, and it drifted: the five rules added by the
+# issue #30 work (rule_short_line, rule_damaged_token, rule_reference_floor,
+# rule_bigram_run, rule_fragment_tokens) were missing, so every coverage report
+# produced after PR #32 silently omitted them. It is now enforced by
+# tests/test_rule_coverage.py::test_rules_registry_matches_fire_call_sites.
 # ---------------------------------------------------------------------------
 RULES: list[str] = sorted(
     [
@@ -91,13 +97,18 @@ RULES: list[str] = sorted(
         "rule_garbage_density",
         "rule_trailing_fill_rescue",
         "rule_short_garbage",
+        "rule_short_line",
         "rule_zero_alpha",
         "rule_lowppl_clear",
         "rule_mostly_readable_noisy",
+        "rule_damaged_token",
+        "rule_reference_floor",
         "rule_wqx_rot",
         "rule_vowelless",
         "rule_ledger_fragmentation",
         "rule_mid_uppercase",
+        "rule_bigram_run",
+        "rule_fragment_tokens",
         "rule_forgiven_headline",
     ]
 )
