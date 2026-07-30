@@ -2,7 +2,8 @@
 #
 # Thin caller (mirrors docker.yml) for ufal/atrium-project's
 # security.reusable.yml: Trivy image scan + SBOM + version-check in one.
-# Pin @main to a tag/SHA in production.
+# NOTE: this caller pins @test, a mutable branch in another repo. Moving the
+# ecosystem to an immutable @v1 tag is tracked as Wave C in #18.
 
 name: Security & Supply-chain
 
@@ -30,7 +31,9 @@ jobs:
       packages: read
       security-events: write
     uses: ufal/atrium-project/.github/workflows/security.reusable.yml@test
-    secrets: inherit
+    # No `secrets:` block: security.reusable.yml consumes no secrets at all
+    # (Trivy/SBOM read a public GHCR image, version-check reads the tree).
+    # It previously carried `secrets: inherit` for no reason (#18).
     with:
       # The published image to scan/SBOM.
       image-ref: ghcr.io/ufal/atrium-alto-postprocess:latest
