@@ -23,6 +23,7 @@ env:
 jobs:
   slow-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write          # only used by the "open issue on failure" step below

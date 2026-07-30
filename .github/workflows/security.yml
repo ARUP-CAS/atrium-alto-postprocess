@@ -18,6 +18,11 @@ on:
     - cron: "0 6 * * 1"   # weekly re-scan of the published image (new CVEs land continuously)
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a tag build - that is a publish in flight
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   security:
     permissions:
