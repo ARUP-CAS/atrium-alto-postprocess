@@ -14,187 +14,25 @@ once, pointing them all at the same directory of `<doc_id>.document.json` files.
 empty (the default), every function below is a no-op — standalone runs are
 unaffected, matching rule 3 of the accretion contract.
 
-Ownership note: every write here uses PROGRAM = "alto-postprocess", the single name
-`atrium_document.BLOCK_OWNERS` recognises for this repo's blocks — NOT each stage's
-own ParadataLogger `program` string (`langID-classify`, `langID-aggregate`, ...).
-Normalising those paradata program names is a separate, still-open item (see
+Ownership note: every write here uses PROGRAM_NAME = "alto-postprocess", the single
+name `atrium_document.BLOCK_OWNERS` recognises for this repo's blocks — NOT each
+stage's own ParadataLogger `program` string (`langID-classify`, `langID-aggregate`,
+...). Normalising those paradata program names is a separate, still-open item (see
 `agent_dev_logs/digests/13.digest.md` §Open/next) and is deliberately untouched here.
 """
 
 from __future__ import annotations
 
-import copy
-import csv
-import json
 import logging
 import os
 from collections import OrderedDict
-from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from atrium_document import DocumentRecord
-from atrium_paradata import ParadataLogger
 
 logger = logging.getLogger(__name__)
 
 PROGRAM_NAME = "alto-postprocess"
-
-
-def write_document_record(
-    input_doc: Optional[Dict[str, Any]], line_categ_path: str, page_stats_path: str, logger: ParadataLogger
-) -> Dict[str, Any]:
-    """
-    Applies the paradata pair accretion model for alto-postprocess.
-    Updates pages, lines, and content blocks. Passes all other blocks through untouched.
-    """
-    # Rule 3: No baseline -> own part only (standalone-safe)
-    doc = copy.deepcopy(input_doc) if input_doc else {}
-
-    # Initialize required structures if missing
-    doc.setdefault("assembled", {}).setdefault("source_run_ids", {})
-    doc.setdefault("provenance", {})
-    doc.setdefault("pages", [])
-    doc.setdefault("lines", [])
-    doc.setdefault("content", {})
-
-    run_id = logger.run_id
-
-    # --- 1. Lines & Content Updates ---
-    if line_categ_path:
-        lines_data = []
-        aggregated_text = []
-        with open(line_categ_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                categ = row.get("categ", "")
-                text_content = row.get("text", "")
-
-                lines_data.append(
-                    {
-                        "page": row.get("page", ""),
-                        "line": int(row.get("line", 0)),
-                        "categ": categ,
-                        "quality_score": float(row.get("quality_score", 0.0)),
-                        "text": text_content,
-                    }
-                )
-
-                # Exclude heuristic outliers like inverted/garbage text from the content aggregate
-                if categ not in ["Garbage", "Inverted"] and text_content:
-                    aggregated_text.append(text_content)
-
-        doc["lines"] = lines_data
-        doc["content"]["text"] = "\n".join(aggregated_text)
-
-    # --- 2. Page Quality Updates ---
-    if page_stats_path:
-        pages_data = []
-        with open(page_stats_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                pages_data.append(
-                    {
-                        "page": row.get("page", ""),
-                        "quality_score": float(row.get("quality_score", 0.0)),
-                        "quality_band": row.get("quality_band", "Unknown"),
-                    }
-                )
-
-        # Merge page stats without overwriting existing upstream page data (e.g., canvas)
-        existing_pages = {str(p.get("page")): p for p in doc["pages"]}
-        for p_data in pages_data:
-            p_num = str(p_data["page"])
-            if p_num in existing_pages:
-                existing_pages[p_num].update(p_data)
-            else:
-                doc["pages"].append(p_data)
-
-    # --- 3 & 4. Stamp Provenance and Licenses ---
-    doc["assembled"]["source_run_ids"]["pages"] = run_id
-    doc["assembled"]["source_run_ids"]["lines"] = run_id
-    doc["assembled"]["source_run_ids"]["content"] = run_id
-
-    # Utilize the new public accessor
-    doc["provenance"]["license_detail"] = logger.get_license_block()
-    doc["provenance"]["paradata_ref"] = f"paradata/{run_id}_pipeline-run.json"
-
-    return doc
-
-
-def update_document_record(
-    input_json_path: Optional[Path],
-    output_json_path: Path,
-    run_id: str,
-    paradata_ref: str,
-    extracted_content: str,
-    page_metrics: Dict[str, Any],
-    line_metrics: Dict[str, Any],
-) -> None:
-    """
-    Applies the paradata pair accretion model for alto-postprocess.
-    Updates only the 'pages', 'lines', and 'content' blocks.
-    """
-    # 1. Standalone Safety: Load baseline if it exists, otherwise initialize empty
-    if input_json_path and input_json_path.exists():
-        with open(input_json_path, "r", encoding="utf-8") as f:
-            doc_record = json.load(f)
-            logger.info(f"Loaded baseline document record from {input_json_path}")
-    else:
-        doc_record = {
-            "schema_version": "1.0",
-            "pages": [],
-            "lines": [],
-            "content": {},
-            "assembled": {"mode": "view", "source_run_ids": {}},
-        }
-        logger.info("No baseline JSON provided. Initializing standalone record.")
-
-    # 2. Block Ownership: Update assembled run_id pointers
-    if "assembled" not in doc_record:
-        doc_record["assembled"] = {"mode": "view", "source_run_ids": {}}
-
-    for block in ["pages", "lines", "content"]:
-        doc_record["assembled"]["source_run_ids"][block] = run_id
-
-    # 3. Update 'content' block
-    doc_record["content"]["text"] = extracted_content
-
-    # 4. Update 'pages' block (Quality metrics)
-    # Merges into existing pages if present, otherwise creates them
-    existing_pages = {p.get("page"): p for p in doc_record.get("pages", [])}
-    for page_id, metrics in page_metrics.items():
-        if page_id in existing_pages:
-            existing_pages[page_id].update({"quality_score": metrics.get("score"), "quality_band": metrics.get("band")})
-        else:
-            existing_pages[page_id] = {
-                "page": page_id,
-                "quality_score": metrics.get("score"),
-                "quality_band": metrics.get("band"),
-            }
-    doc_record["pages"] = list(existing_pages.values())
-
-    # 5. Update 'lines' block (Categorization and Quality)
-    existing_lines = {(_l.get("page"), _l.get("line")): _l for _l in doc_record.get("lines", [])}
-    for (page_id, line_id), metrics in line_metrics.items():
-        if (page_id, line_id) in existing_lines:
-            existing_lines[(page_id, line_id)].update(
-                {"categ": metrics.get("categ"), "quality_score": metrics.get("score")}
-            )
-        else:
-            existing_lines[(page_id, line_id)] = {
-                "page": page_id,
-                "line": line_id,
-                "categ": metrics.get("categ"),
-                "quality_score": metrics.get("score"),
-            }
-    doc_record["lines"] = list(existing_lines.values())
-
-    # 6. Write out the accreted record
-    output_json_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_json_path, "w", encoding="utf-8") as f:
-        json.dump(doc_record, f, indent=2, ensure_ascii=False)
-
-    logger.info(f"Successfully wrote updated document record to {output_json_path}")
 
 
 def resolve_document_json_dir(configured: Optional[str] = None) -> str:
@@ -217,7 +55,7 @@ def paradata_ref_for(logger) -> str:
     passed across the process boundary) can compute it once in the parent process
     and pass the resulting string down instead.
     """
-    return os.path.join(logger.paradata_dir, f"{logger._run_id}_{logger.program}.json")
+    return os.path.join(logger.paradata_dir, f"{logger.run_id}_{logger.program}.json")
 
 
 def write_document_block(

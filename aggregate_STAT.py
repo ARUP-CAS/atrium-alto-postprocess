@@ -289,7 +289,7 @@ def main():
     _doc_cfg = configparser.ConfigParser()
     _doc_cfg.read(args.config)
     document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
-    doc_run_id = logger._run_id
+    doc_run_id = logger.run_id
     doc_paradata_ref = document_hook.paradata_ref_for(logger)
 
     print(f"Aggregating {len(csv_files)} documents using Multiprocessing...")

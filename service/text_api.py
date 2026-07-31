@@ -211,13 +211,17 @@ async def process_document(
                 ]  # Adapt to actual result structure
                 lines_metrics = result.get("lines", [])
 
-                # Write the block using the repo-local hook
+                # Write the block using the repo-local hook. `pages`/`lines` are
+                # field-split with page-classification/nlp-enrich (BLOCK_FIELD_OWNERS),
+                # so this must merge — set_blocks would erase their co-owned fields
+                # (category/category_confidence, teitok_surface, lemma/upos/feats, ...)
+                # on any document that already carries a baseline record.
                 write_document_block(
                     document_json_dir=doc_tmp_dir,
                     doc_id=doc_id,
                     run_id=para_logger.run_id,
                     paradata_ref="",  # Left empty for stateless API responses
-                    set_blocks={"pages": page_metrics, "lines": lines_metrics},
+                    merge_blocks={"pages": page_metrics, "lines": lines_metrics},
                 )
 
                 # Read back the accreted record and attach it to the response

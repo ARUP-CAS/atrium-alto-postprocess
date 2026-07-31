@@ -194,7 +194,7 @@ def main() -> None:
             document_hook.write_document_block(
                 _document_json_dir,
                 doc_id,
-                _logger._run_id,
+                _logger.run_id,
                 _doc_paradata_ref,
                 merge_blocks={"pages": pages} if pages else None,
                 set_blocks={"content": content} if pages else None,

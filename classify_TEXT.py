@@ -914,7 +914,7 @@ def main():
     _doc_cfg = configparser.ConfigParser()
     _doc_cfg.read(config_path)
     _document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
-    _doc_run_id = logger._run_id
+    _doc_run_id = logger.run_id
     _doc_paradata_ref = document_hook.paradata_ref_for(logger)
 
     grouped_tasks = []
