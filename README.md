@@ -503,14 +503,14 @@ The full decision logic — CPU pre-filter, language handling, structural detect
 quality score, the categorisation gates/rescues, and the four document-level post-processing
 passes — lives in **[docs/categorization_logic.md](docs/categorization_logic.md)**.
 
-| Section | What it covers |
-|---|---|
-| [CPU 💻 Pre-filter](docs/categorization_logic.md#cpu--pre-filter) | `pre_filter_line()`: `Empty`/`Non-text` routing and the two OCR repairs, before any model runs |
-| [Language 🌐 Handling](docs/categorization_logic.md#language--handling) | FastText trust tiers, `remap_lang()`, and the `LANG_REMAP_ALWAYS` switch |
-| [Structural Detectors](docs/categorization_logic.md#structural-detectors) | the per-line signal detectors (rotation, gibberish, fused/vowel-less words, damage) |
-| [Composite Quality Score](docs/categorization_logic.md#composite-quality-score) | the weighted `compute_quality_score()` formula and its dynamic adjustments |
-| [Categorisation Logic](docs/categorization_logic.md#categorisation-logic) | `determine_category()`: the ordered gates, `check_rescues()`, and threshold routing |
-| [Post-Processing Smoothing](docs/categorization_logic.md#post-processing-smoothing) | `apply_document_postprocessing()`: dedup, rolling window, page context, inverted-scan sweep |
+| Section                                                                             | What it covers                                                                                 |
+|-------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| [CPU 💻 Pre-filter](docs/categorization_logic.md#cpu--pre-filter)                   | `pre_filter_line()`: `Empty`/`Non-text` routing and the two OCR repairs, before any model runs |
+| [Language 🌐 Handling](docs/categorization_logic.md#language--handling)             | FastText trust tiers, `remap_lang()`, and the `LANG_REMAP_ALWAYS` switch                       |
+| [Structural Detectors](docs/categorization_logic.md#structural-detectors)           | the per-line signal detectors (rotation, gibberish, fused/vowel-less words, damage)            |
+| [Composite Quality Score](docs/categorization_logic.md#composite-quality-score)     | the weighted `compute_quality_score()` formula and its dynamic adjustments                     |
+| [Categorisation Logic](docs/categorization_logic.md#categorisation-logic)           | `determine_category()`: the ordered gates, `check_rescues()`, and threshold routing            |
+| [Post-Processing Smoothing](docs/categorization_logic.md#post-processing-smoothing) | `apply_document_postprocessing()`: dedup, rolling window, page context, inverted-scan sweep    |
 
 To replay a config change over already-scored CSVs without a GPU, use
 [`tools/recategorize_from_csv.py`](tools/recategorize_from_csv.py) — it reads the same constants
@@ -656,8 +656,8 @@ them records it. For this repository the components and their effect on the **ef
 | Component                                                                              | License         | Counted     | Used by                                                        |
 |----------------------------------------------------------------------------------------|-----------------|-------------|----------------------------------------------------------------|
 | **alto-tools** 🔧 [^1](https://github.com/cneud/alto-tools)                            | Apache-2.0      | always      | page split, statistics, alto-tools text extraction             |
-| **FastText** 🌐 [^2](https://huggingface.co/facebook/fasttext-language-identification) | CC BY-NC 4.0    | always      | language identification (`classify_TEXT.py`)                 |
-| **Qwen2.5-0.5B** 🤖 [^6](https://huggingface.co/Qwen/Qwen2.5-0.5B)                     | Apache-2.0      | conditional | **perplexity** 📉 scoring (default, `classify_TEXT.py`)      |
+| **FastText** 🌐 [^2](https://huggingface.co/facebook/fasttext-language-identification) | CC BY-NC 4.0    | always      | language identification (`classify_TEXT.py`)                   |
+| **Qwen2.5-0.5B** 🤖 [^6](https://huggingface.co/Qwen/Qwen2.5-0.5B)                     | Apache-2.0      | conditional | **perplexity** 📉 scoring (default, `classify_TEXT.py`)        |
 | **distilgpt2** 🤖                                                                      | Apache-2.0      | conditional | **perplexity** 📉 scoring (English-only alternative)           |
 | **LayoutLMv3** 📐 [^9](https://github.com/ppaanngggg/layoutreader)                     | CC BY-NC-SA 4.0 | conditional | LayoutReader text extraction (`extract_LytRdr_ALTO_2_TXT.py`)  |
 | **GLM-4v-9b** 🤖 [^10](https://huggingface.co/THUDM/glm-4v-9b)                         | glm-4           | conditional | generative **OCR** 🔍 extraction (`extract_LLM_ALTO_2_TXT.py`) |
@@ -687,11 +687,7 @@ permissive components would resolve to **Apache-2.0**.
   * **GLM-4v-9b** 🤖 [^10](https://huggingface.co/THUDM/glm-4v-9b) for generative **OCR** 🔍 (LLM-based method)
   * **LayoutLMv3** 📐 [^9](https://github.com/ppaanngggg/layoutreader) for layout-aware text extraction
 
-
-
 **©️ 2026 UFAL & ATRIUM**
-
-```
 
 [^1]: https://github.com/cneud/alto-tools
 [^2]: https://huggingface.co/facebook/fasttext-language-identification
