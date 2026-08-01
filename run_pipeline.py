@@ -58,13 +58,16 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from atrium_paradata import merge_run_paradata
 
@@ -252,6 +255,55 @@ def _run_stage(name: str, cmd: List[str], paradata_dir: Path) -> List[str]:
     return new_paths
 
 
+def _single_input_doc_id(input_dir: str, input_format: str) -> Optional[str]:
+    """Doc id of the lone file in input_dir, or None if it's not exactly one file.
+
+    Mirrors page_split.py's _doc_id_from_filename (same convention, kept local to
+    avoid coupling run_pipeline.py to that module's internals).
+    """
+    pattern = "*.xml" if input_format == "alto" else "*.json"
+    matches = sorted(glob.glob(str(Path(input_dir) / pattern)))
+    if len(matches) != 1:
+        return None
+    stem = os.path.splitext(os.path.basename(matches[0]))[0]
+    return stem.replace(".alto", "") if input_format == "alto" else stem
+
+
+def _prepare_document_json_bridge(document_json: Optional[str], doc_id: Optional[str]) -> Optional[Path]:
+    """Seed a scratch directory for the existing --document-json-dir/DOCUMENT_JSON_DIR
+    mechanism that every stage script already honors, so single-file --document-json
+    can reuse it instead of duplicating the accretion logic."""
+    if not doc_id:
+        print(
+            "[document] --document-json/-out require --input-dir to contain exactly one "
+            "input file — skipping the document record for this run",
+            file=sys.stderr,
+        )
+        return None
+    scratch_dir = Path(tempfile.mkdtemp(prefix="atrium_document_json_"))
+    if document_json:
+        baseline = Path(document_json)
+        if not baseline.exists():
+            print(f"[document] baseline {baseline} not found — emitting this repo's own part only", file=sys.stderr)
+        else:
+            shutil.copyfile(baseline, scratch_dir / f"{doc_id}.document.json")
+    return scratch_dir
+
+
+def _collect_document_json_output(scratch_dir: Path, doc_id: str, document_json_out: str) -> None:
+    record = scratch_dir / f"{doc_id}.document.json"
+    if not record.exists():
+        print(
+            f"[document] no document record was produced in {scratch_dir} — {document_json_out} was NOT written",
+            file=sys.stderr,
+        )
+        return
+    out_path = Path(document_json_out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(record, out_path)
+    print(f"[document] Record written -> {out_path}", flush=True)
+
+
 def build_plan(settings: Dict, config_path: str) -> List[Dict]:
     """All five stages in order, each tagged with its skip flag (no filtering)."""
     py = sys.executable or "python3"
@@ -369,8 +421,21 @@ def main() -> int:
         help="Path for the merged run summary (default: <paradata-dir>/<run_id>_pipeline-run.json).",
     )
     ap.add_argument("--dry-run", action="store_true", help="Print the resolved plan without running anything.")
-    ap.add_argument("--document-json", type=str, help="Path to the input AtriumDocument JSON")
-    ap.add_argument("--document-json-out", type=str, help="Directory to write the updated AtriumDocument JSON")
+    ap.add_argument(
+        "--document-json",
+        type=str,
+        default=None,
+        help="Single-file convenience form of --document-json-dir (issue #13): baseline "
+        "ATRIUM Document JSON for a ONE-document run (--input-dir must contain exactly "
+        "one input file). Seeds a scratch --document-json-dir internally.",
+    )
+    ap.add_argument(
+        "--document-json-out",
+        type=str,
+        default=None,
+        help="Exact path to write the updated ATRIUM Document JSON. Pairs with --document-json "
+        "or with --input-dir pointed at a single file.",
+    )
     args = ap.parse_args()
 
     config_path = args.config
@@ -379,6 +444,17 @@ def main() -> int:
     settings = resolve_settings(args, cfg)
     paradata_dir = Path(settings["paradata_dir"])
     plan = build_plan(settings, config_path)
+
+    # Single-file --document-json/-out: seed a scratch dir and route it through the
+    # same document_json_dir mechanism every stage script already honors, rather than
+    # duplicating the accretion logic here.
+    doc_json_scratch_dir: Optional[Path] = None
+    doc_json_doc_id: Optional[str] = None
+    if args.document_json or args.document_json_out:
+        doc_json_doc_id = _single_input_doc_id(settings["input_dir"], settings["input_format"])
+        doc_json_scratch_dir = _prepare_document_json_bridge(args.document_json, doc_json_doc_id)
+        if doc_json_scratch_dir is not None:
+            settings["document_json_dir"] = str(doc_json_scratch_dir)
 
     # (#4) Propagate config + the SELECTED method's text dir to every child stage.
     # extract_* and classify_TEXT read LANGID_CONFIG; classify_TEXT reads
@@ -445,6 +521,9 @@ def main() -> int:
             print("  Merging paradata from completed stages before exiting...")
         else:
             return 1
+
+    if doc_json_scratch_dir is not None and args.document_json_out:
+        _collect_document_json_output(doc_json_scratch_dir, doc_json_doc_id, args.document_json_out)
 
     if not collected:
         print("\nNo paradata logs were produced; nothing to merge.")
