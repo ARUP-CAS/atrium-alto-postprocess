@@ -1,3 +1,11 @@
+# alto_stats_create.py shells out to the `alto-tools` CLI unconditionally, for
+# EVERY --method (it is the stats stage, not an extraction backend) — para_config.txt
+# and the README dependency table both already list it as "always" required. It was
+# never declared here, so the published image could not run its own stats stage.
+# Must come from git, NOT PyPI: the released alto-tools 0.1.0 wheel has no `-s`
+# statistics flag at all (verified: `alto-tools -s` -> "unrecognized arguments: -s").
+# Pinned to a commit rather than a floating branch so the image stays reproducible.
+alto-tools @ git+https://github.com/cneud/alto-tools.git@1f4f01e5f6ac3562740e39948442973b9cb94be4
 fasttext>=0.9.3
 lxml>=6.1.1
 pandas>=3.0.5,<4.0
