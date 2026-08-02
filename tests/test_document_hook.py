@@ -19,6 +19,7 @@ import os
 from atrium_document import load_document
 from document_hook import (
     document_path,
+    pages_and_content_from_text,
     paradata_ref_for,
     resolve_document_json_dir,
     write_document_block,
@@ -101,6 +102,65 @@ def test_write_document_block_set_blocks_uses_set_block(tmp_path):
     record = load_document(document_path(doc_dir, "CTX02"))
     assert record["content"] == {"text": "full document text"}
     assert record["assembled"]["blocks"]["content"]["program"] == "alto-postprocess"
+
+
+def _write_pages(output_text_dir, file_id, page_texts):
+    save_dir = output_text_dir / file_id
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for page_id, text in page_texts.items():
+        (save_dir / f"{file_id}-{page_id}.txt").write_text(text, encoding="utf-8")
+
+
+def test_pages_and_content_default_one_row_per_page(tmp_path):
+    _write_pages(tmp_path, "doc1", {1: "Page one text", 2: "Page two text"})
+
+    pages, content = pages_and_content_from_text(str(tmp_path), "doc1", [1, 2], engine="json-keys")
+
+    assert [p["page"] for p in pages] == ["1", "2"]
+    assert all(p["ocr"] == {"engine": "json-keys"} for p in pages)
+    assert content == {"text": "Page one text\n\nPage two text"}
+
+
+def test_pages_and_content_force_single_page_collapses_rows(tmp_path):
+    _write_pages(tmp_path, "doc2", {1: "Page one text", 2: "Page two text", 3: "Page three text"})
+
+    pages, content = pages_and_content_from_text(
+        str(tmp_path), "doc2", [1, 2, 3], engine="json-keys", force_single_page=True
+    )
+
+    # Exactly one schema-valid pages[] row, regardless of source page count.
+    assert len(pages) == 1
+    assert pages[0]["page"] == "1"
+    assert pages[0]["ocr"]["engine"] == "json-keys"
+    assert pages[0]["ocr"]["force_single_page"] is True
+    # Original page labels traceable, in concatenation order — no data loss.
+    assert pages[0]["ocr"]["source_pages"] == ["1", "2", "3"]
+    # content.text is identical to the non-forced case: force_single_page is an
+    # assembly-only policy switch, it does not change what gets extracted.
+    assert content == {"text": "Page one text\n\nPage two text\n\nPage three text"}
+
+
+def test_pages_and_content_force_single_page_skips_unreadable_pages_without_duplication(tmp_path):
+    # Only page 1 is actually written to disk; page 2 is missing (e.g. its
+    # extraction failed) and must be skipped, not guessed at or duplicated.
+    _write_pages(tmp_path, "doc3", {1: "Only readable page"})
+
+    pages, content = pages_and_content_from_text(
+        str(tmp_path), "doc3", [1, 2], engine="json-keys", force_single_page=True
+    )
+
+    assert len(pages) == 1
+    assert pages[0]["ocr"]["source_pages"] == ["1"]
+    assert content == {"text": "Only readable page"}
+
+
+def test_pages_and_content_force_single_page_no_readable_pages_yields_no_rows(tmp_path):
+    pages, content = pages_and_content_from_text(
+        str(tmp_path), "doc4", [1, 2], engine="json-keys", force_single_page=True
+    )
+
+    assert pages == []
+    assert content == {"text": None}
 
 
 def test_write_document_block_records_source_once(tmp_path):

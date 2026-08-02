@@ -32,6 +32,7 @@ and categorize noisy or unreliable **OCR** 🔍 output.
     - [LayoutReader method 📐](#1st-choice-layoutreader-method-)
     - [alto-tools method 🧰](#2nd-option-alto-tools-method-)
     - [GLM method 🤖](#3rd-alternative-glm-method-llm-based-)
+    - [json-keys method 🔑](#4th-alternative-json-keys-method-generic-json-input-31--37-)
   - [Step 4: Classify Page Text Quality & Language 🗂️](#-step-4-classify-page-text-quality--language-)
     - [4.1 Classify Lines (GPU Bound) 🚀](#41-classify-lines-gpu-bound-)
       - [Categorisation logic reference 📚](docs/categorization_logic.md)
@@ -297,6 +298,66 @@ PAGE_TXT_LLM/
 │   └── ...
 └── ...
 ```
+
+---
+
+#### 4th alternative: json-keys method (generic JSON input, #31 / #37) 🔑
+
+> [!NOTE]
+> Use this method with the [Generic JSON input](#generic-json-input-31) split from Step 1 —
+> the other three methods above all consume **ALTO XML** 📄 instead.
+
+```
+python3 extract_JSON_2_TXT.py
+```
+
+Reads each page's generic OCR/Doc-AI **JSON** 📄 and walks a whitelist of informative keys
+(`content`, `text`, `line`, `word`, ... — no assumption about a particular vendor's schema
+beyond "text lives under a key named roughly `text`/`line`/`word`"), yielding every string
+leaf in document order. This is the **Extraction Layer**: it makes no other change to the
+JSON and does not know about `doc.json` at all.
+
+Example of per-page text files: [PAGE_TXT_JSON](data_samples/PAGE_TXT_JSON) 📁.
+
+```
+PAGE_TXT_JSON/
+├── <file1>
+│   ├── <file1>-<page>.txt
+│   └── ...
+├── <file2>
+│   ├── <file2>-<page>.txt
+│   └── ...
+└── ...
+```
+
+##### `doc.json` accretion (issue #37)
+
+When [`[DOCUMENT].JSON_DIR`](#-paradata-logging) (or the `DOCUMENT_JSON_DIR` env var) is
+configured, a second, separate **Accretion Layer** runs after extraction: for every document,
+it reads back that document's already-written `.txt` pages and merges them into
+`<doc_id>.document.json` as this repo's owned fields — `pages[].ocr`
+(`alto-postprocess`'s share of the field-split `pages` block) and the whole `content` block —
+leaving every other block (`page_categories`, `entities`, `source`, ...) untouched, per the
+`atrium_document.schema.json` paired-hook contract. With no baseline `doc.json` yet on disk,
+the record is created holding just this contribution (accretion rule 3). This mirrors what
+the other three extraction methods above already do.
+
+`--force-single-page` is a **document-assembly policy**, not an extraction-rule change — it
+only decides how many `pages[]` rows describe the pages already extracted above:
+
+```
+python3 extract_JSON_2_TXT.py --force-single-page
+```
+
+|                       | `pages[]` shape                                                                                                                             | `content.text`                                                           |
+|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| default               | one row per source page (`page: "1"`, `"2"`, ...)                                                                                           | always the full document: every page's text concatenated in source order |
+| `--force-single-page` | every source page collapses into **one** row (`page: "1"`), with `ocr.source_pages` listing the original page labels in concatenation order | unchanged — same joined text either way                                  |
+
+`--force-single-page` can also be set as a config-file default —
+`[EXTRACT].FORCE_SINGLE_PAGE_JSON = true` in [`setup/config.txt`](setup/config.txt) — so
+`run_pipeline.py` orchestrated runs (which invoke this script with no extra CLI flags) can
+still opt in. The CLI flag takes precedence over the config value when both are given.
 
 ---
 
@@ -584,8 +645,6 @@ DOC_LINE_STAT/
 ├── stats_<docname1>.csv
 ├── stats_<docname2>.csv
 └── ...
-
-
 ```
 
 This is the end of the text quality classification and filtering step. You can now use [arup_page_stats_SHORT.csv](data_samples/arup_page_stats_SHORT.csv) 📎 to

@@ -10,12 +10,13 @@ about a particular OCR engine's JSON schema beyond "text lives under a
 key named roughly 'text'/'line'/'word'/etc." — see TARGET_KEYS below.
 """
 
+import argparse
 import concurrent.futures
 import configparser
 import json
 import os
 from pathlib import Path
-from typing import Any, Generator, Set
+from typing import Any, Generator, Optional, Set
 
 import pandas as pd
 from tqdm import tqdm
@@ -90,10 +91,14 @@ def _load_extract_config(config_path: str = CONFIG_PATH) -> dict:
         return cfg.get("EXTRACT", key, fallback=default) if cfg.has_section("EXTRACT") else default
 
     workers_default = cfg.getint("EXTRACT", "WORKERS_MAX_JSON", fallback=16) if cfg.has_section("EXTRACT") else 16
+    force_single_page_default = (
+        cfg.getboolean("EXTRACT", "FORCE_SINGLE_PAGE_JSON", fallback=False) if cfg.has_section("EXTRACT") else False
+    )
     return {
         "input_csv": get("INPUT_CSV", "test_alto_stats.csv"),
         "output_text_dir": get("OUTPUT_TXT_JSON", "./data_samples/PAGE_TXT_JSON"),
         "max_workers": int(os.getenv("MAX_WORKERS", workers_default)),
+        "force_single_page": force_single_page_default,
     }
 
 
@@ -101,6 +106,7 @@ _CFG = _load_extract_config()
 INPUT_CSV = _CFG["input_csv"]
 OUTPUT_TEXT_DIR = _CFG["output_text_dir"]
 MAX_WORKERS = _CFG["max_workers"]
+FORCE_SINGLE_PAGE_DEFAULT = _CFG["force_single_page"]
 
 
 def extract_single_page(args: tuple) -> bool:
@@ -122,7 +128,42 @@ def extract_single_page(args: tuple) -> bool:
     return True
 
 
-def main() -> None:
+def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
+    """CLI surface for extract_JSON_2_TXT.py (issue #37).
+
+    Every existing invocation (bare `python3 extract_JSON_2_TXT.py`, as run_pipeline.py
+    calls it) keeps working unchanged: with no flags, `--force-single-page` is left
+    unset (None) and main() falls back to `[EXTRACT].FORCE_SINGLE_PAGE_JSON` from
+    config.txt, so orchestrated pipeline runs can still opt in via config alone.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Extract text from generic JSON OCR-engine output (--method json-keys) and, "
+            "when [DOCUMENT].JSON_DIR/DOCUMENT_JSON_DIR is configured, accrete it into "
+            "each document's <doc_id>.document.json (pages[]/content blocks)."
+        )
+    )
+    parser.add_argument(
+        "--force-single-page",
+        dest="force_single_page",
+        action="store_true",
+        default=None,
+        help=(
+            "Document-assembly policy switch (issue #37 / D4): collapse every source page "
+            'extracted for a document into a SINGLE schema-valid pages[] row (page: "1") '
+            "whose ocr.source_pages lists the original page labels in concatenation order. "
+            "content.text is unaffected either way — it is always the full joined document "
+            "text. Overrides [EXTRACT].FORCE_SINGLE_PAGE_JSON in config.txt; if omitted, "
+            "that config value (default: false) is used instead."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[list] = None) -> None:
+    args = _parse_args(argv)
+    force_single_page = args.force_single_page if args.force_single_page is not None else FORCE_SINGLE_PAGE_DEFAULT
+
     try:
         df = pd.read_csv(INPUT_CSV)
     except FileNotFoundError as e:
@@ -150,6 +191,7 @@ def main() -> None:
             "input_dir": str(input_dir),
             "output_dir": str(OUTPUT_TEXT_DIR),
             "n_workers": MAX_WORKERS,
+            "force_single_page": force_single_page,
         },
         paradata_dir="paradata",
         output_types=["txt"],
@@ -180,7 +222,7 @@ def main() -> None:
 
         for doc_id, page_ids in document_hook.group_tasks_by_doc(tasks).items():
             pages, content = document_hook.pages_and_content_from_text(
-                OUTPUT_TEXT_DIR, doc_id, page_ids, engine="json-keys"
+                OUTPUT_TEXT_DIR, doc_id, page_ids, engine="json-keys", force_single_page=force_single_page
             )
             document_hook.write_document_block(
                 _document_json_dir,

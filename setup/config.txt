@@ -22,6 +22,12 @@ LLM_MAX_NEW_TOKENS = 4096
 LLM_PROMPT         = OCR: Transcribe all text on this page exactly as it appears.
 OUTPUT_TXT_JSON    = ./data_samples/PAGE_TXT_JSON
 WORKERS_MAX_JSON   = 16
+# (#37) Document-assembly policy for extract_JSON_2_TXT.py's accretion into
+# <doc_id>.document.json (only takes effect when [DOCUMENT].JSON_DIR is set):
+# false (default) writes one pages[] row per source page; true collapses every
+# source page for a document into a single pages[] row. Overridable per-run via
+# the --force-single-page CLI flag, which takes precedence over this value.
+FORCE_SINGLE_PAGE_JSON = false
 
 [CLASSIFY]
 INPUT_CSV = data_samples/test_alto_stats.csv

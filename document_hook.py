@@ -121,21 +121,52 @@ def read_page_text(output_text_dir: str, file_id: str, page_id: Any) -> Optional
 
 
 def pages_and_content_from_text(
-    output_text_dir: str, file_id: str, page_ids: Sequence[Any], engine: str
+    output_text_dir: str,
+    file_id: str,
+    page_ids: Sequence[Any],
+    engine: str,
+    force_single_page: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Build the `pages[].ocr` records + the doc-level `content.text` for one
     document from its already-written page .txt files. Pages whose text could not
     be read back are skipped rather than guessed at.
+
+    `content.text` is always the full document (every readable page concatenated,
+    in source-page order, joined on a blank line) regardless of `force_single_page` —
+    that flag is purely a `pages[]` assembly policy (issue #37 / D4): it does not
+    change what text is extracted, only how many `pages[]` rows describe it.
+
+    force_single_page=False (default): one `pages[]` row per source page, as before.
+    force_single_page=True: every source page for this document collapses into a
+    SINGLE `pages[]` row (`page: "1"`), whose `ocr.source_pages` lists the original
+    page labels in the order they were concatenated — so the mapping back to
+    individual source pages is preserved rather than lost.
     """
     page_records: List[Dict[str, Any]] = []
     texts: List[str] = []
+    source_pages: List[str] = []
     for page_id in page_ids:
         text = read_page_text(output_text_dir, file_id, page_id)
         if text is None:
             continue
-        page_records.append({"page": str(page_id), "ocr": {"engine": engine}})
+        source_pages.append(str(page_id))
         texts.append(text)
+        if not force_single_page:
+            page_records.append({"page": str(page_id), "ocr": {"engine": engine}})
     joined = "\n\n".join(t for t in texts if t)
+
+    if force_single_page and source_pages:
+        page_records = [
+            {
+                "page": "1",
+                "ocr": {
+                    "engine": engine,
+                    "source_pages": source_pages,
+                    "force_single_page": True,
+                },
+            }
+        ]
+
     return page_records, {"text": joined or None}
 
 
