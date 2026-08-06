@@ -1,9 +1,17 @@
 # Aligned with atrium-project docs/templates/ruff.toml (line-length 120, shared
 # extend-exclude). The template is a FLOOR, not a ceiling: this repo keeps the
 # extra "B" (flake8-bugbear) rules and target-version as a useful superset.
-# Formatting is handled by ruff-format in .pre-commit-config.yaml, so no
-# [format] section lives here.
+# Formatting is handled by ruff-format in .pre-commit-config.yaml; the only
+# [format] setting here is the exclude list that keeps ruff-format's hands off
+# the vendored hub-canonical files (see the bottom of this file).
 line-length = 120
+# Apply exclude/extend-exclude even to EXPLICIT command-line paths. Without this the
+# [format] exclude below is inert exactly where it must work: pre-commit runs
+# `ruff-format <changed files>`, and ruff otherwise honours exclusions only while
+# walking directories -- so a vendored canonical file still gets re-wrapped on commit.
+# (issue atrium-project#10)
+force-exclude = true
+
 target-version = "py311"
 
 extend-exclude = [
@@ -20,3 +28,26 @@ ignore = ["E501"]
 
 [lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Depends"]
+
+[format]
+# DO NOT FORMAT THE VENDORED CANONICAL FILES.
+#
+# para-drift requires them byte-identical across the hub and all five tool repos, but
+# `ruff format` reflows to the LOCAL `line-length` -- 120 in this repo, page-classification,
+# alto-postprocess and translator; 100 in nlp-enrich and llm-enrich -- while the hub is
+# deliberately never auto-formatted. So a shared file's bytes became a function of which
+# repo committed it last: vendoring tests/test_document_originators.py on 2026-08-05 split
+# it into two wrap-variants and turned Paradata Canonical Drift red in three repos.
+# Each variant is a fixed point of its own config, so re-vendoring alone would not hold.
+#
+# Linting still applies -- this excludes formatting only. Full rationale in the hub
+# template. If you add a file to the para-drift set, add it here too. (issue atrium-project#10)
+exclude = [
+    "atrium_document.py",
+    "atrium_paradata.py",
+    "para_licenses.py",
+    "check_version.py",
+    "service/atrium_service.py",
+    "tests/test_para_licenses.py",
+    "tests/test_document_originators.py",
+]
