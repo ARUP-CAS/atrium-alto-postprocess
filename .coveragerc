@@ -10,8 +10,11 @@ omit =
     para_licenses.py
 
 [report]
-# Ratchet: fast-lane baseline measured 53% (2026-07-16, issue atrium-project#10)
-fail_under = 50
+# Ratchet: set ~2 points below the measured fast-lane baseline of 61.63%
+# (2026-08-06, issue atrium-project#10 Phase 6). Raised from 50 — the suites grew
+# substantially in the 08-05/06 round, and a floor left far below the real number
+# stops being a ratchet: coverage can fall by twenty points and still pass.
+fail_under = 59
 show_missing = True
 exclude_lines =
     pragma: no cover
