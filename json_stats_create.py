@@ -34,6 +34,7 @@ import os
 
 import pandas as pd
 
+from atrium_document import canonical_doc_id
 from atrium_paradata import ParadataLogger
 from extract_JSON_2_TXT import TARGET_KEYS, _yield_json_text_by_keys
 
@@ -58,7 +59,12 @@ def _process_single_json(json_path, fname):
     # e.g. "doc123-1.json" -> file="doc123", page="1" — same convention as
     # alto_stats_create._process_single_xml, since page_split.py now names
     # split JSON pages identically to split ALTO pages.
-    base = os.path.basename(fname).split(".")[0]  # "doc123-1"
+    #
+    # (atrium-project#10 D3) Suffix stripping delegated to the hub's
+    # canonical_doc_id(), composed with the local page split — see the longer note at
+    # alto_stats_create._process_single_xml, whose derivation this deliberately mirrors
+    # (the two must agree, so they now agree by calling the same function).
+    base = canonical_doc_id(os.path.basename(fname))  # "doc123-1"
     parts = base.split("-")  # ["doc123", "1"]
     file_id = parts[0]  # "doc123"
     page = parts[1] if len(parts) > 1 else ""  # "1"

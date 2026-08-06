@@ -7,6 +7,13 @@
 # Pinned to a commit rather than a floating branch so the image stays reproducible.
 alto-tools @ git+https://github.com/cneud/alto-tools.git@1f4f01e5f6ac3562740e39948442973b9cb94be4
 fasttext>=0.9.3
+# (atrium-project#10 D4) RUNTIME dependency, not a test one: document_hook.py calls
+# atrium_document.validate_document() on every record this repo writes — the Layer D
+# gate ("no doc.json is emitted if validation fails"). validate_document() raises
+# RuntimeError rather than passing when jsonschema is absent, precisely so a gate
+# cannot silently become a no-op; the hook then degrades to one loud warning per run.
+# Declared here as well as in requirements-test.txt so the published image has it.
+jsonschema>=4.26.0
 lxml>=6.1.1
 pandas>=3.0.5,<4.0
 pillow>=12.3.0

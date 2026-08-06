@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd  # To easily create the final CSV
 
+from atrium_document import canonical_doc_id
 from atrium_paradata import ParadataLogger
 
 
@@ -127,7 +128,16 @@ def _process_single_xml(xml_path, fname):
 
     # --- Derive file ID and page ID from the filename ---
     # e.g., "doc123-001.alto.xml"
-    base = os.path.basename(fname).split(".")[0]  # "doc123-001"
+    #
+    # (atrium-project#10 D3) COMPOSED with the hub's canonical_doc_id() rather than
+    # replaced by it: what page_split.py wrote is "<doc_id>-<page>.alto.xml", so this
+    # site strips a pipeline suffix AND splits a page label off, and canonical_doc_id()
+    # only does the first half (KNOWN_PIPELINE_SUFFIXES has no notion of a page
+    # suffix). The old `split(".")[0]` also truncated any doc_id containing a dot —
+    # "sbn.2019-1.alto.xml" became "sbn", so the stats CSV keyed a document that no
+    # other stage had ever heard of. Suffix stripping now comes from the one shared
+    # derivation; the page split stays local, because it is local knowledge.
+    base = canonical_doc_id(os.path.basename(fname))  # "doc123-001"
     parts = base.split("-")  # ["doc123", "001"]
     file_id = parts[0]  # "doc123"
     page = parts[1] if len(parts) > 1 else ""  # "001"

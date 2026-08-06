@@ -26,20 +26,93 @@ import configparser
 import hashlib
 import json
 import os
+import sys
 import xml.etree.ElementTree as ET  # For parsing and creating XML
+from typing import Optional
 
 import document_hook
+from atrium_document import canonical_doc_id, resolve_originator
 from atrium_paradata import ParadataLogger
 
 DOCUMENT_CONFIG_PATH = os.getenv("LANGID_CONFIG", os.path.join("setup", "config.txt"))
 
+#: (atrium-project#10 D5) Default `source.origin` per input format. page_split is the
+#: first stage to see the original input, so it is the record's first writer of
+#: `source` — and since Issue #18 §1a that field is what AUTHORISES the positional
+#: blocks (pages/content/lines/tables). Writing `source` without it left
+#: `_assert_origin_consistent()` abstaining-and-deferring forever, i.e. the mixed-plane
+#: guard was switched off for every real run of the repo it primarily protects.
+#:
+#: Each value MUST match an `ORIGIN_ORIGINATORS` prefix that resolves to
+#: "alto-postprocess" or the check silently abstains again — that is the failure mode,
+#: not a loud one, so `resolve_source_origin()` below checks the resolution rather
+#: than trusting the spelling.
+#:
+#:   xml  — the ALTO path. "ABBYY-ALTO" is the table's only ALTO-specific value, and
+#:          this repo's extractors already document ABBYY as the producer of the ALTO
+#:          they consume (extract_LytRdr_ALTO_2_TXT.py's header: "Trusts ABBYY's
+#:          <TextLine>"). A deployment whose ALTO came out of another engine sets
+#:          `SOURCE_ORIGIN = ocr:<engine>` rather than leaving this default in place.
+#:   json — the generic OCR/Doc-AI path (#31: Azure DI, docTR, Google Doc AI, AWS
+#:          Textract, pero-ocr, OCR.space). Every one of those families is OCR
+#:          output, so the `ocr:` prefix is the truthful one; the ENGINE is not
+#:          recoverable from the JSON in the general case, hence "generic" — the
+#:          same spelling tests/test_extract_json.py already uses for this path.
+#:          A deployment that knows its engine sets `SOURCE_ORIGIN = ocr:pero`.
+#:
+#: `source.origin` describes how the ORIGINAL INPUT was acquired, never how this
+#: stage read it — which is why an override belongs to the operator, not the code.
+DEFAULT_SOURCE_ORIGIN = {"xml": "ABBYY-ALTO", "json": "ocr:generic"}
 
-def _doc_id_from_filename(filename: str, fmt: str) -> str:
-    """Mirror split_alto_xml's/split_json_document's own base_name derivation,
-    without depending on their internals — used only to key the document record.
+
+def _doc_id_from_filename(filename: str, fmt: str = "") -> str:
+    """The document record's key for one input file (atrium-project#10 D3).
+
+    Delegates to the hub's `canonical_doc_id()` — the one derivation every tool is
+    meant to share. This used to hand-roll `splitext()` + `.replace(".alto", "")`,
+    one of ~11 independent derivations across the five repos, and the class of bug
+    that costs is a doc_id FORK: two stages keying the same document differently and
+    each writing a record the other never sees.
+
+    `fmt` is retained in the signature (and unused) so existing callers stay
+    source-compatible: `canonical_doc_id()` strips both formats' suffixes from
+    `KNOWN_PIPELINE_SUFFIXES`, longest first, so the caller no longer has to say
+    which one it is holding.
     """
-    stem = os.path.splitext(filename)[0]
-    return stem.replace(".alto", "") if fmt == "xml" else stem
+    del fmt  # (D3) no longer needed — canonical_doc_id() is format-agnostic.
+    return canonical_doc_id(filename)
+
+
+def resolve_source_origin(fmt: str, configured: str = "", override: str = "") -> Optional[str]:
+    """The `source.origin` to record for one input format (D5).
+
+    Precedence, matching every other setting in this repo: CLI flag > env var >
+    config value > the per-format default. Empty strings are "not set", so an unset
+    config key falls through rather than blanking the field.
+
+    Returns None when nothing at all resolves — `set_source()` drops None values, so
+    the field is then simply absent (the pre-D5 behaviour) rather than present and
+    empty, which would look like a deliberate "unknown acquisition".
+
+    An origin that resolves to no originator, or to a DIFFERENT one, is warned about
+    loudly: both cases disable the §1a check (the first abstains, the second refuses
+    every write this repo makes), and a silently-disabled guard is exactly what D5 is.
+    """
+    origin = override or os.getenv("DOCUMENT_SOURCE_ORIGIN", "") or configured or DEFAULT_SOURCE_ORIGIN.get(fmt, "")
+    origin = origin.strip()
+    if not origin:
+        return None
+    originator = resolve_originator(origin)
+    if originator != document_hook.PROGRAM_NAME:
+        print(
+            f"[document] WARNING – source.origin {origin!r} resolves to {originator!r}, "
+            f"not {document_hook.PROGRAM_NAME!r}: the Issue #18 §1a originator check will "
+            f"{'abstain' if originator is None else 'REFUSE this repo every pages/lines write'} "
+            f"for these documents. Use an ORIGIN_ORIGINATORS prefix owned by this repo "
+            f"(ABBYY-ALTO, ocr:<engine>, vlm:<engine>).",
+            file=sys.stderr,
+        )
+    return origin
 
 
 def _sha256_of(path: str) -> str:
@@ -91,7 +164,11 @@ def split_alto_xml(input_file_path, output_dir):
         print(f"  -> No <Page> elements found in {input_file_path}. Skipping.")
         return 0
 
-    base_name = os.path.splitext(os.path.basename(input_file_path))[0].replace(".alto", "")
+    # (#10 D3) Same derivation as the document record's key — literally the same
+    # call — because this base name IS the doc_id: it names the per-document output
+    # directory every later stage re-derives `file` from (alto_stats_create.py). Two
+    # copies of one convention is how the split output and the record key drift apart.
+    base_name = _doc_id_from_filename(os.path.basename(input_file_path))
 
     page_output_dir = os.path.join(output_dir, base_name)
     os.makedirs(page_output_dir, exist_ok=True)
@@ -279,7 +356,7 @@ def split_json_document(input_file_path, output_dir):
     with open(input_file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    base_name = os.path.splitext(os.path.basename(input_file_path))[0]
+    base_name = _doc_id_from_filename(os.path.basename(input_file_path))  # (#10 D3)
     page_output_dir = os.path.join(output_dir, base_name)
     os.makedirs(page_output_dir, exist_ok=True)
 
@@ -367,11 +444,23 @@ def main(argv=None):
     )
     parser.add_argument("input_dir", help="Path to the directory containing ALTO XML or JSON files to process.")
     parser.add_argument("output_dir", help="Path to the directory where split files will be saved.")
+    parser.add_argument(
+        "--source-origin",
+        default="",
+        help=(
+            "How the ORIGINAL input was acquired, recorded as source.origin in the document\n"
+            "record (default: ABBYY-ALTO for .xml input, ocr:generic for .json). Must start\n"
+            "with an ORIGIN_ORIGINATORS prefix this repo owns — ABBYY-ALTO, ocr:<engine> or\n"
+            "vlm:<engine> — e.g. --source-origin ocr:pero. Also settable as\n"
+            "[DOCUMENT].SOURCE_ORIGIN or the DOCUMENT_SOURCE_ORIGIN env var."
+        ),
+    )
     args = parser.parse_args(argv)
 
     _doc_cfg = configparser.ConfigParser()
     _doc_cfg.read(DOCUMENT_CONFIG_PATH)
     document_json_dir = document_hook.resolve_document_json_dir(_doc_cfg.get("DOCUMENT", "JSON_DIR", fallback=""))
+    _configured_origin = _doc_cfg.get("DOCUMENT", "SOURCE_ORIGIN", fallback="")
 
     if not os.path.isdir(args.input_dir):
         print(f"Error: Input directory not found at '{args.input_dir}'")
@@ -405,6 +494,10 @@ def main(argv=None):
         config_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup"),
     )
 
+    # (#10 D6) Resolved once, like every sibling stage script does, so the record
+    # points at the paradata JSON this run will emit.
+    _doc_paradata_ref = document_hook.paradata_ref_for(_logger)
+
     # (#10) Track documents (the unit of input) and pages (the unit of output)
     # separately. input_files_total counts source documents; the per-page count
     # feeds the per-format output total for throughput; successfully_processed
@@ -434,16 +527,28 @@ def main(argv=None):
                     # (atrium-project#13) page_split is the first stage to see the
                     # original input, so it is the natural first writer of `source`
                     # — set_source() is itself a no-op if a baseline already has one.
+                    #
+                    # (#10 D6) `_logger.run_id` and `paradata_ref_for(_logger)`, matching
+                    # all seven sibling call sites. Passing the ParadataLogger OBJECT here
+                    # was harmless ONLY while this call wrote `source=` and no block:
+                    # set_source() never stamps, so the object was never serialised. The
+                    # moment a block joined this call, _stamp() would embed it, json.dump()
+                    # would raise TypeError, DocumentRecord.__exit__ would swallow that —
+                    # and the ENTIRE record, `source` included, would silently never be
+                    # written, leaving a stray .tmp behind.
                     doc_id = _doc_id_from_filename(filename, fmt)
                     document_hook.write_document_block(
                         document_json_dir,
                         doc_id,
-                        _logger,
+                        _logger.run_id,
+                        _doc_paradata_ref,
                         source={
                             "sha256": _sha256_of(input_file_path),
                             "filename": filename,
                             "media_type": "application/alto+xml" if fmt == "xml" else "application/json",
                             "page_count": page_count,
+                            # (#10 D5) Without this the §1a mixed-plane guard defers forever.
+                            "origin": resolve_source_origin(fmt, _configured_origin, args.source_origin),
                         },
                     )
             except Exception as e:

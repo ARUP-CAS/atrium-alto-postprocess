@@ -174,6 +174,35 @@ PAGE_JSON/
 └── ...
 ```
 
+#### `source.origin` — how the original input was acquired
+
+This is the pipeline's **first** stage to see the original file, so when
+`[DOCUMENT].JSON_DIR` is configured it is also the first writer of the record's `source`
+block (`sha256`, `filename`, `media_type`, `page_count`, `origin`). `source` is
+immutable — first writer wins — and since the `atrium_document` §1a hardening its
+`origin` is what **authorises** this repo to write the positional blocks
+(`pages`/`content`/`lines`/`tables`), so that no document can end up with half an
+OCR-derived plane and half a digital-born one. A value that matches no known originator
+prefix silently switches that check off, which is why the resolution is verified and a
+mismatch warns 📣.
+
+| Input     | Default `origin` | Meaning                                                                    |
+|-----------|------------------|----------------------------------------------------------------------------|
+| ALTO XML  | `ABBYY-ALTO`     | ALTO from the ABBYY toolchain the extractors already assume (see `extract_LytRdr_ALTO_2_TXT.py`) |
+| JSON      | `ocr:generic`    | Generic OCR/Doc-AI export whose specific engine the file does not name      |
+
+Override it when the engine **is** known — the prefix must stay one this repo owns
+(`ABBYY-ALTO`, `ocr:<engine>`, `vlm:<engine>`):
+
+```
+python3 page_split.py <input_dir> <output_dir> --source-origin ocr:pero
+```
+
+Also settable as `[DOCUMENT].SOURCE_ORIGIN` in [`setup/config.txt`](setup/config.txt) 📎
+or via the `DOCUMENT_SOURCE_ORIGIN` env var, so orchestrated `run_pipeline.py` runs
+(which invoke this script with no extra CLI flags) can set it too. Precedence: CLI flag >
+env var > config value > per-format default.
+
 ---
 
 ### ▶️ Step 2: Create Page Statistics Table 📈

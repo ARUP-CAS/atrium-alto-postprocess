@@ -1,6 +1,11 @@
 fastapi
 uvicorn
 python-multipart
+# (atrium-project#10 D4) /process accretes into a document record through
+# document_hook.py, which validates it against atrium_document.schema.json before
+# writing. Declared here too because setup/setup_api_server.sh installs ONLY this
+# file — without it the Layer D gate degrades to a warning on an API-only install.
+jsonschema>=4.26.0
 torch
 transformers
 fasttext

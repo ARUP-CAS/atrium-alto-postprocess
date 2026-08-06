@@ -10,3 +10,24 @@ openapi-spec-validator
 # (#37) atrium_document.schema.json conformance check for the json-keys
 # extractor's doc.json accretion output.
 jsonschema>=4.26.0
+
+# atrium-project#10: make the fast lane actually SELF-CONTAINED.
+#
+# Thread G ("requirements-test.txt present & self-contained") was recorded as
+# closed for this repo, but it was not: a clean venv built from this file alone
+# — the documented Tier-2 method — aborted with **17 collection errors**
+# (13 × `No module named 'pandas'`, 4 × `numpy`), taking roughly a third of the
+# suite with it. CI never noticed because docker.yml installs
+# `setup/requirements.txt service/requirements.txt setup/requirements-test.txt`
+# together (docker.yml:44), so the runtime deps are always present there.
+#
+# The cost of that gap is silent and asymmetric: a contributor following the
+# documented method sees a third of the suite fail to collect and cannot tell an
+# environment problem from a real regression, while CI stays green. These are
+# test-time imports of first-party modules that legitimately depend on pandas
+# and numpy, so declaring them here is the fix; the pins mirror
+# setup/requirements.txt exactly so the two can never resolve differently.
+pandas>=3.0.5,<4.0
+numpy>=1.26.4
+tqdm>=4.67.1
+lxml>=6.1.1

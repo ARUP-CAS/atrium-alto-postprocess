@@ -106,6 +106,30 @@ def parse_alto_xml(xml_path: str) -> Tuple[List[str], List[List[int]], Tuple[int
     return words, boxes, (page_w, page_h)
 
 
+def parse_alto_page_labels(xml_path: str) -> List[str]:
+    """Every ``<Page>``'s LABEL in an ALTO upload, in document order.
+
+    ``PHYSICAL_IMG_NR`` when present, else the 1-based index — the exact convention
+    ``page_split.split_alto_xml`` uses to name its per-page outputs, so a label
+    produced here is the same string the batch pipeline would key that page on.
+
+    Added for atrium-project#10 (J1): the /process accretion has to say WHICH page its
+    ``pages[]``/``lines[]`` contribution describes, and the label is in the ALTO — it is
+    simply not in ``text_inference``'s return value, which reports lines only. Returns
+    [] on an unparseable or page-less document; the same hardened parser as the rest of
+    this module, since this also sees untrusted uploads.
+    """
+    try:
+        root = ET.parse(xml_path, parser=_SAFE_PARSER).getroot()
+    except Exception as e:
+        logger.error(f"XML Parse Error in {xml_path}: {e}")
+        return []
+
+    ns = {"alto": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
+    page_tag = ".//alto:Page" if ns else ".//Page"
+    return [page.attrib.get("PHYSICAL_IMG_NR") or str(i) for i, page in enumerate(root.findall(page_tag, ns), 1)]
+
+
 def parse_alto_xml_lines(xml_path: str) -> Tuple[List[str], List[List[int]], Tuple[int, int]]:
     """
     Parses ALTO XML from a file path, grouping text by <TextLine> (one

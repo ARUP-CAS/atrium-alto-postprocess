@@ -4,6 +4,16 @@
 # behaves exactly as it did before this section existed. Overridable per-run via
 # the DOCUMENT_JSON_DIR env var (see document_hook.resolve_document_json_dir).
 JSON_DIR =
+# atrium-project#10 (D5): how the ORIGINAL input was acquired, written once by
+# page_split.py as `source.origin`. Since Issue #18 §1a that value is what
+# AUTHORISES this repo to write the positional blocks (pages/content/lines/tables),
+# so it must start with an ORIGIN_ORIGINATORS prefix this repo owns — ABBYY-ALTO,
+# ocr:<engine> or vlm:<engine>; anything else makes the mixed-plane check abstain
+# in silence, which is the state D5 found it in.
+# Empty = use the per-format default (ABBYY-ALTO for ALTO XML input, ocr:generic for
+# generic JSON OCR input). Set it when the engine is known, e.g. `ocr:pero`.
+# Overridable per-run via --source-origin or the DOCUMENT_SOURCE_ORIGIN env var.
+SOURCE_ORIGIN =
 
 [EXTRACT]
 INPUT_CSV          = ./data_samples/test_alto_stats.csv

@@ -12,12 +12,21 @@ All tests chdir into tmp_path because ParadataLogger writes to the relative
 ``paradata/`` directory.
 """
 
+import hashlib
 import json
 import xml.etree.ElementTree as ET
 
 import pytest
 
-from page_split import main, split_alto_xml, split_json_document
+import document_hook
+from atrium_document import load_document, resolve_originator
+from page_split import (
+    _doc_id_from_filename,
+    main,
+    resolve_source_origin,
+    split_alto_xml,
+    split_json_document,
+)
 
 _ALTO_NS = "http://www.loc.gov/standards/alto/ns-v3#"
 
@@ -343,3 +352,175 @@ def test_main_survives_malformed_json_document(workdir):
 
     assert (workdir / "out" / "bbb_good").is_dir()  # later doc still processed
     assert not (workdir / "out" / "aaa_broken").exists()
+
+
+# ── (atrium-project#10) the document-json path, which had zero coverage here ──
+#
+# This file covered splitting and paradata only, so neither D5 (source.origin never
+# written, leaving the §1a mixed-plane guard permanently deferred) nor D6 (the
+# ParadataLogger OBJECT passed where a run_id string belongs) was visible from any
+# test. tests/test_document_hook.py exercises only the already-correct string form,
+# which is exactly why D6 went unnoticed.
+
+
+class _FakeParadataLogger:
+    """Only the three attributes document_hook.paradata_ref_for() reads."""
+
+    def __init__(self, run_id, program="alto-postprocess", paradata_dir="paradata"):
+        self.run_id = run_id
+        self.program = program
+        self.paradata_dir = paradata_dir
+
+
+@pytest.fixture
+def docdir(workdir, monkeypatch):
+    """Enable the accretion hook for main() the way an operator does — through the
+    DOCUMENT_JSON_DIR env override rather than by editing setup/config.txt."""
+    target = workdir / "docjson"
+    target.mkdir()
+    monkeypatch.setenv("DOCUMENT_JSON_DIR", str(target))
+    monkeypatch.delenv("DOCUMENT_SOURCE_ORIGIN", raising=False)
+    return target
+
+
+def test_doc_id_from_filename_delegates_to_canonical_doc_id():
+    """(D3) One derivation, and it must not fork on a multi-dot name. The old
+    `splitext()` + `.replace(".alto", "")` agreed with canonical_doc_id() on the
+    conventional names only, which is what made the fork invisible."""
+    assert _doc_id_from_filename("CTX000000001.alto.xml", "xml") == "CTX000000001"
+    assert _doc_id_from_filename("CTX000000001.xml", "xml") == "CTX000000001"
+    assert _doc_id_from_filename("CTX000000001.json", "json") == "CTX000000001"
+    assert _doc_id_from_filename("CTX000000001.document.json", "json") == "CTX000000001"
+    # A doc_id that legitimately contains dots keeps them — `split(".")[0]` did not.
+    assert _doc_id_from_filename("sbn.2019-1.alto.xml", "xml") == "sbn.2019-1"
+    # Format-agnostic: the same file resolves identically whatever the caller claims.
+    assert _doc_id_from_filename("CTX1.alto.xml", "json") == _doc_id_from_filename("CTX1.alto.xml", "xml")
+
+
+def test_resolve_source_origin_defaults_per_format_resolve_to_this_repo(monkeypatch):
+    """(D5) The value is only useful if ORIGIN_ORIGINATORS maps it back to this repo:
+    an unmatched prefix makes _assert_origin_consistent() abstain in silence, which is
+    the state that had the guard switched off."""
+    monkeypatch.delenv("DOCUMENT_SOURCE_ORIGIN", raising=False)
+    assert resolve_originator(resolve_source_origin("xml")) == "alto-postprocess"
+    assert resolve_originator(resolve_source_origin("json")) == "alto-postprocess"
+    assert resolve_source_origin("xml") == "ABBYY-ALTO"
+    assert resolve_source_origin("json").startswith("ocr:")
+
+
+def test_resolve_source_origin_precedence(monkeypatch):
+    """CLI flag > env var > config value > per-format default, as everywhere else."""
+    monkeypatch.setenv("DOCUMENT_SOURCE_ORIGIN", "ocr:from-env")
+    assert resolve_source_origin("xml", "ocr:from-config") == "ocr:from-env"
+    assert resolve_source_origin("xml", "ocr:from-config", "ocr:from-cli") == "ocr:from-cli"
+    monkeypatch.delenv("DOCUMENT_SOURCE_ORIGIN", raising=False)
+    assert resolve_source_origin("xml", "ocr:from-config") == "ocr:from-config"
+
+
+def test_resolve_source_origin_warns_when_the_override_disables_the_guard(monkeypatch, capsys):
+    """A misspelled or foreign origin must not fail quietly: `docx` resolves to
+    digital-convert, which would make §1a REFUSE every write this repo makes, and
+    `nonsense` matches nothing at all, which makes it abstain."""
+    monkeypatch.delenv("DOCUMENT_SOURCE_ORIGIN", raising=False)
+    resolve_source_origin("xml", override="docx")
+    resolve_source_origin("xml", override="nonsense")
+    err = capsys.readouterr().err
+    assert "digital-convert" in err
+    assert "abstain" in err
+
+
+def test_main_writes_source_origin_that_resolves_to_this_repo(workdir, docdir):
+    """(D5) The real call site, end to end: page_split is the record's first writer of
+    `source`, so if it omits `origin` nothing downstream can supply it — set_source() is
+    first-writer-wins — and the §1a check defers forever."""
+    src = workdir / "in" / "doc.alto.xml"
+    src.write_text(_TWO_PAGE_DOC, encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out")])
+
+    record = load_document(str(docdir / "doc.document.json"))
+    source = record["source"]
+    assert source["origin"] == "ABBYY-ALTO"
+    assert resolve_originator(source["origin"]) == "alto-postprocess"
+    assert source["page_count"] == 2
+    assert source["filename"] == "doc.alto.xml"
+    assert source["sha256"] == hashlib.sha256(src.read_bytes()).hexdigest()
+    assert record["doc_id"] == "doc"
+
+
+def test_main_json_input_records_an_ocr_origin(workdir, docdir):
+    """The JSON path describes generic OCR/Doc-AI output (#31), so its origin carries
+    the `ocr:` prefix — `source.origin` says how the ORIGINAL input was acquired, not
+    that this stage happened to read JSON."""
+    doc = {"pages": [{"pageNumber": 1, "text": "a"}, {"pageNumber": 2, "text": "b"}]}
+    (workdir / "in" / "doc.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out")])
+
+    source = load_document(str(docdir / "doc.document.json"))["source"]
+    assert source["origin"].startswith("ocr:")
+    assert resolve_originator(source["origin"]) == "alto-postprocess"
+    assert source["media_type"] == "application/json"
+
+
+def test_main_source_origin_cli_override_is_recorded(workdir, docdir):
+    (workdir / "in" / "doc.alto.xml").write_text(_TWO_PAGE_DOC, encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out"), "--source-origin", "ocr:pero"])
+
+    source = load_document(str(docdir / "doc.document.json"))["source"]
+    assert source["origin"] == "ocr:pero"
+    assert resolve_originator(source["origin"]) == "alto-postprocess"
+
+
+def test_main_passes_a_run_id_string_and_a_paradata_ref_to_the_hook(workdir, docdir, monkeypatch):
+    """(D6) Pins the SHAPE of the production call. This site used to pass the
+    ParadataLogger object where every one of the seven sibling call sites passes
+    `_logger.run_id`, and never passed a paradata_ref at all."""
+    seen = {}
+
+    def _spy(document_json_dir, doc_id, run_id, paradata_ref="", **kwargs):
+        seen.update(
+            document_json_dir=document_json_dir,
+            doc_id=doc_id,
+            run_id=run_id,
+            paradata_ref=paradata_ref,
+            kwargs=kwargs,
+        )
+
+    monkeypatch.setattr(document_hook, "write_document_block", _spy)
+    (workdir / "in" / "doc.alto.xml").write_text(_TWO_PAGE_DOC, encoding="utf-8")
+
+    main([str(workdir / "in"), str(workdir / "out")])
+
+    assert isinstance(seen["run_id"], str) and seen["run_id"]
+    assert seen["paradata_ref"].endswith("_alto-postprocess.json")
+    assert seen["doc_id"] == "doc"
+    assert seen["kwargs"]["source"]["origin"] == "ABBYY-ALTO"
+
+
+def test_write_document_block_with_source_and_a_block_in_one_call(workdir, docdir):
+    """(D6) The landmine itself: `source=` together with a block, which is the shape
+    the sibling stages use and the shape this call site would take the day it starts
+    contributing one. `set_source()` never stamps, so a non-serialisable run_id stayed
+    invisible while only `source` was written; _stamp() embeds it, json.dump() raises
+    TypeError, and DocumentRecord.__exit__ swallows that — leaving NO record at all,
+    `source` included, plus a stray .tmp."""
+    run_id = "260805-101112"
+    document_hook.write_document_block(
+        str(docdir),
+        "CTXpair",
+        run_id,
+        document_hook.paradata_ref_for(_FakeParadataLogger(run_id)),
+        source={"sha256": "c" * 64, "filename": "CTXpair.alto.xml", "origin": "ABBYY-ALTO"},
+        merge_blocks={"pages": [{"page": "1", "quality_score": 0.5, "quality_band": "Noisy"}]},
+    )
+
+    record_path = docdir / "CTXpair.document.json"
+    assert record_path.exists()  # a TypeError here would leave only CTXpair.document.json.tmp
+    assert not (docdir / "CTXpair.document.json.tmp").exists()
+    record = load_document(str(record_path))
+    assert record["assembled"]["blocks"]["pages"]["run_id"] == run_id
+    assert record["assembled"]["blocks"]["pages"]["paradata_ref"].endswith(f"{run_id}_alto-postprocess.json")
+    # The §1a guard is live for this write rather than deferred, and it authorises it.
+    assert resolve_originator(record["source"]["origin"]) == "alto-postprocess"

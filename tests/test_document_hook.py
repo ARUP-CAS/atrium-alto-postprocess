@@ -14,8 +14,13 @@ also assigned `logger.run_id = ...`, which no longer works now that `run_id` is
 a read-only property on the real ParadataLogger.
 """
 
+import json
 import os
 
+import jsonschema
+import pytest
+
+import document_hook
 from atrium_document import load_document
 from document_hook import (
     document_path,
@@ -161,6 +166,135 @@ def test_pages_and_content_force_single_page_no_readable_pages_yields_no_rows(tm
 
     assert pages == []
     assert content == {"text": None}
+
+
+# ── (atrium-project#10 D4) the Layer D validation gate at the chokepoint ─────
+#
+# These pin the POLICY, not merely that the call exists: hard-fail on this repo's own
+# output, warn on an inherited baseline, and degrade loudly (never silently) when
+# jsonschema is unavailable. Before this, validate_document() had zero production call
+# sites in any of the five repos, so "no doc.json is emitted if validation fails"
+# protected nothing at all.
+
+
+def _write_raw_record(path, record):
+    """A baseline written WITHOUT DocumentRecord, so it can be deliberately invalid."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(record, fh)
+
+
+def test_invalid_inherited_baseline_warns_but_still_accretes(tmp_path, capsys):
+    """An upstream tool's invalid record must not stall this stage: warn, name the
+    schema error, keep going. Refusing here would turn one bad record into a stalled
+    pipeline, and rule 6 already commits to passing unknown content through."""
+    doc_dir = str(tmp_path)
+    # quality_score has `maximum: 1` in the schema — 5 is invalid, and load_document
+    # is happy to read it, which is exactly the situation this policy is about.
+    _write_raw_record(
+        document_path(doc_dir, "CTXbad"),
+        {
+            "schema_version": "1.0",
+            "record_type": "atrium-document",
+            "doc_id": "CTXbad",
+            "pages": [{"page": "1", "quality_score": 5}],
+        },
+    )
+
+    write_document_block(
+        doc_dir,
+        "CTXbad",
+        run_id="r1",
+        merge_blocks={"pages": [{"page": "1", "quality_band": "Clear"}]},
+    )
+
+    err = capsys.readouterr().err
+    assert "inherited baseline" in err
+    assert "does not validate" in err
+    # The stage's own contribution landed, and the record was still written.
+    record = load_document(document_path(doc_dir, "CTXbad"))
+    assert record["pages"][0]["quality_band"] == "Clear"
+    # Its own output gate was downgraded to a warning, since the defect is inherited.
+    assert "downgraded" in err
+
+
+def test_invalid_own_output_raises_and_emits_no_record(tmp_path):
+    """The other half of the policy: this repo must never EMIT an invalid record. The
+    raise happens inside DocumentRecord's context manager body, which is what keeps
+    finalize() from running — so there is no record and no leftover .tmp either."""
+    doc_dir = str(tmp_path)
+    with pytest.raises(jsonschema.ValidationError):
+        write_document_block(
+            doc_dir,
+            "CTXown",
+            run_id="r1",
+            # quality_score is ours to write, so nothing filters it — it is simply
+            # out of the schema's [0, 1] range.
+            merge_blocks={"pages": [{"page": "1", "quality_score": 42}]},
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_missing_jsonschema_warns_once_and_does_not_block_the_write(tmp_path, monkeypatch, capsys):
+    """validate_document() raises RuntimeError when jsonschema is absent, deliberately,
+    so a gate cannot quietly become a no-op. The hook must catch THAT case apart from a
+    real validation failure: one loud warning naming the dependency, then continue —
+    a standalone run cannot be made to depend on an optional package (rule 3)."""
+
+    def _no_jsonschema(_record):
+        raise RuntimeError("jsonschema is not installed, so the record cannot be validated.")
+
+    monkeypatch.setattr(document_hook, "validate_document", _no_jsonschema)
+    monkeypatch.setattr(document_hook, "_VALIDATION_UNAVAILABLE_WARNED", False)
+
+    doc_dir = str(tmp_path)
+    write_document_block(doc_dir, "CTXnojs", run_id="r1", set_blocks={"content": {"text": "hi"}})
+    write_document_block(doc_dir, "CTXnojs", run_id="r2", set_blocks={"content": {"text": "hi again"}})
+
+    err = capsys.readouterr().err
+    assert "jsonschema" in err
+    assert "DISABLED" in err
+    # Loud once, not once per document — a batch run holds thousands of them.
+    assert err.count("validation is DISABLED") == 1
+    assert load_document(document_path(doc_dir, "CTXnojs"))["content"] == {"text": "hi again"}
+
+
+# ── (atrium-project#10 D8) merge_block()'s silent filtering, made loud ───────
+
+
+def test_merge_of_a_field_outside_this_repos_grant_raises(tmp_path):
+    """`category` belongs to page-classification. merge_block() drops it silently and
+    the result still validates (pages[] requires only `page`), which is how a wrong
+    grant produced rows stripped down to their key. assert_fields_survived() turns that
+    into a failure at the call site that got it wrong."""
+    doc_dir = str(tmp_path)
+    with pytest.raises(RuntimeError, match="dropped by merge_block"):
+        write_document_block(
+            doc_dir,
+            "CTXgrant",
+            run_id="r1",
+            merge_blocks={"pages": [{"page": "1", "quality_score": 0.9, "category": "Text"}]},
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_declared_fields_survive_the_merge(tmp_path):
+    """The same assertion must stay silent for every field this repo really owns, on
+    both blocks it merges into — otherwise it would fire on production call sites."""
+    doc_dir = str(tmp_path)
+    write_document_block(
+        doc_dir,
+        "CTXok",
+        run_id="r1",
+        merge_blocks={
+            "pages": [{"page": "1", "quality_score": 0.9, "quality_band": "Clear", "ocr": {"engine": "alto-tools"}}],
+            "lines": [
+                {"page": "1", "line": 1, "text": "a line", "lang": "ces", "quality_score": 0.8, "categ": "Clear"}
+            ],
+        },
+    )
+    record = load_document(document_path(doc_dir, "CTXok"))
+    assert record["lines"][0]["text"] == "a line"
+    assert record["pages"][0]["ocr"] == {"engine": "alto-tools"}
 
 
 def test_write_document_block_records_source_once(tmp_path):

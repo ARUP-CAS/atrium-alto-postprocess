@@ -69,6 +69,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from atrium_document import canonical_doc_id
 from atrium_paradata import merge_run_paradata
 
 CONFIG_PATH = os.getenv("LANGID_CONFIG", "setup/config.txt")
@@ -258,15 +259,22 @@ def _run_stage(name: str, cmd: List[str], paradata_dir: Path) -> List[str]:
 def _single_input_doc_id(input_dir: str, input_format: str) -> Optional[str]:
     """Doc id of the lone file in input_dir, or None if it's not exactly one file.
 
-    Mirrors page_split.py's _doc_id_from_filename (same convention, kept local to
-    avoid coupling run_pipeline.py to that module's internals).
+    (atrium-project#10 D3) Delegates to the hub's `canonical_doc_id()`, which is what
+    page_split.py's `_doc_id_from_filename` now calls too. This used to hand-roll
+    `splitext()` + `.replace(".alto", "")` on the stated grounds of "kept local to
+    avoid coupling run_pipeline.py to that module's internals" — a reasonable-sounding
+    argument that produced the coupling it was avoiding, by convention instead of by
+    import: the orchestrator seeds the bridge directory under the doc_id it derives
+    here, and page_split then writes its record under the doc_id it derives there. Two
+    copies of one convention silently fork on any multi-dot name, and the whole record
+    for that document is orphaned. Sharing the hub's single derivation is the coupling
+    that is actually safe, because it is the contract both stages are held to.
     """
     pattern = "*.xml" if input_format == "alto" else "*.json"
     matches = sorted(glob.glob(str(Path(input_dir) / pattern)))
     if len(matches) != 1:
         return None
-    stem = os.path.splitext(os.path.basename(matches[0]))[0]
-    return stem.replace(".alto", "") if input_format == "alto" else stem
+    return canonical_doc_id(matches[0])
 
 
 def _prepare_document_json_bridge(document_json: Optional[str], doc_id: Optional[str]) -> Optional[Path]:
