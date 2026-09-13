@@ -42,7 +42,7 @@ Key features:
 * **Quality Classification:** Classifies every line with a composite **quality score** built from structural detectors (strange symbols, mid-word uppercase, letter–digit–letter fusions, gibberish, fused/rotated tokens) and **Qwen2.5-0.5B** perplexity, implemented in `text_util.py` [^6]. The category is then assigned from quality-score thresholds plus named overrides.
 * **GPU Support:** Automatically detects and utilises CUDA devices for inference if available [^3].
 * **Two Frontend Variants:** A self-contained standalone interface for direct use, and a LINDAT-integrated interface for deployment within the LINDAT Common framework.
-* **CORS Support:** Cross-Origin Resource Sharing is configurable via the `ALLOWED_ORIGINS` environment variable (defaults to `http://localhost:8080,http://localhost:5500`).
+* **CORS Support:** Cross-Origin Resource Sharing is configurable via the `ALLOWED_ORIGINS` environment variable. The code default is `*` (every origin); `docker-compose.yml` supplies a narrower `http://localhost:8080,http://localhost:5500` default of its own, which applies only under compose.
 
 ## Directory Structure 📂
 
@@ -391,16 +391,24 @@ wildly between architectures (≈ `3000.0` suits `distilgpt2`), so a value tuned
 
 ## Configuration (environment) ⚙️
 
-| Variable              | Default   | Meaning                                                                       |
-|-----------------------|-----------|-------------------------------------------------------------------------------|
+| Variable              | Default   | Meaning                                                                        |
+|------------------------|-----------|----------------------------------------------------------------------------------|
 | `PORT`                | `8000`    | port the service **binds**, and the one `service/healthcheck.py` probes       |
 | `HOST`                | `0.0.0.0` | bind address. ⚠️ see the warning below                                        |
 | `GRACEFUL_SHUTDOWN_S` | `20`      | seconds uvicorn waits for in-flight requests before closing them              |
 | `RELOAD`              | `false`   | filesystem auto-reload — development only, never in a deployment              |
 | `LOG_LEVEL`           | `INFO`    | root logger level for the `python service/text_api.py` start path (issue #61) |
-| `ALLOWED_ORIGINS`     | `*`       | CSV of CORS origins                                                           |
-| `MAX_UPLOAD_MB`       | `10`      | canonical upload limit                                                        |
+| `ALLOWED_ORIGINS`     | `*`       | CSV of CORS origins — no shared default across the five services              |
+| `MAX_UPLOAD_MB`       | `25`      | canonical upload limit — no shared default across the five services           |
+| `MODEL_DIR`           | see below | directory models are loaded from                                              |
 | `GPT2_MODEL_NAME`     | see below | quality-estimation model id                                                   |
+
+This table is the deployment-facing subset. The complete ledger — every variable this
+image reads, including `MODEL_DIR`/`GPT2_MODEL_NAME`/`LAYOUT_MODEL_PATH`/`LANGID_CONFIG`
+and the other algorithmic knobs a deployment does not normally touch — is
+[`.env.example`](../.env.example) at the repo root, whose layout is fixed by
+`docs/templates/env.example.template` in ufal/atrium-project. The cross-service operator
+reference is `docs/k8s_deployment.md` in that same repo.
 
 `PORT` and `HOST` are read by `service/text_api.py`'s `__main__` block, which is what the `api` image's `ENTRYPOINT` runs.
 

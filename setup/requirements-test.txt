@@ -10,6 +10,11 @@ openapi-spec-validator
 # (#37) atrium_document.schema.json conformance check for the json-keys
 # extractor's doc.json accretion output.
 jsonschema>=4.26.0
+# tests/test_env_contract.py parses docker-compose.yml to confirm the env-var
+# contract is actually delivered (atrium-project#60). Declared explicitly rather than
+# relying on openapi-spec-validator to pull it in transitively, so this guard does not
+# silently stop running the day that transitive edge disappears.
+PyYAML
 
 # atrium-project#10: make the fast lane actually SELF-CONTAINED.
 #
