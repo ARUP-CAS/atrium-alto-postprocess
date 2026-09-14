@@ -15,6 +15,25 @@ NOT_PUBLISHED: dict[str, str] = {
     "KOREKTOR_URL": "read only by tools/quality_model/correct.py, a batch/tools-layer script; not reachable from the service entrypoint",
     "LANGID_TEXT_DIR": "batch-pipeline knob read by classify_TEXT.py and run_pipeline.py; not reachable from the service entrypoint",
     "MAX_WORKERS": "batch-pipeline knob read by extract_ALTO_2_TXT.py and extract_JSON_2_TXT.py; not reachable from the service entrypoint",
+    # Unlike the four above, these two families ARE reachable from the service
+    # entrypoint (text_util.py is imported by service/text_inference.py:53, at
+    # import time) -- the exemption reason is different in kind, not degree.
+    # text_util.py's ~95 ATRIUM_TEXT_UTILS_*/ATRIUM_CLASSIFY_* names are
+    # algorithmic scoring constants (perplexity thresholds, vowel-ratio weights,
+    # rotation-detection cutoffs, ...) read via _get_float/_get_int/_get_str/
+    # _get_csv_set (text_util.py:193,210,203,220), each overriding one scalar in
+    # setup/config.txt (text_util.py:164) -- the file this repo's plans have
+    # repeatedly said is the real deployment surface for tuning these, not the
+    # environment (atrium-project#53 plan D: "Explicitly not in scope: converting
+    # every algorithmic parameter to an env var. Twelve-factor III is about
+    # deployment-varying config."). Declared here, not silently unmatched by the
+    # scanner, so the .env.example header's "COMPLETE ledger" claim stays true:
+    # atrium-project#60 found these invisible to the plain-literal regex (an
+    # f-string composes the name, not a literal at the getenv call site) and
+    # taught test_env_contract.py's _prefix_reads to resolve them generically
+    # before this entry was added -- see that file's module docstring.
+    "ATRIUM_TEXT_UTILS_*": "algorithmic scoring constant tuned via setup/config.txt, not a deployment-varying knob (atrium-project#60/#53)",
+    "ATRIUM_CLASSIFY_*": "algorithmic scoring constant tuned via setup/config.txt, not a deployment-varying knob (atrium-project#60/#53)",
 }
 
 # In .env.example but read by no Python in this repo — each with a reason.

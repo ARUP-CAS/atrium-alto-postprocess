@@ -132,13 +132,13 @@ are assigned by a fast CPU pre-filter before any model inference. The remaining 
 
 ### Endpoints 🔗
 
-| Method | Path       | Description                                                                                                                         |
-|--------|------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                                                                    |
-| `GET`  | `/info`    | Service identity + capabilities: `service`, `version`, `endpoints`, `limits`, plus status, device, line fields, quality categories. |
-| `GET`  | `/health`  | Liveness probe — 200 always, even mid-shutdown. `?deep=true` also checks the quality/language models are loaded (503 on failure or while draining).  |
+| Method | Path       | Description                                                                                                                                                               |
+|--------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                                                                                                          |
+| `GET`  | `/info`    | Service identity + capabilities: `service`, `version`, `endpoints`, `limits`, plus status, device, line fields, quality categories.                                       |
+| `GET`  | `/health`  | Liveness probe — 200 always, even mid-shutdown. `?deep=true` also checks the quality/language models are loaded (503 on failure or while draining).                       |
 | `GET`  | `/ready`   | Readiness probe (issue #55) — 503 until model load finishes, 200 while serving, 503 the instant `SIGTERM` arrives. The Kubernetes `readinessProbe`/`startupProbe` target. |
-| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                                                        |
+| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                                                                                              |
 
 ### Request Example 💻
 
@@ -236,7 +236,7 @@ Each item in `cleaned_lines` carries the fields used by the classification pipel
 
 ### 1. Prerequisites
 
-* **Python 3.10+** virtual environment [^5].
+* **Python 3.11** virtual environment [^5] (matches `python:3.11-slim`, the image base, and the CI lane — atrium-project#64).
 * **Standard CPU** (sufficient for inference; GPU recommended for batch processing).
 * **CUDA-capable GPU** (optional — auto-detected at startup for faster inference) [^3].
 * **NodeJS** (only required for the **LINDAT-integrated** frontend — `export NODE_OPTIONS=--openssl-legacy-provider` is a common fix for Webpack 4 compatibility with NodeJS 17+).
@@ -391,8 +391,8 @@ wildly between architectures (≈ `3000.0` suits `distilgpt2`), so a value tuned
 
 ## Configuration (environment) ⚙️
 
-| Variable              | Default   | Meaning                                                                        |
-|------------------------|-----------|----------------------------------------------------------------------------------|
+| Variable              | Default   | Meaning                                                                       |
+|-----------------------|-----------|-------------------------------------------------------------------------------|
 | `PORT`                | `8000`    | port the service **binds**, and the one `service/healthcheck.py` probes       |
 | `HOST`                | `0.0.0.0` | bind address. ⚠️ see the warning below                                        |
 | `GRACEFUL_SHUTDOWN_S` | `20`      | seconds uvicorn waits for in-flight requests before closing them              |
