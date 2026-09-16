@@ -63,7 +63,76 @@ jobs:
           mkdir -p atrium-service
           cp -r setup/ service/ atrium-service/ 2>/dev/null || true
           cp README.md atrium-service/ 2>/dev/null || true
+
+          # First-party modules reached from service/*.py. Until this list existed the
+          # bundle shipped `service/` with none of the root modules it imports, so
+          # `service_bundle.zip` raised ImportError on the first `import text_api` --
+          # the same defect page-classification hit as its issue #18. The
+          # "Verify bundle is self-contained" step below is the guard: add an import
+          # and it fails here, not for a user.
+          #
+          # atrium_document.schema.json rides along as atrium_document.py's companion
+          # contract file, and atrium_vocab.schema.json as atrium_vocab.py's.
+          cp atrium_document.py \
+             atrium_document.schema.json \
+             atrium_paradata.py \
+             atrium_vocab.py \
+             atrium_vocab.schema.json \
+             para_licenses.py \
+             classify_TEXT.py \
+             document_hook.py \
+             extract_JSON_2_TXT.py \
+             text_util.py \
+             atrium-service/
+
           zip -r service_bundle.zip atrium-service/ -x "*/__pycache__/*" "*/.git/*"
+
+      # Dependency-free closure check: walks every .py in the bundle, collects the
+      # first-party modules it imports (i.e. names matching a *.py at repo root),
+      # and asserts each one is present inside the bundle. Deliberately static --
+      # importing the service would pull in torch/transformers and need the full
+      # install. Ported from atrium-page-classification, which has run this since its
+      # issue #18; this repo packaged a bundle for months with no equivalent check.
+      - name: Verify bundle is self-contained
+        run: |
+          python - <<'PY'
+          import ast, os, sys
+
+          BUNDLE = "atrium-service"
+          first_party = {f[:-3] for f in os.listdir(".") if f.endswith(".py")}
+
+          def imported(path):
+              try:
+                  tree = ast.parse(open(path, encoding="utf-8").read())
+              except SyntaxError:
+                  return set()
+              names = set()
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                      names.add(node.module.split(".")[0])
+                  elif isinstance(node, ast.Import):
+                      for alias in node.names:
+                          names.add(alias.name.split(".")[0])
+              return names
+
+          shipped, needed = set(), {}
+          for dirpath, _, files in os.walk(BUNDLE):
+              for fname in files:
+                  if not fname.endswith(".py"):
+                      continue
+                  shipped.add(fname[:-3])
+                  full = os.path.join(dirpath, fname)
+                  for mod in imported(full) & first_party:
+                      needed.setdefault(mod, []).append(os.path.relpath(full, BUNDLE))
+
+          missing = {m: v for m, v in needed.items() if m not in shipped}
+          for mod, users in sorted(missing.items()):
+              print(f"::error::{mod}.py is imported by {', '.join(sorted(set(users)))} but is not in the release bundle")
+          if missing:
+              print("::error::Release bundle is not self-contained -- add the modules above to the cp list in release.yml")
+              sys.exit(1)
+          print(f"OK -- bundle is self-contained ({len(shipped)} modules, {len(needed)} first-party imports resolved)")
+          PY
 
       - name: Create GitHub Release
         # SHA-pinned: this action holds `contents: write`. A moving tag can be
