@@ -1,3 +1,20 @@
+[DOCUMENT]
+# atrium-project#13 (paradata pair): directory of <doc_id>.document.json records,
+# shared across every stage below. Empty = disabled (default); every stage then
+# behaves exactly as it did before this section existed. Overridable per-run via
+# the DOCUMENT_JSON_DIR env var (see document_hook.resolve_document_json_dir).
+JSON_DIR =
+# atrium-project#10 (D5): how the ORIGINAL input was acquired, written once by
+# page_split.py as `source.origin`. Since Issue #18 §1a that value is what
+# AUTHORISES this repo to write the positional blocks (pages/content/lines/tables),
+# so it must start with an ORIGIN_ORIGINATORS prefix this repo owns — ABBYY-ALTO,
+# ocr:<engine> or vlm:<engine>; anything else makes the mixed-plane check abstain
+# in silence, which is the state D5 found it in.
+# Empty = use the per-format default (ABBYY-ALTO for ALTO XML input, ocr:generic for
+# generic JSON OCR input). Set it when the engine is known, e.g. `ocr:pero`.
+# Overridable per-run via --source-origin or the DOCUMENT_SOURCE_ORIGIN env var.
+SOURCE_ORIGIN =
+
 [EXTRACT]
 INPUT_CSV          = ./data_samples/test_alto_stats.csv
 OUTPUT_TXT         = ./data_samples/PAGE_TXT
@@ -13,6 +30,14 @@ LLM_MODEL          = THUDM/glm-4v-9b
 LLM_MAX_RESOLUTION = 1344
 LLM_MAX_NEW_TOKENS = 4096
 LLM_PROMPT         = OCR: Transcribe all text on this page exactly as it appears.
+OUTPUT_TXT_JSON    = ./data_samples/PAGE_TXT_JSON
+WORKERS_MAX_JSON   = 16
+# (#37) Document-assembly policy for extract_JSON_2_TXT.py's accretion into
+# <doc_id>.document.json (only takes effect when [DOCUMENT].JSON_DIR is set):
+# false (default) writes one pages[] row per source page; true collapses every
+# source page for a document into a single pages[] row. Overridable per-run via
+# the --force-single-page CLI flag, which takes precedence over this value.
+FORCE_SINGLE_PAGE_JSON = false
 
 [CLASSIFY]
 INPUT_CSV = data_samples/test_alto_stats.csv
@@ -43,7 +68,6 @@ STANDARD_COLS = Clear,Noisy,Trash,Non-text,Empty
 
 [TEXT_UTILS]
 LANG_SCORE_ROUGH = 0.45
-LANG_SCORE_CLEAR = 0.75
 ALLOWED_INTERNAL = .-,+()"'—–:%;?!/
 STRIP_CHARS = .,;:!?()[]"'\/\
 METADATA_MARKERS = Tb.,č.neg,neg.,obr.,obr ,neg ,Tb ,č. neg,č.neg.,č.,str.,Datum
@@ -77,7 +101,31 @@ QS_LENGTH_MAX         = 100
 PERPLEXITY_THRESHOLD_MAX  = 1000.0
 
 SHORT_PPL_CAP               = 850.0
+
+# ── Page-relative perplexity blend (issue #30) ──────────────────────────────
+# OFF by default. Gives 1-2 token lines a usable perplexity by reading them
+# relative to the long lines on their own page, since SHORT_PPL_CAP otherwise
+# flattens them to a constant below every perplexity threshold.
+PAGE_PPL_BLEND_ENABLE = false
+PAGE_PPL_BLEND_WEIGHT = 0.5
+PAGE_PPL_LONG_MIN_WC = 4
+PAGE_PPL_MIN_LONG_LINES = 3
 PPL_INVERTED_MIN            = 200.0
+
+# (12-factor III) Document-smoothing thresholds used by
+# apply_document_postprocessing(). These were declared in text_util.py and read
+# through _get_float(), but had no key here — so they silently ran on their
+# in-code defaults while tools/SWEEP_NOTES.md advertised all eight as tunable
+# sweep dimensions. Values below are exactly those in-code defaults, so adding
+# them is behaviour-neutral.
+SURROUNDED_TRASH_QS_MARGIN  = 0.15
+PAGE_GARBAGE_CLEAR_MAX      = 0.05
+PAGE_GARBAGE_LANG_MAX       = 0.50
+PAGE_GARBAGE_MEDIAN_QS_MAX  = 0.55
+PAGE_GARBAGE_NOISY_QS_MAX   = 0.80
+PAGE_CLEAN_CLEAR_MIN        = 0.60
+PAGE_CLEAN_MEDIAN_QS_MIN    = 0.80
+PAGE_CLEAN_RECOVER_QS_MIN   = 0.45
 
 QS_WEIGHT_VALID_WORD  = 0.35
 QS_WEIGHT_WEIRD       = 0.18
@@ -137,6 +185,30 @@ FUSED_VOWEL_RUN_MIN         = 3
 WX_REPEAT_MIN               = 2
 ISOLATED_CHAR_RATIO_MAX     = 0.40
 ISOLATED_CHAR_MIN_TOKENS    = 3
+
+# ── rule_short_garbage shape witness (issue #30) ────────────────────────────
+# OFF by default; ships inert and measurable. When true, a second witness
+# becomes available to the short-line garbage route: a phonotactic SHAPE test
+# that reaches `oueussd` / `sektlll` / `cuxoaid` / `Tthts I` without touching
+# `malakofauna` / `diapozitiv` / `Equus caballus` / `vrstva` -- the four signals
+# `_has_strong_garbage_evidence()` misses on that whole population.
+# Do not turn this on before measuring it against annotated lines: the in-tree
+# sample corpus holds 15 lines and cannot validate it. See
+# agent_dev_logs/plans/30.plan.md.
+SHORT_GARBAGE_WITNESS_ENABLE            = false
+# Minimum ALPHABETIC characters in a sub-token before any shape test applies.
+# Also what keeps every SHORT_VALID_WORDS / _NEUTRAL_LEXICON member out by
+# construction (`se`, `po`, `mm`, `ks` are all shorter than this).
+SHORT_GARBAGE_WITNESS_MIN_ALPHA         = 4
+# Character-variety clause: distinct letters / letters at or below the max, on
+# tokens at least MIN_ALPHA long. 7 / 0.50 measured: catches `vansasaasasa`;
+# at 6 it false-positives `Hannah`.
+SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA = 7
+SHORT_GARBAGE_WITNESS_VARIETY_MAX       = 0.50
+# Triple-repeated-character clause applies only up to this many letters.
+# `sektlll` and `NINNNIC` are 7; the cap is what keeps the German compound
+# `Schifffahrt` out.
+SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA  = 8
 SYM_LET_DIG_NONTEXT         = true
 MOSTLY_READABLE_VALID_MIN   = 0.85
 SHORT_NOISY_QS_PENALTY      = 0.20
@@ -177,6 +249,9 @@ GHOST_HITS_INVERTED_MIN     = 1
 METHOD        = layoutreader
 INPUT_DIR     = data_samples/ALTO
 PAGE_ALTO_DIR = data_samples/PAGE_ALTO
+# (#31) Per-page output dir for generic JSON input (--method json-keys),
+# parallel to PAGE_ALTO_DIR.
+PAGE_JSON_DIR = data_samples/PAGE_JSON
 PARADATA_DIR  = paradata
 # Per-stage skip flags (#6): skip a stage whose outputs already exist. CLI
 # --skip-<stage> / --start-from override these. A skipped stage's outputs must

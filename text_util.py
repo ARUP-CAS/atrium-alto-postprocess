@@ -150,7 +150,20 @@ def rule_fire_capture():
 ENV_PREFIX = "ATRIUM_"
 
 _config = configparser.RawConfigParser()
-_config_path = Path(os.getenv("LANGID_CONFIG", "setup/config.txt"))
+# Anchored to this file, NOT to the working directory. The default used to be the
+# relative "setup/config.txt", so a process started anywhere but the repo root
+# found nothing and ran every constant on its in-code default after one stderr
+# line -- while tools/recategorize_from_csv.py resolved the SAME file absolutely
+# via `_ROOT`, giving one process two different configurations.
+#
+# Measured 2026-09-10: 0 of 84 scalar constants currently differ between the file
+# and the in-code defaults, so this is behaviour-neutral today. That is exactly
+# why it is worth landing now -- the next round of runs exists to CHANGE those
+# constants, and the bug goes live the moment setup/config.txt stops being a
+# mirror of the defaults. A cluster job launched from a scheduler's working
+# directory would then silently score with the old values.
+_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "setup" / "config.txt"
+_config_path = Path(os.getenv("LANGID_CONFIG", str(_DEFAULT_CONFIG_PATH)))
 
 if _config_path.exists():
     _config.read(_config_path)
@@ -210,13 +223,25 @@ def _get_csv_set(section, key, default):
     return frozenset(t.strip() for t in raw.split(",") if t.strip())
 
 
-COMMON_LANGS = ["ces", "deu", "eng"]
+# (#30) The two [CLASSIFY] language fallbacks, named once.
+#
+# They used to be spelled out at three call sites -- here, classify_TEXT.main()
+# and tools/recategorize_from_csv._load_lang_config() -- and they drifted: the
+# offline copy was missing `slk` after the shipped config gained it, so a
+# Slovak line reached the guards at TRUST_TIER_UNKNOWN (0.50) offline and
+# TRUST_TIER_TRUSTED (0.85) in production. That is the same trust-tier class of
+# divergence already fixed three times in this repository's test harnesses.
+# Import these rather than retyping the strings.
+DEFAULT_EXPECTED_LANGS = "ces,deu,eng"
+DEFAULT_TRUSTED_FOREIGN_LANGS = "deu,eng,fra,pol,ita,slk"
+
+COMMON_LANGS = [lang.strip() for lang in DEFAULT_EXPECTED_LANGS.split(",") if lang.strip()]
 if _config.has_section("CLASSIFY") and _config.has_option("CLASSIFY", "EXPECTED_LANGS"):
     COMMON_LANGS = [lang.strip() for lang in _config.get("CLASSIFY", "EXPECTED_LANGS").split(",") if lang.strip()]
 
 _TRUSTED_FOREIGN_LANG_BASES: frozenset = frozenset(
     lang.strip()
-    for lang in _get_str("CLASSIFY", "TRUSTED_FOREIGN_LANGS", "deu,eng,fra,pol,ita,slk").split(",")
+    for lang in _get_str("CLASSIFY", "TRUSTED_FOREIGN_LANGS", DEFAULT_TRUSTED_FOREIGN_LANGS).split(",")
     if lang.strip()
 )
 
@@ -1358,7 +1383,49 @@ def determine_category(
             and (gibberish_present or weird_ratio > 0.0)
         ):
             _fire("rule_short_garbage")
-            return "Trash", "trash_threshold"
+            # (#30 D15) The second witness.
+            #
+            # `_has_strong_garbage_evidence()` is False on the ENTIRE disputed
+            # population -- pinned on production vectors by
+            # tests/test_calibration.py::test_strong_evidence_is_false_on_the_
+            # entire_disputed_population -- so on these lines the merged gate is a
+            # suspension of the rule rather than a narrowing of it. That is the
+            # accepted debt: roughly 26,000 garbage lines reach `Clear`.
+            #
+            # `_has_shape_garbage_evidence()` is the narrowing. It is a pure
+            # function of the text and it separates the half that IS separable
+            # (`oueussd` from `malakofauna`); the phonotactically legal residue
+            # (`edelite`) still needs a lexicon and is out of scope by design.
+            #
+            # This is the ONLY site in the short-line path that returns `Trash`.
+            # Section 7's `damage` branch returns `Noisy`, so a witness placed
+            # there could improve `Clear` -> `Noisy` while never restoring a
+            # `Trash` verdict -- and the strict xfail that tracks the debt would
+            # stay green forever. That mistake was made once already; see the
+            # plan's "Did you run it, or read it?" note.
+            #
+            # SHIPS OFF. `SHORT_GARBAGE_WITNESS_ENABLE` defaults to false, so the
+            # disjunct below cannot change any outcome until the flag is flipped,
+            # and the flag must not be flipped until the witness is measured
+            # against a gold set (tools/gold/GOLD.md). Wiring and enabling are
+            # deliberately separate commits.
+            _shape_witness = SHORT_GARBAGE_WITNESS_ENABLE and _has_shape_garbage_evidence(text_source)
+            if _shape_witness:
+                _fire("rule_short_garbage_witness")
+            if qs < CATEG_TRASH_SCORE_MAX + 0.35 and (
+                _has_strong_garbage_evidence(
+                    text_source,
+                    valid_word_ratio=valid_word_ratio,
+                    lang_score=lang_score,
+                    orig_lang_score=orig_lang_score,
+                    gibberish_present=gibberish_present,
+                    garbage_density=garbage_density,
+                    weird_ratio=weird_ratio,
+                    is_upright_czech=is_upright_czech,
+                )
+                or _shape_witness
+            ):
+                return "Trash", "trash_threshold"
 
     elif "rule_short_garbage" not in DISABLED_RULES and not forgiven and not structured and notation:
         # Reached only when the notation predicate is the DECIDING term — the
@@ -1744,17 +1811,42 @@ def _has_strong_garbage_evidence(
 # at all -- a real but THIN margin, since it depends on a signal outside this
 # predicate. Measuring that class against annotated lines is a precondition for
 # enabling the flag, not a follow-up.
-# NO CALL SITE YET, and that is deliberate rather than an oversight. The only
-# place this belongs is the short-line garbage route, and on this branch that
-# route still convicts unconditionally -- so wiring it here today would change
-# nothing and would collide with the one-hunk patch under review in PR #48,
-# which is what introduces the conditional the witness would join. It lands as
-# a second disjunct in that condition once the PR merges. Until then the
-# predicate is exercised by tests/test_text_utils.py::TestShapeGarbageWitness
-# and by test_the_disjunction_the_gate_will_evaluate in tests/test_calibration.py,
-# which pins the composed condition on real production signal vectors.
+# WIRED, BUT OFF (#30 D15). PR #48 merged as `070620f`, creating the conditional
+# this predicate joins, and the witness is now read at gate 6 of
+# `determine_category()` as a second disjunct beside `_has_strong_garbage_evidence()`.
+# Gate 6 is the only site in the short-line path that returns `Trash`; section 7's
+# `damage` branch returns `Noisy`, so a witness placed there could never restore a
+# `Trash` verdict.
+#
+# `SHORT_GARBAGE_WITNESS_ENABLE` still defaults to false, so the disjunct cannot
+# change any outcome. Wiring and enabling are separate on purpose: the flag must
+# not be flipped until the witness is measured against a GOLD set.
+#
+# UPDATE 2026-09-10 -- it has been measured once, and it did not pass. On the 508
+# annotated lines, flag-on moved 26: 12 fixed, 12 BROKEN, 2 borderline. Every
+# break carried a roman numeral, which the exemption in the predicate below now
+# clears. That exemption is a narrowing, not a green light: the 508 have NOT been
+# re-scored against it (that needs the delivered batch, which is not in the
+# tree), so the flag stays false.
+#
+# The annotations themselves are now here -- tools/gold/sidecars/, joined onto a
+# delivered batch with `--gold-sidecar`; see tools/gold/GOLD.md, including its
+# provenance note on the 55 labels that changed when the 508 were re-annotated.
+# Flipping the flag also means moving the four SHORT_GARBAGE_WITNESS_* constants
+# out of `_DELIBERATELY_NOT_TUNABLE` and into `_THRESHOLD_NAMES` + `SEARCH_SPACE`,
+# in the same commit.
+#
+# Covered by tests/test_text_utils.py::TestShapeGarbageWitness (the predicate),
+# test_the_disjunction_the_gate_will_evaluate in tests/test_calibration.py (the
+# composed condition on production vectors), and
+# tests/test_short_garbage_witness_wiring.py (the call site, both flag states).
 _RE_TRIPLE_ALPHA_RUN: re.Pattern = re.compile(r"([^\W\d_])\1\1", re.IGNORECASE)
 _RE_INITIAL_CONSONANT_GEMINATE: re.Pattern = re.compile(r"^([bcdfghjklmnpqrstvwxz])\1", re.IGNORECASE)
+
+
+# The clause names, in report order. Canonical here rather than in the reporting
+# tool, because a second copy of this vocabulary is a second thing to drift.
+SHAPE_GARBAGE_CLAUSES: tuple[str, ...] = ("vowel_run", "triple", "initial_geminate", "low_variety")
 
 
 def _has_shape_garbage_evidence(text_source: str) -> bool:
@@ -1763,10 +1855,34 @@ def _has_shape_garbage_evidence(text_source: str) -> bool:
     Read only when ``SHORT_GARBAGE_WITNESS_ENABLE`` is set. See the block above
     for what it tests, what it refuses to test, and the counterexamples behind
     each refusal.
+
+    The verdict is ``bool()`` of the clause list, so the predicate and the
+    diagnosis cannot disagree -- see ``shape_garbage_clauses()``.
+    """
+    return bool(shape_garbage_clauses(text_source))
+
+
+def shape_garbage_clauses(text_source: str) -> list[str]:
+    """Which witness clauses ``text_source`` satisfies, in ``SHAPE_GARBAGE_CLAUSES`` order.
+
+    THE single implementation of the witness. It exists because there used to be
+    two: ``tools/short_garbage_witness_report.py`` carried its own copy of these
+    four tests so it could name the clause that fired, guarded by an assertion
+    that the two agreed. The roman-numeral exemption was added here and not
+    there, and the guard did exactly what it was written to do -- it raised, on
+    0.74% of real lines, which is every line carrying a roman numeral. That is
+    the fourth harness divergence in this repository (see the digest's
+    "Harness divergence" section); the structural fix is that the reporting tool
+    no longer has an implementation to drift.
+
+    Returns every clause the line satisfies, not just the first. The predicate
+    short-circuited on the first hit; this does not, because the report needs the
+    full breakdown. The flag ships false, so nothing in production pays for it.
     """
     if has_cz_diacs(text_source) or is_structured_line(text_source) or is_domain_notation(text_source):
-        return False
+        return []
 
+    found: set[str] = set()
     for word in text_source.split():
         for sub in _split_subtokens(word):
             core = sub.strip(_STRIP_CHARS)
@@ -1782,28 +1898,55 @@ def _has_shape_garbage_evidence(text_source: str) -> bool:
             if lowered in _NEUTRAL_LEXICON or lowered in SHORT_EXCEPTION_TOKENS or lowered in SHORT_VALID_WORDS:
                 continue
 
+            # ROMAN NUMERALS are exempt, and the exemption sits above every
+            # clause below rather than inside one of them. Measured on the 508
+            # annotated lines (#30, 2026-09-10): flag-on moved 26 lines, and all
+            # 12 it broke carried a roman numeral -- `Sonda VIII/3`,
+            # `12.VIII.1977,`, `CCV. CCVI.`, `205; CCLXII).`, `166. Hr.XLIII.1.`,
+            # `Lokalisace: I-VIII-eneol.II`, `w XVIII.`.
+            #
+            # Placement is the whole point: `III` is BOTH a triple-character run
+            # and a 3-vowel run (`I` is a vowel), and `CC` opens a consonant
+            # geminate, so exempting any single clause leaves the others to
+            # convict the same line. Matching on the letters rather than `core`
+            # is also deliberate -- `_split_subtokens` yields `VIII/3` whole.
+            #
+            # `_RE_ROMAN_TOKEN` and not `RE_ROMAN_NUMERAL`: the latter accepts
+            # lowercase, and every letter of `lllll` is a numeral glyph, so it
+            # would exempt real garbage. Uppercase-only and capped at 7 keeps
+            # `IDIDIDIDIDIDUOID` convicted. Known cost: a 7-glyph all-numeral
+            # stutter such as `DIDIDID` is now exempt too.
+            #
+            # This NARROWS the witness; it does not enable it.
+            # `SHORT_GARBAGE_WITNESS_ENABLE` still defaults to false. Refusing to
+            # convict a roman numeral is not the predicate claiming the line is
+            # clean -- that asymmetry is why this does not contradict D2, which
+            # kept roman numerals OUT of `is_domain_notation()`'s label lexicon.
+            if _RE_ROMAN_TOKEN.match("".join(letters)):
+                continue
+
             # 3+ consecutive vowels: `oueussd`, `cuxoaid`, `IDIDIDIDIDIDUOID`.
             if _RE_FUSED_VOWEL_RUN.search(core):
-                return True
+                found.add("vowel_run")
 
             # The same character three times: `sektlll`, `NINNNIC`. Capped by
             # length -- a long compound reaching three is `Schifffahrt`, a word.
             if len(letters) <= SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA and _RE_TRIPLE_ALPHA_RUN.search(core):
-                return True
+                found.add("triple")
 
             # A doubled CONSONANT in first position: `Tthts`, `rragment`. No
             # European orthography opens a word that way; a bare `^(.)\1` would
             # also take `Aachen`, which several do.
             if _RE_INITIAL_CONSONANT_GEMINATE.match(core):
-                return True
+                found.add("initial_geminate")
 
             # Too few distinct letters for the length: `vansasaasasa`.
             if len(letters) >= SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA and (
                 len({c.lower() for c in letters}) / len(letters) <= SHORT_GARBAGE_WITNESS_VARIETY_MAX
             ):
-                return True
+                found.add("low_variety")
 
-    return False
+    return [c for c in SHAPE_GARBAGE_CLAUSES if c in found]
 
 
 def _looks_like_measurement(text_source: str) -> bool:
@@ -2291,6 +2434,23 @@ _NOTATION_LABELS = frozenset(
         "blok",
         "segment",
         "horizont",
+        # (#30) Added after the closed lexicon regressed six graded lines to
+        # `Trash`, five of which were right before it landed. Measured against
+        # `is_domain_notation()` directly:
+        #
+        #   Orientace: SZ-JV   False -> True   (annotated Clear)
+        #   Orientace: SV-JZ   False -> True   (annotated Clear)
+        #   Komponenta: H      False -> True   (annotated Noisy)
+        #
+        # That recovers THREE of the six, not five. The other three are not
+        # fixed by adding label words and are deliberately left alone:
+        # `XIV: 7` and `XII: 2` satisfy the label shape without being words, so
+        # admitting them means admitting Roman numerals as labels -- which is the
+        # predicate claiming vocabulary it cannot justify (D2); and
+        # `Bokalisace: B-XII-c` is annotated Noisy, so lifting it to Clear was
+        # never the right answer either.
+        "orientace",
+        "komponenta",
     }
 )
 _NOTATION_LABELS_FOLDED = frozenset(_fold_diacritics(w) for w in _NOTATION_LABELS)

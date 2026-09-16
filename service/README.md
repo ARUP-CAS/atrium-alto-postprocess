@@ -6,8 +6,7 @@
 It allows users to upload ALTO XML or raw text files to perform intelligent layout analysis,
 split-word reconstruction, and line-level quality classification (e.g., `Clear`, `Noisy`, `Trash`,
 `Non-text`, `Empty`) using **LayoutLMv3**, **FastText**, and **Qwen2.5-0.5B** [^9] [^2] [^6].
-Two frontend variants are included: a **standalone** interface (`frontend/`) and a
-**LINDAT-integrated** interface (`frontend-lindat/`).
+A **standalone** frontend interface (`frontend/`) is included.
 
 ### Table of contents 📑
 
@@ -24,7 +23,7 @@ Two frontend variants are included: a **standalone** interface (`frontend/`) and
 * [Launch Instructions](#launch-instructions)
   * [Running the Server 🚀](#running-the-server-)
   * [Standalone Frontend 🖥️](#standalone-frontend-)
-  * [LINDAT-integrated Frontend 🎨](#lindat-integrated-frontend-)
+* [Configuration (environment) ⚙️](#configuration-environment-)
 * [Contacts 📧](#contacts-)
 * [Acknowledgements 🙏](#acknowledgements-)
 
@@ -40,8 +39,8 @@ Key features:
 * **Text Cleaning:** Automatically detects and merges hyphenated words split across lines using ALTO `SUBS_TYPE` / `SUBS_CONTENT` attributes and regex-based reconstruction.
 * **Quality Classification:** Classifies every line with a composite **quality score** built from structural detectors (strange symbols, mid-word uppercase, letter–digit–letter fusions, gibberish, fused/rotated tokens) and **Qwen2.5-0.5B** perplexity, implemented in `text_util.py` [^6]. The category is then assigned from quality-score thresholds plus named overrides.
 * **GPU Support:** Automatically detects and utilises CUDA devices for inference if available [^3].
-* **Two Frontend Variants:** A self-contained standalone interface for direct use, and a LINDAT-integrated interface for deployment within the LINDAT Common framework.
-* **CORS Support:** Cross-Origin Resource Sharing is configurable via the `ALLOWED_ORIGINS` environment variable (defaults to `http://localhost:8080,http://localhost:5500`).
+* **Standalone Frontend:** A self-contained interface for direct use, served at `/frontend` when `service/frontend/` is present.
+* **CORS Support:** Cross-Origin Resource Sharing is configurable via the `ALLOWED_ORIGINS` environment variable. The code default is `*` (every origin); `docker-compose.yml` supplies a narrower `http://localhost:8080,http://localhost:5500` default of its own, which applies only under compose.
 
 ## Directory Structure 📂
 
@@ -59,9 +58,6 @@ atrium-alto-postprocess/
 │   ├── frontend/                # 🖥️  Standalone frontend (no external dependencies)
 │   │   ├── index.html           # Self-contained web interface
 │   │   └── script.js            # Vanilla JS — no jQuery, no build step required
-│   ├── frontend-lindat/         # 🎨 LINDAT-integrated frontend
-│   │   ├── index.html           # Interface styled for lindat-common
-│   │   └── script.js            # JS adapted to the lindat-common webpack bundle
 │   ├── requirements.txt         # Python dependencies
 │   └── README.md                # API service documentation
 ├── setup/                       # ⚙️ Configuration and setup files
@@ -131,13 +127,13 @@ are assigned by a fast CPU pre-filter before any model inference. The remaining 
 
 ### Endpoints 🔗
 
-| Method | Path       | Description                                                                                                                         |
-|--------|------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                                                                    |
-| `GET`  | `/info`    | Service identity + capabilities: `service`, `version`, `endpoints`, `limits`, plus status, device, line fields, quality categories. |
-| `GET`  | `/health`  | Liveness probe — 200 always, even mid-shutdown. `?deep=true` also checks the quality/language models are loaded (503 on failure or while draining).  |
+| Method | Path       | Description                                                                                                                                                               |
+|--------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/`        | Serves the standalone `index.html` interface for manual testing.                                                                                                          |
+| `GET`  | `/info`    | Service identity + capabilities: `service`, `version`, `endpoints`, `limits`, plus status, device, line fields, quality categories.                                       |
+| `GET`  | `/health`  | Liveness probe — 200 always, even mid-shutdown. `?deep=true` also checks the quality/language models are loaded (503 on failure or while draining).                       |
 | `GET`  | `/ready`   | Readiness probe (issue #55) — 503 until model load finishes, 200 while serving, 503 the instant `SIGTERM` arrives. The Kubernetes `readinessProbe`/`startupProbe` target. |
-| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                                                        |
+| `POST` | `/process` | Uploads a file for layout analysis, cleaning, and line-level classification.                                                                                              |
 
 ### Request Example 💻
 
@@ -235,10 +231,9 @@ Each item in `cleaned_lines` carries the fields used by the classification pipel
 
 ### 1. Prerequisites
 
-* **Python 3.10+** virtual environment [^5].
+* **Python 3.11** virtual environment [^5] (matches `python:3.11-slim`, the image base, and the CI lane — atrium-project#64).
 * **Standard CPU** (sufficient for inference; GPU recommended for batch processing).
 * **CUDA-capable GPU** (optional — auto-detected at startup for faster inference) [^3].
-* **NodeJS** (only required for the **LINDAT-integrated** frontend — `export NODE_OPTIONS=--openssl-legacy-provider` is a common fix for Webpack 4 compatibility with NodeJS 17+).
 
 ### 2. Install Dependencies
 
@@ -324,58 +319,6 @@ Features:
 
 ---
 
-### LINDAT-integrated Frontend 🎨
-
-`service/frontend-lindat/` is the frontend variant styled and bundled for deployment within the
-[LINDAT Common](https://github.com/ufal/lindat-common) framework. It requires NodeJS and the
-`lindat-common` webpack build.
-
-Open a **second terminal window** alongside your running server and follow these steps:
-
-**1. Place the project inside `lindat-common`:**
-
-```bash
-git clone [https://github.com/ufal/lindat-common.git](https://github.com/ufal/lindat-common.git)
-cd lindat-common
-cp -r /path/to/atrium-alto-postprocess .
-```
-
-**2. Install NodeJS and dependencies:**
-
-```bash
-curl -o- [https://raw.githubusercontent.com/creationix/nvm/v0.25.4/install.sh](https://raw.githubusercontent.com/creationix/nvm/v0.25.4/install.sh) | bash
-nvm install stable
-nvm use stable
-export NODE_OPTIONS=--openssl-legacy-provider
-npm install
-```
-
-**3. Start the webpack dev server:**
-
-```bash
-make run
-```
-
-Expected output:
-
-```
-> lindat-common@3.5.0 start
-> webpack-dev-server -p --debug --quiet
-
-> Project is running at http://localhost:8080/
-> webpack output is served from /
-> Content not from webpack is served from /home/.../lindat-common
-```
-
-Open `http://localhost:8080` and navigate to the
-`atrium-alto-postprocess/service/frontend-lindat` directory in the file tree.
-
-For further details on the LINDAT development workflow see the
-[LINDAT Common Development Guide](https://github.com/ufal/lindat-common/?tab=readme-ov-file#development).
-
-
----
-
 ## Hardware & Configuration Troubleshooting
 
 * **GLM-4v VRAM Requirements:** The GLM-4v Vision-Language Model requires massive GPU memory. You **must have a GPU
@@ -388,6 +331,39 @@ wildly between architectures (≈ `3000.0` suits `distilgpt2`), so a value tuned
 
 ---
 
+## Configuration (environment) ⚙️
+
+| Variable              | Default   | Meaning                                                                       |
+|-----------------------|-----------|-------------------------------------------------------------------------------|
+| `PORT`                | `8000`    | port the service **binds**, and the one `service/healthcheck.py` probes       |
+| `HOST`                | `0.0.0.0` | bind address. ⚠️ see the warning below                                        |
+| `GRACEFUL_SHUTDOWN_S` | `20`      | seconds uvicorn waits for in-flight requests before closing them              |
+| `RELOAD`              | `false`   | filesystem auto-reload — development only, never in a deployment              |
+| `LOG_LEVEL`           | `INFO`    | root logger level for the `python service/text_api.py` start path (issue #61) |
+| `ALLOWED_ORIGINS`     | `*`       | CSV of CORS origins — no shared default across the five services              |
+| `MAX_UPLOAD_MB`       | `25`      | canonical upload limit — no shared default across the five services           |
+| `MODEL_DIR`           | see below | directory models are loaded from                                              |
+| `GPT2_MODEL_NAME`     | see below | quality-estimation model id                                                   |
+
+This table is the deployment-facing subset. The complete ledger — every variable this
+image reads, including `MODEL_DIR`/`GPT2_MODEL_NAME`/`LAYOUT_MODEL_PATH`/`LANGID_CONFIG`
+and the other algorithmic knobs a deployment does not normally touch — is
+[`.env.example`](../.env.example) at the repo root, whose layout is fixed by
+`docs/templates/env.example.template` in ufal/atrium-project. The cross-service operator
+reference is `docs/k8s_deployment.md` in that same repo.
+
+`PORT` and `HOST` are read by `service/text_api.py`'s `__main__` block, which is what the `api` image's `ENTRYPOINT` runs.
+
+alto-postprocess is the reference implementation for this contract: it has honoured
+`PORT`/`HOST` since issue #55, and issue #58 brought the other four services into line with
+it. Its entrypoint is `python service/text_api.py` (a script launch, made viable by the
+`sys.path` bootstrap at the top of that file) rather than the `python -m service.api` the
+other four use; the environment contract is identical either way.
+
+> ⚠️ `HOST=127.0.0.1` yields a container that reports **healthy** and serves nobody:
+> `service/healthcheck.py` always probes loopback by design and never reads `HOST`, so a
+> loopback bind passes every probe while being unreachable from outside the container.
+
 ## Shutdown behavior 🛑
 
 Issue [#55](https://github.com/ufal/atrium-project/issues/55). The published `api` image
@@ -396,7 +372,8 @@ service was only reachable via a compose entrypoint override, so no API image ex
 deploy) declares `HEALTHCHECK` (shallow `GET /health`, via the vendored
 `service/healthcheck.py`) and `STOPSIGNAL SIGTERM`. `service/text_api.py`'s own
 `__main__` block — which is this repo's production start path — passes
-`timeout_graceful_shutdown` (`GRACEFUL_SHUTDOWN_S`, default 20s).
+`timeout_graceful_shutdown` (`GRACEFUL_SHUTDOWN_S`, default 20s). See
+[Configuration (environment) ⚙️](#configuration-environment-) for the full set.
 
 On `SIGTERM` the service flips `GET /ready` to **503** at once so an orchestrator stops
 routing to it, answers new `/process` calls with 503, and lets in-flight processing finish
