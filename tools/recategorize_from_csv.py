@@ -1199,8 +1199,22 @@ def attach_gold_sidecar(
     sidecar_path: Path | str,
     *,
     verbose: bool = True,
+    allow_zero_match: bool = False,
 ) -> pd.DataFrame:
     """Join a key-indexed gold sidecar onto ``df`` by (file, page_num, line_num).
+
+    ``allow_zero_match`` is for ONE caller: ``main()``, which joins per document.
+
+    The zero-match raise below answers "wrong batch, or the keys do not
+    correspond" -- a question about a whole corpus. Asked per document it is
+    almost always answered wrongly: 2,067 gold rows spread over 816 of 822
+    documents is about 2.5 rows each, and several documents carry none at all.
+    Applied there it took an 822-document cluster run down on file 1, a synthetic
+    sample document that sorts first and has no gold by construction.
+
+    The default keeps the guard, because on a whole frame a sidecar that matches
+    nothing really is the wrong batch. The per-document caller opts out and
+    accounts for the total itself.
 
     A sidecar carries labels and nothing else, so it can only be scored once it is
     attached to real rows. That is the whole operation: a left join that adds
@@ -1246,7 +1260,7 @@ def attach_gold_sidecar(
             f"  gold sidecar {Path(sidecar_path).name}: {matched} of {len(sidecar)} labels "
             f"matched onto {len(out)} rows ({len(sidecar) - matched} unmatched)"
         )
-    if matched == 0:
+    if matched == 0 and not allow_zero_match:
         raise ValueError(
             f"gold sidecar {sidecar_path} matched 0 of {len(out)} rows on "
             f"{GOLD_SIDECAR_KEYS}. Wrong batch, or the keys do not correspond."
@@ -1254,7 +1268,141 @@ def attach_gold_sidecar(
     return out
 
 
-def attach_gold_sidecar_from_args(df: pd.DataFrame, args) -> pd.DataFrame:
+def gold_preflight(corpus: Path, sidecar_path: Path, recursive: bool = False) -> dict[str, Any]:
+    """Answer "do the sidecar's keys resolve against this corpus?" without scoring.
+
+    The step this replaces re-scored the entire collection to find out, which on
+    12.7M lines is not a pre-flight, it is the run. Nothing about a key check
+    needs the perplexity, the language score or the categoriser: it needs three
+    columns.
+
+    The split in the result is the point. "Unmatched" on its own says nothing
+    actionable; these two say different things and have different fixes:
+
+      * ``file_absent``    -- the document is not in this corpus at all. Wrong
+                              batch, wrong collection, or a document dropped
+                              between the annotation and the delivery.
+      * ``locator_absent`` -- the document is here but ``(page_num, line_num)``
+                              is not. Locator drift, or the page-indexing
+                              mismatch GOLD.md records for the eight calibration
+                              rows that could never be found.
+
+    Read as strings then coerced with ``_coerce_locators`` -- the same coercion
+    the real join applies -- because a sidecar storing ``"1"`` and a batch storing
+    ``1`` would otherwise miss every row while looking perfectly healthy.
+    """
+    paths = csv_paths(corpus, recursive=recursive)
+    if not paths:
+        raise FileNotFoundError(f"No CSV files found in {corpus}")
+
+    sidecar = pd.read_csv(sidecar_path, dtype=str, keep_default_na=False)
+    missing = [k for k in GOLD_SIDECAR_KEYS if k not in sidecar.columns]
+    if missing:
+        raise ValueError(f"gold sidecar {sidecar_path} is missing key column(s): {', '.join(missing)}")
+    sidecar = _coerce_locators(sidecar.copy())
+
+    corpus_keys: set[tuple] = set()
+    corpus_files: set[str] = set()
+    docs_read = 0
+    unreadable: list[str] = []
+    for path in paths:
+        try:
+            frame = pd.read_csv(
+                path,
+                dtype=str,
+                keep_default_na=False,
+                usecols=list(GOLD_SIDECAR_KEYS),
+            )
+        except (ValueError, OSError):
+            # A CSV without the locator columns is not a scoreable document --
+            # a gold sidecar swept in by a recursive glob, most often.
+            unreadable.append(path.name)
+            continue
+        frame = _coerce_locators(frame)
+        docs_read += 1
+        corpus_files.update(frame["file"].astype(str).unique().tolist())
+        corpus_keys.update(map(tuple, frame[list(GOLD_SIDECAR_KEYS)].to_numpy().tolist()))
+
+    matched, file_absent, locator_absent = [], [], []
+    for row in sidecar[list(GOLD_SIDECAR_KEYS)].to_numpy().tolist():
+        key = tuple(row)
+        if key in corpus_keys:
+            matched.append(key)
+        elif str(key[0]) not in corpus_files:
+            file_absent.append(key)
+        else:
+            locator_absent.append(key)
+
+    by_source: dict[str, dict[str, int]] = {}
+    if "gold_source" in sidecar.columns:
+        matched_set = set(matched)
+        for source, group in sidecar.groupby("gold_source"):
+            keys = [tuple(r) for r in group[list(GOLD_SIDECAR_KEYS)].to_numpy().tolist()]
+            hit = sum(1 for k in keys if k in matched_set)
+            by_source[str(source)] = {"total": len(keys), "matched": hit, "unmatched": len(keys) - hit}
+
+    return {
+        "corpus": str(corpus),
+        "sidecar": str(sidecar_path),
+        "documents_scanned": docs_read,
+        "documents_skipped": unreadable,
+        "corpus_keys": len(corpus_keys),
+        "corpus_documents": len(corpus_files),
+        "sidecar_rows": len(sidecar),
+        "matched": len(matched),
+        "file_absent": file_absent,
+        "locator_absent": locator_absent,
+        "by_source": by_source,
+    }
+
+
+def _print_gold_preflight(report: dict[str, Any], examples: int = 5) -> None:
+    print(f"\n=== gold sidecar pre-flight: {Path(report['sidecar']).name} ===")
+    print(f"  corpus: {report['corpus']}")
+    print(f"  documents scanned: {report['documents_scanned']:,}  ({report['corpus_documents']:,} distinct `file`)")
+    print(f"  line keys read:    {report['corpus_keys']:,}")
+    if report["documents_skipped"]:
+        skipped = report["documents_skipped"]
+        print(f"  ! {len(skipped)} file(s) had no locator columns and were skipped: {', '.join(skipped[:3])}")
+
+    total = report["sidecar_rows"]
+    matched = report["matched"]
+    share = (100.0 * matched / total) if total else 0.0
+    print(f"\n  labels matched:  {matched:,} of {total:,}  ({share:.1f}%)")
+    print(f"  document absent: {len(report['file_absent']):,}")
+    print(f"  locator absent:  {len(report['locator_absent']):,}")
+
+    if report["by_source"]:
+        print("\n  by gold_source:")
+        for source, counts in sorted(report["by_source"].items()):
+            print(f"    {source:<20} {counts['matched']:>6,} / {counts['total']:>6,} matched")
+
+    for label, keys in (("document absent", report["file_absent"]), ("locator absent", report["locator_absent"])):
+        if keys:
+            shown = ", ".join(f"{k[0]}:{k[1]}:{k[2]}" for k in keys[:examples])
+            more = f" … (+{len(keys) - examples:,} more)" if len(keys) > examples else ""
+            print(f"\n  example {label}: {shown}{more}")
+
+    if matched == 0:
+        print(
+            "\n  NOTHING MATCHED. Either this is the wrong batch, or the keys do not correspond to it.",
+            file=sys.stderr,
+        )
+    elif report["locator_absent"]:
+        print(
+            "\n  A non-zero `locator absent` count with the document present means the "
+            "page/line indices drifted between annotation and delivery — that is a "
+            "different problem from a wrong batch, and it is per-line."
+        )
+
+
+def attach_gold_sidecar_from_args(
+    df: pd.DataFrame,
+    args,
+    *,
+    allow_zero_match: bool = False,
+    verbose: bool = True,
+) -> pd.DataFrame:
     """No-op unless ``--gold-sidecar`` was passed. Call right after ``load_csvs``.
 
     A sidecar without ``--gold-column`` is refused rather than ignored. Attaching
@@ -1263,6 +1411,9 @@ def attach_gold_sidecar_from_args(df: pd.DataFrame, args) -> pd.DataFrame:
     the circular objective this whole path exists to escape. It printed a
     reassuring "N labels matched" line on the way past, so a multi-hour cluster
     run looked exactly like a successful gold run and was worth nothing.
+
+    ``allow_zero_match`` / ``verbose`` are forwarded to ``attach_gold_sidecar``;
+    see its docstring for why the per-document caller needs them.
     """
     path = getattr(args, "gold_sidecar", None)
     if not path:
@@ -1275,7 +1426,7 @@ def attach_gold_sidecar_from_args(df: pd.DataFrame, args) -> pd.DataFrame:
             f"the shipped config optimal by construction.\n"
             f"       Add: --gold-column {GOLD_COLUMN_DEFAULT}"
         )
-    return attach_gold_sidecar(df, path)
+    return attach_gold_sidecar(df, path, verbose=verbose, allow_zero_match=allow_zero_match)
 
 
 def add_gold_column_argument(ap: argparse.ArgumentParser) -> None:
@@ -1322,6 +1473,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override individual constants, e.g. CATEG_TRASH_SCORE_MAX=0.45.",
     )
     ap.add_argument("--report-only", action="store_true", help="Print the diff report but do not write CSVs.")
+    ap.add_argument(
+        "--gold-preflight",
+        dest="gold_preflight",
+        action="store_true",
+        help=(
+            "Check whether --gold-sidecar's keys resolve against the corpus and exit, without "
+            "scoring anything. Reads only (file, page_num, line_num), so it answers in seconds "
+            "what a re-score answers in hours. Splits the unmatched keys into 'document absent' "
+            "(wrong batch) and 'locator absent' (page/line drift), which have different fixes."
+        ),
+    )
     ap.add_argument(
         "--recursive",
         action="store_true",
@@ -1377,6 +1539,21 @@ def main(argv=None):
         print(f"No CSV files found at {in_path}", file=sys.stderr)
         return 1
 
+    if args.gold_preflight:
+        # Before the constants are resolved and before anything is scored: this
+        # mode exists precisely so that a key mismatch is found in seconds rather
+        # than after a full re-score.
+        if not args.gold_sidecar:
+            print("error: --gold-preflight needs --gold-sidecar PATH.", file=sys.stderr)
+            return 2
+        try:
+            report = gold_preflight(in_path, Path(args.gold_sidecar), recursive=args.recursive)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        _print_gold_preflight(report)
+        return 0 if report["matched"] else 1
+
     constants = _resolve_constants(args)
     if constants:
         print(
@@ -1395,6 +1572,11 @@ def main(argv=None):
     grand_old: dict = {}
     grand_new: dict = {}
     failures: list[tuple[Path, str]] = []
+    # Corpus-level gold accounting. The per-document join cannot answer "did the
+    # sidecar find its batch?" -- only the total can, so the total is what gets
+    # reported and what the zero check is asked about.
+    gold_matched_total = 0
+    gold_docs_seen = 0
     for position, csv_path in enumerate(csvs, start=1):
         # Progress on every file, not just at the end: a 113k-document run that
         # dies must say where. Cheap next to a re-score.
@@ -1403,6 +1585,31 @@ def main(argv=None):
 
         try:
             old, new = rescore_csv(csv_path, constants)
+            total_changed += _report(csv_path, old, new)
+
+            if args.gold_column:
+                # Attached to `old` only: `new` is the re-scored frame and gold is
+                # a property of the line, not of the prediction. `_gold_report`
+                # reads the column off `old` and realigns `new` by index.
+                #
+                # allow_zero_match: this is a PER-DOCUMENT join, and most
+                # documents carry no gold. verbose=False: 822 lines of
+                # "0 of 2067 matched" is not a report, it is a wall. The corpus
+                # total is accumulated here and printed once after the loop.
+                #
+                # Inside the try on purpose. It used to sit after it, so the one
+                # thing the loop promises -- "one bad CSV must not end the run" --
+                # did not cover the gold join, and a single un-annotated document
+                # aborted everything.
+                scored = attach_gold_sidecar_from_args(old, args, allow_zero_match=True, verbose=False)
+                if args.gold_column in scored.columns:
+                    gold_matched_total += int((scored[args.gold_column].fillna("").astype(str).str.strip() != "").sum())
+                    gold_docs_seen += 1
+                report = _gold_report(scored, new, args.gold_column)
+                # A document the sidecar says nothing about is the common case and
+                # is not worth a line of output.
+                if report is not None and report.get("n"):
+                    _print_gold_report(report, args.gold_column)
         except Exception as exc:  # noqa: BLE001 - one bad CSV must not end the run
             # Previously a single malformed CSV aborted the whole loop, and
             # because writes were in place it left a half-converted collection
@@ -1410,15 +1617,6 @@ def main(argv=None):
             print(f"  ! FAILED: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
             failures.append((csv_path, f"{type(exc).__name__}: {exc}"))
             continue
-
-        total_changed += _report(csv_path, old, new)
-
-        if args.gold_column:
-            # Attached to `old` only: `new` is the re-scored frame and gold is a
-            # property of the line, not of the prediction. `_gold_report` reads
-            # the column off `old` and realigns `new` by index.
-            scored = attach_gold_sidecar_from_args(old, args)
-            _print_gold_report(_gold_report(scored, new, args.gold_column), args.gold_column)
 
         if args.probe_metre_candidate:
             candidate_hits = _count_spaced_decimal_metre_candidates(old)
@@ -1456,6 +1654,27 @@ def main(argv=None):
             print(f"  {c:<10} {b:>7} {a:>7} {a - b:>+7}")
         print(f"  total lines changed category: {total_changed}")
         print(f"  files processed: {len(csvs) - len(failures)}/{len(csvs)}")
+
+    if args.gold_column and args.gold_sidecar:
+        # The corpus-level question, asked once, at the only granularity where it
+        # means anything. Per document it is unanswerable: most documents match
+        # nothing and that is correct.
+        sidecar_rows = len(pd.read_csv(Path(args.gold_sidecar), dtype=str, keep_default_na=False))
+        print(f"\n=== GOLD SIDECAR {Path(args.gold_sidecar).name} ===")
+        print(f"  labels matched: {gold_matched_total:,} of {sidecar_rows:,}")
+        print(f"  documents scanned: {gold_docs_seen:,}")
+        if gold_matched_total == 0:
+            print(
+                f"  ! NOTHING MATCHED on {GOLD_SIDECAR_KEYS}. Wrong batch, or the keys do not correspond.",
+                file=sys.stderr,
+            )
+            return 1
+        if gold_matched_total < sidecar_rows:
+            print(
+                f"  {sidecar_rows - gold_matched_total:,} label(s) unmatched — expected, "
+                "and worth recording: run --gold-preflight for the file-absent vs "
+                "locator-absent split."
+            )
 
     if failures:
         print(f"\n=== {len(failures)} FILE(S) FAILED ===", file=sys.stderr)

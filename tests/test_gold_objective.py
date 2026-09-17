@@ -455,3 +455,160 @@ def test_a_directory_of_only_sidecars_is_an_error_not_an_empty_success(tmp_path)
     )
     with pytest.raises(FileNotFoundError, match="No scoreable CSV files"):
         load_csvs(only_sidecars, recursive=True)
+
+
+# ---------------------------------------------------------------------------
+# A corpus-level guard applied per document
+# ---------------------------------------------------------------------------
+#
+# `recategorize_from_csv.main()` iterates documents and joins the sidecar onto
+# ONE DOCUMENT'S frame at a time. The zero-match guard inside
+# `attach_gold_sidecar` answers "wrong batch, or the keys do not correspond" --
+# a question about the whole corpus. Per document, zero matches is the normal
+# case: 2,067 gold rows over 816 of 822 documents is ~2.5 rows each, and several
+# documents carry none at all.
+#
+# On the cluster this took an 822-document run down at file 1, on
+# `CTX000000001.csv` -- a synthetic sample document that sorts first and has no
+# gold by construction.
+#
+# The inconsistency was already visible in the code: `_gold_report`'s docstring
+# says it returns None on a missing column "so a mixed directory of annotated and
+# un-annotated documents still reports on the annotated ones". The downstream
+# function anticipated exactly the case the upstream one rejected.
+
+
+def test_a_document_with_no_gold_rows_is_not_an_error(tmp_path):
+    """The regression that reached the cluster.
+
+    A per-document join must tolerate a document the sidecar says nothing about.
+    Without `allow_zero_match` this raises, and the whole run dies on whichever
+    un-annotated document happens to sort first.
+    """
+    sidecar = tmp_path / "gold.csv"
+    sidecar.write_text(
+        "file,page_num,line_num,gold_categ\nCTX000000002,1,1,Clear\n",
+        encoding="utf-8",
+    )
+    # A document the sidecar has no opinion about.
+    unannotated = pd.DataFrame(
+        {"file": ["CTX000000001"], "page_num": ["1"], "line_num": ["1"], "text": ["vrstva 3"], "categ": ["Clear"]}
+    )
+
+    joined = attach_gold_sidecar(unannotated, sidecar, verbose=False, allow_zero_match=True)
+
+    assert len(joined) == 1, "the join must not drop or duplicate rows"
+    assert GOLD_COLUMN_DEFAULT in joined.columns
+    assert joined[GOLD_COLUMN_DEFAULT].fillna("").astype(str).str.strip().eq("").all(), (
+        "an un-annotated document must come back with a blank gold column, not a label"
+    )
+
+
+def test_the_wrong_batch_guard_is_unchanged_by_default(tmp_path):
+    """Relaxing the per-document case must not disarm the corpus-level detector.
+
+    `allow_zero_match` is opt-in for exactly one caller. Everywhere else a
+    sidecar that matches nothing is still the wrong batch, and still raises.
+    """
+    sidecar = tmp_path / "gold.csv"
+    sidecar.write_text("file,page_num,line_num,gold_categ\nOTHER_BATCH,1,1,Clear\n", encoding="utf-8")
+    frame = pd.DataFrame(
+        {"file": ["CTX000000001"], "page_num": ["1"], "line_num": ["1"], "text": ["vrstva 3"], "categ": ["Clear"]}
+    )
+
+    with pytest.raises(ValueError, match="matched 0 of"):
+        attach_gold_sidecar(frame, sidecar, verbose=False)
+
+
+def test_mixed_corpus_survives_the_document_that_sorts_first(tmp_path):
+    """End to end through the CLI, in the shape the cluster corpus actually has.
+
+    The un-annotated document is named so it sorts FIRST, which is what made this
+    fail immediately rather than intermittently.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    header = "categ,quality_score,file,page_num,line_num,text,original_text,original_lang,orig_lang_score,perplex,perplex_raw,word_count\n"
+    (corpus / "CTX000000001.csv").write_text(
+        header + "Clear,0.9,CTX000000001,1,1,vrstva 3,vrstva 3,ces_Latn,1.0,30.0,30.0,2\n",
+        encoding="utf-8",
+    )
+    (corpus / "CTX000000002.csv").write_text(
+        header + "Clear,0.9,CTX000000002,1,1,vrstva 4,vrstva 4,ces_Latn,1.0,30.0,30.0,2\n",
+        encoding="utf-8",
+    )
+    sidecar = tmp_path / "gold.csv"
+    sidecar.write_text("file,page_num,line_num,gold_categ\nCTX000000002,1,1,Noisy\n", encoding="utf-8")
+
+    from tools.recategorize_from_csv import main as rc_main
+
+    rc = rc_main(
+        [
+            str(corpus),
+            "--config",
+            str(_ROOT / "setup" / "config.txt"),
+            "--report-only",
+            "--gold-sidecar",
+            str(sidecar),
+            "--gold-column",
+            GOLD_COLUMN_DEFAULT,
+        ]
+    )
+    assert rc == 0, "a corpus containing an un-annotated document must not fail the run"
+
+
+def test_gold_preflight_splits_absent_documents_from_drifted_locators(tmp_path):
+    """ "Unmatched" on its own is not actionable; these two diagnoses are.
+
+    A document that is not in the corpus means the wrong batch. A document that
+    IS in the corpus with a `(page_num, line_num)` that is not means the locators
+    drifted between annotation and delivery — GOLD.md already records eight
+    calibration rows that could never be found, one of them differing only in the
+    stored text. The fixes are completely different, and the old output could not
+    tell them apart because it never got past the first document.
+    """
+    from tools.recategorize_from_csv import gold_preflight
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    header = "categ,file,page_num,line_num,text\n"
+    (corpus / "CTX000000002.csv").write_text(
+        header + "Clear,CTX000000002,1,1,vrstva 4\nClear,CTX000000002,1,2,malakofauna\n",
+        encoding="utf-8",
+    )
+    sidecar = tmp_path / "gold.csv"
+    sidecar.write_text(
+        "file,page_num,line_num,gold_categ,gold_source\n"
+        "CTX000000002,1,2,Clear,issue30_508\n"  # matches
+        "CTX000000002,9,9,Trash,issue30_508\n"  # document here, locator is not
+        "CTX999999999,1,1,Noisy,calibration_1567\n",  # document not here at all
+        encoding="utf-8",
+    )
+
+    report = gold_preflight(corpus, sidecar)
+
+    assert report["matched"] == 1
+    assert [tuple(k) for k in report["locator_absent"]] == [("CTX000000002", 9, 9)]
+    assert [tuple(k) for k in report["file_absent"]] == [("CTX999999999", 1, 1)]
+    assert report["by_source"]["issue30_508"] == {"total": 2, "matched": 1, "unmatched": 1}
+    assert report["by_source"]["calibration_1567"]["matched"] == 0
+
+
+def test_gold_preflight_coerces_locators_like_the_real_join(tmp_path):
+    """A sidecar storing "1" against a batch storing 1 must not read as a mismatch.
+
+    The real join runs both sides through `_coerce_locators`; a pre-flight that
+    did not would report a clean, confident, entirely false zero — the exact
+    failure it exists to rule out.
+    """
+    from tools.recategorize_from_csv import gold_preflight
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000002.csv").write_text(
+        "categ,file,page_num,line_num,text\nClear,CTX000000002,01,007,vrstva\n", encoding="utf-8"
+    )
+    sidecar = tmp_path / "gold.csv"
+    sidecar.write_text("file,page_num,line_num,gold_categ\nCTX000000002,1,7,Clear\n", encoding="utf-8")
+
+    assert gold_preflight(corpus, sidecar)["matched"] == 1
