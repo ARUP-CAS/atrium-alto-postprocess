@@ -56,7 +56,20 @@ def test_example_gold_set_exists_and_is_per_document():
     for path in csvs:
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
         assert GOLD_COLUMN_DEFAULT in df.columns, f"{path.name} has no {GOLD_COLUMN_DEFAULT} column"
-        assert df["file"].nunique() == 1, f"{path.name} mixes {df['file'].nunique()} documents"
+        # Checked before it is used, so a stray file reports what is wrong with it
+        # rather than raising KeyError('file') from inside pandas. The likely
+        # stray is an annotation queue: `short_garbage_witness_report.py --out`
+        # and any key-indexed sidecar span many documents and belong in
+        # tools/gold/sidecars/, joined with --gold-sidecar.
+        assert "file" in df.columns, (
+            f"{path.name} has a {GOLD_COLUMN_DEFAULT} column but no `file` column, so it is not a "
+            "per-document gold CSV. A multi-document annotation set is a SIDECAR: move it to "
+            "tools/gold/sidecars/ and pass it with --gold-sidecar."
+        )
+        assert df["file"].nunique() == 1, (
+            f"{path.name} mixes {df['file'].nunique()} documents. tools/gold/ is one CSV per "
+            "document; multi-document sets belong in tools/gold/sidecars/."
+        )
         assert df["file"].iloc[0] == path.stem, f"{path.name} does not match its `file` value"
 
 
@@ -612,3 +625,98 @@ def test_gold_preflight_coerces_locators_like_the_real_join(tmp_path):
     sidecar.write_text("file,page_num,line_num,gold_categ\nCTX000000002,1,7,Clear\n", encoding="utf-8")
 
     assert gold_preflight(corpus, sidecar)["matched"] == 1
+
+
+def test_the_adopt_verdict_honours_both_halves_of_its_own_criterion(capsys):
+    """The tool stated a two-part rule and implemented one part.
+
+    `_print_gold_verdict` computed the verdict from the macro_f1 delta alone,
+    printed `Clear-loss=N` beside it, and then closed with "A candidate is only
+    worth adopting when it beats the shipped labels against gold AND does not
+    raise Clear-loss" — a criterion it never evaluated.
+
+    Issue #30 stage 5a landed exactly on the gap: macro_f1 +0.0193 with
+    Clear-loss 40 -> 42, reported as ADOPT-CANDIDATE. On the one decision this
+    tool exists to inform, it recommended adopting a candidate its own last line
+    disqualifies.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(_ROOT / "tools"))
+    from ab_constant_eval import _print_gold_verdict
+
+    rows = [
+        {"value": False, "macro_f1": 0.6173, "clear_loss": 40, "baseline_vs_gold_macro_f1": 0.6173},
+        {"value": True, "macro_f1": 0.6366, "clear_loss": 42, "baseline_vs_gold_macro_f1": 0.6173},
+    ]
+    _print_gold_verdict(rows, "gold_categ")
+    out = capsys.readouterr().out
+
+    assert "REVIEW" in out, "a candidate that raises Clear-loss must not read as ADOPT-CANDIDATE"
+    assert "Clear-loss +2" in out, "the verdict must name the cost it is flagging"
+    assert "ADOPT-CANDIDATE" not in out
+
+
+def test_a_candidate_that_costs_nothing_still_reads_as_adopt(capsys):
+    """The fix must not turn every improvement into a REVIEW."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(_ROOT / "tools"))
+    from ab_constant_eval import _print_gold_verdict
+
+    rows = [
+        {"value": False, "macro_f1": 0.6173, "clear_loss": 40, "baseline_vs_gold_macro_f1": 0.6173},
+        {"value": True, "macro_f1": 0.6366, "clear_loss": 38, "baseline_vs_gold_macro_f1": 0.6173},
+    ]
+    _print_gold_verdict(rows, "gold_categ")
+    assert "ADOPT-CANDIDATE" in capsys.readouterr().out
+
+
+def test_the_witness_annotation_queue_round_trips_as_a_gold_sidecar(tmp_path):
+    """The annotation queue has to be joinable, or filling it in is wasted work.
+
+    `short_garbage_witness_report.py --out` emits the lines the witness would
+    convict, with `gold_categ` blank, and tells the operator to fill it in. It
+    used to emit a single `document` column holding the *filename* and no
+    locators — so the finished file could not be joined with `--gold-sidecar`
+    (which keys on `file, page_num, line_num` and refuses a frame without them)
+    and could not be dropped into `tools/gold/` either. Both doors were shut on a
+    file whose only purpose is to be annotated and read back.
+
+    That matters beyond tidiness: the gold set is 2,064 lines and every figure in
+    issue #30 is limited by it — stage 5a's macro-F1 delta rests on ~11 lines.
+    This queue is 20,324 candidates. It is the cheapest available route to a
+    larger gold set, and it was a dead end.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_wr", _ROOT / "tools" / "short_garbage_witness_report.py")
+    wr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wr)
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000009.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000009,4,11,rragment,1\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "candidates.csv"
+    assert wr.main(["--input-dir", str(corpus), "--out", str(out)]) == 0
+
+    queue = pd.read_csv(out, dtype=str, keep_default_na=False)
+    assert list(queue.columns[:3]) == list(GOLD_SIDECAR_KEYS), (
+        f"the queue must lead with the sidecar key, got {list(queue.columns[:3])}"
+    )
+    assert GOLD_COLUMN_DEFAULT in queue.columns
+    assert (queue[GOLD_COLUMN_DEFAULT] == "").all(), "gold_categ must ship blank for blind annotation"
+    assert queue.loc[0, "file"] == "CTX000000009", "`file` must be the document id, not the filename"
+    assert queue.loc[0, "page_num"] == "4" and queue.loc[0, "line_num"] == "11"
+
+    # Annotate it and join it back, which is the whole contract.
+    queue[GOLD_COLUMN_DEFAULT] = "Trash"
+    annotated = tmp_path / "annotated.csv"
+    queue.to_csv(annotated, index=False)
+
+    joined = attach_gold_sidecar(load_csvs(corpus), annotated, verbose=False)
+    matched = (joined[GOLD_COLUMN_DEFAULT].fillna("").astype(str).str.strip() != "").sum()
+    assert matched == 1, "an annotated queue must join back onto the batch it came from"

@@ -442,6 +442,20 @@ SHORT_GARBAGE_LEXICON_CONVICT = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_CO
     "yes",
     "on",
 )
+
+
+def _warn_uncoupled_witness() -> None:
+    """Emit the advisory once at import. Defined here, evaluated after the keys exist.
+
+    Same house idiom as the atrium_vocab check at the top of this module: a NOTE
+    on stderr, never fatal, and silence on the happy path -- which includes the
+    shipped configuration, where the witness flag is false.
+    """
+    message = uncoupled_witness_warning()
+    if message:
+        print(f"[text_util] NOTE - {message}", file=sys.stderr)
+
+
 SYM_LET_DIG_NONTEXT = _get_str("TEXT_UTILS", "SYM_LET_DIG_NONTEXT", "true").strip().lower() in (
     "true",
     "1",
@@ -1909,6 +1923,14 @@ def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
     is a cache key and nothing else -- it is what lets a rebuilt table be picked
     up inside one process, which the test suite relies on.
 
+    A comment is a line that starts with ``#`` AND CARRIES NO TAB. Both halves
+    are load-bearing: ``#`` is not in ``_STRIP_CHARS``, so the builder emits
+    tokens like ``#rdisico`` verbatim, and 27 of them appear in the first real
+    822-document table. Skipping every ``#``-initial line dropped them at load
+    with no symptom other than a count being quietly wrong. No escaping scheme is
+    needed to tell the two apart -- a header line has no tab (``# columns:
+    token<TAB>document_frequency`` is literal text), a data line always does.
+
     A malformed or unreadable table yields an EMPTY set rather than an exception.
     This predicate is consulted per sub-token inside the categoriser; a corrupt
     optional file must degrade to "no vocabulary signal", never take the pipeline
@@ -1922,9 +1944,14 @@ def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
         # mangled byte should cost that one token, not the corpus run.
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
-                if not line or line.startswith("#"):
+                stripped = line.rstrip("\n")
+                if not stripped:
                     continue
-                token, _, df = line.rstrip("\n").partition("\t")
+                token, sep, df = stripped.partition("\t")
+                # Comment == leading '#' and no tab. See the docstring: a token
+                # may legitimately begin with '#'.
+                if not sep or (not token and stripped.startswith("#")):
+                    continue
                 if not token:
                     continue
                 try:
@@ -1948,6 +1975,48 @@ def token_lexicon() -> frozenset:
     except OSError:
         return frozenset()
     return _read_token_lexicon(path, mtime, int(SHORT_GARBAGE_LEXICON_MIN_DF))
+
+
+def uncoupled_witness_warning(
+    witness_enabled: bool | None = None,
+    lexicon_path: str | None = None,
+) -> str | None:
+    """The shape witness armed with no vocabulary table is a measured bad setting.
+
+    Returns the advisory text, or ``None`` when the configuration is fine.
+
+    Measured on the cluster over 1,480,119 in-scope lines (2026-09-17). The shape
+    witness ALONE confirms 5,107 existing ``Trash`` verdicts and newly convicts
+    **15,217** lines the pipeline currently calls ``Clear`` or ``Noisy`` -- 1 : 3
+    against. The same witness with the vocabulary veto at ``min_df`` 3 scores
+    3,905 against 2,306, i.e. 1.7 : 1 in favour. An 85% cut in false-positive
+    exposure for 24% of the confirmations.
+
+    So the veto is not a refinement of the witness. It is the difference between
+    a narrowing worth arming and one that trashes three lines of readable text for
+    every garbage line it catches. The two keys are effectively one decision and
+    nothing in the config says so.
+
+    ADVISORY, NOT A GATE -- deliberately, and in the same spirit as the
+    ``atrium_vocab`` consistency check at the top of this module. Step 5a of
+    ``30.runbook.md`` measures the shape-only configuration on purpose, and a
+    refusal would make that measurement impossible. What must not happen is
+    someone reaching it by accident.
+    """
+    if witness_enabled is None:
+        witness_enabled = SHORT_GARBAGE_WITNESS_ENABLE
+    if lexicon_path is None:
+        lexicon_path = SHORT_GARBAGE_LEXICON_PATH
+    if not witness_enabled or (lexicon_path or "").strip():
+        return None
+    return (
+        "SHORT_GARBAGE_WITNESS_ENABLE is true with no SHORT_GARBAGE_LEXICON_PATH. "
+        "Measured on 1.48M in-scope lines, the shape witness without the vocabulary "
+        "veto convicts 15,217 currently-Clear/Noisy lines against 5,107 confirmations "
+        "(1:3 against); with the veto it is 2,306 against 3,905 (1.7:1 in favour). "
+        "Build a table with tools/build_token_lexicon.py unless you are deliberately "
+        "measuring the shape-only configuration."
+    )
 
 
 def _has_vocabulary_support(token: str) -> bool:
@@ -2901,3 +2970,8 @@ def compute_quality_score(
 
     final_score = max(0.0, base_score - short_penalty)
     return min(1.0, final_score)
+
+
+# Advisory, evaluated last so both the constants and uncoupled_witness_warning()
+# exist. See _warn_uncoupled_witness for the measurement behind it.
+_warn_uncoupled_witness()

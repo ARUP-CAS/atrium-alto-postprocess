@@ -195,6 +195,17 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # Do not turn this on before measuring it against annotated lines: the in-tree
 # sample corpus holds 15 lines and cannot validate it. See
 # agent_dev_logs/plans/30.plan.md.
+#
+# AND DO NOT TURN IT ON WITHOUT A LEXICON. These two keys are one decision.
+# Measured on the cluster over 1,480,119 in-scope lines (2026-09-17): the shape
+# witness ALONE confirms 5,107 existing Trash verdicts and newly convicts 15,217
+# lines currently called Clear or Noisy -- 1:3 against. With the vocabulary veto
+# below at MIN_DF 3 the same witness scores 3,905 against 2,306, i.e. 1.7:1 in
+# favour. The veto is not a refinement of the witness; it is the difference
+# between a narrowing worth arming and one that trashes three readable lines for
+# every garbage line it catches. text_util prints an advisory if you set this
+# without SHORT_GARBAGE_LEXICON_PATH -- advisory, because 30.runbook.md step 5a
+# measures the shape-only configuration deliberately.
 SHORT_GARBAGE_WITNESS_ENABLE            = false
 # Minimum ALPHABETIC characters in a sub-token before any shape test applies.
 # Also what keeps every SHORT_VALID_WORDS / _NEUTRAL_LEXICON member out by
@@ -225,11 +236,18 @@ SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
 # story. Build a table with:
 #     python tools/build_token_lexicon.py <DOC_LINE_CATEG dir> -o tools/gold/token_df.tsv
 # EMPTY PATH = inert. With no table the predicate is byte-identical to the
-# shape-only version, which is the shipped state.
+# shape-only version, which is the shipped state -- and, per the note on
+# SHORT_GARBAGE_WITNESS_ENABLE above, the state that must not be combined with
+# an armed witness.
 SHORT_GARBAGE_LEXICON_PATH              =
 # A token must appear in at least this many DISTINCT documents to count as
 # attested. Document frequency, not line frequency: OCR noise repeats within the
 # scan that produced it and almost never across scans.
+# On the 822-document table (2026-09-17) the veto's effect is flat between 2 and
+# 10, and 2 is marginally best; 3 is kept as the shipped value because the
+# threshold should be set on a table built over BOTH FULL COLLECTIONS, which that
+# one is 0.7% of. At 3 on that table the CONVICT clause below misjudges 5 of 31
+# pinned vocabulary fixtures, which is why it ships false.
 SHORT_GARBAGE_LEXICON_MIN_DF            = 3
 # When true, absence from the table becomes EVIDENCE rather than the presence of
 # a token becoming an exemption -- i.e. an unattested token convicts. This is the

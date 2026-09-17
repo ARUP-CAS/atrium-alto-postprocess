@@ -358,3 +358,83 @@ def test_builder_tokenisation_matches_the_predicate_lookup():
             if (core := sub.strip(tu._STRIP_CHARS))
         ]
         assert built == expected, f"{line!r}: builder {built} != predicate {expected}"
+
+
+# ---------------------------------------------------------------------------
+# Table format: a token that looks like a comment
+# ---------------------------------------------------------------------------
+
+
+def test_a_token_beginning_with_hash_is_data_not_a_comment(tmp_path):
+    """Found in the real 822-document table: 27 tokens start with `#`.
+
+    `#` is not in `_STRIP_CHARS`, so the builder emits tokens like `#rdisico` and
+    `#žkami` verbatim — and the reader skipped every line starting with `#` as a
+    provenance comment, dropping them at load. Nothing said so.
+
+    Impact on the delivered table is nil: all 27 are df 1, below any threshold,
+    and all garbage. It is fixed because it is the same silent-drop shape as the
+    rest of this issue — the file says one thing, the loader reads another, and
+    the only symptom is a number that is quietly slightly wrong.
+
+    The format needs no escaping to tell them apart: a header line has no TAB
+    (`# columns: token<TAB>document_frequency` is literal text), a data line
+    always does.
+    """
+    path = tmp_path / "token_df.tsv"
+    path.write_text(
+        "# token document-frequency table — provenance header\n"
+        "# columns: token<TAB>document_frequency\n"
+        "#rdisico\t40\n"
+        "ordinary\t40\n",
+        encoding="utf-8",
+    )
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
+        lex = tu.token_lexicon()
+
+    assert "#rdisico" in lex, "a token that merely looks like a comment was dropped"
+    assert "ordinary" in lex
+    assert not any(t.startswith("# ") for t in lex), "header lines leaked in as tokens"
+    assert len(lex) == 2
+
+
+def test_header_lines_are_still_skipped(tmp_path):
+    """The other half of the same contract — the fix must not admit the header."""
+    path = tmp_path / "token_df.tsv"
+    path.write_text(
+        "# built: 2026-09-17T11:36:51+00:00\n# documents: 822  lines: 12716706\nordinary\t5\n",
+        encoding="utf-8",
+    )
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
+        assert tu.token_lexicon() == frozenset({"ordinary"})
+
+
+# ---------------------------------------------------------------------------
+# The coupling between the two flags
+# ---------------------------------------------------------------------------
+
+
+def test_the_witness_without_a_lexicon_is_reported_as_a_known_bad_configuration():
+    """Measured on the cluster, and it is the single most consequential setting here.
+
+    Over 1,480,119 in-scope lines the shape witness alone confirms 5,107 existing
+    `Trash` verdicts and newly convicts **15,217** lines the pipeline currently
+    calls `Clear` or `Noisy` — 1 : 3 against. With the vocabulary veto at
+    `min_df` 3 the same witness scores 3,905 against 2,306, i.e. 1.7 : 1 in
+    favour. The veto is not a refinement of the witness; it is the difference
+    between arming it and not.
+
+    Advisory rather than a gate: stage 5a of the runbook deliberately measures the
+    shape-only configuration, and refusing it would make that measurement
+    impossible. But nobody should reach it by accident.
+    """
+    assert tu.uncoupled_witness_warning(witness_enabled=True, lexicon_path="") is not None
+    assert tu.uncoupled_witness_warning(witness_enabled=True, lexicon_path="   ") is not None
+    # Both other combinations are fine, including the shipped one.
+    assert tu.uncoupled_witness_warning(witness_enabled=False, lexicon_path="") is None
+    assert tu.uncoupled_witness_warning(witness_enabled=True, lexicon_path="tools/gold/token_df.tsv") is None
+    assert tu.uncoupled_witness_warning(witness_enabled=False, lexicon_path="tools/gold/token_df.tsv") is None
+
+
+def test_the_shipped_configuration_raises_no_advisory():
+    assert tu.uncoupled_witness_warning() is None

@@ -73,9 +73,28 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
         print("  No stored `categ` column alongside gold -- cannot compare against the shipped labels.")
         return
     print(f"  Shipped labels vs gold: macro_f1={baseline:.4f}")
+    # The reference Clear-loss is the incumbent's: the first trial whose value
+    # matches the shipped config, else the first row. `--values false,true` puts
+    # the incumbent first by convention, which is why the runbook says to.
+    base_loss = rows[0]["clear_loss"] if rows else 0
+
     for r in rows:
         delta = r["macro_f1"] - baseline
-        verdict = "ADOPT-CANDIDATE" if delta > margin else ("parity" if delta >= -margin else "REGRESSION")
+        extra_loss = r["clear_loss"] - base_loss
+        # Both halves of the stated criterion, not just the first. This used to
+        # read `verdict = "ADOPT-CANDIDATE" if delta > margin else ...`, printing
+        # Clear-loss beside a sentence promising it was weighed and then not
+        # weighing it. Issue #30 stage 5a hit exactly that: macro_f1 +0.0193 with
+        # Clear-loss 40 -> 42, reported as ADOPT-CANDIDATE by a tool whose own
+        # last line says a candidate must not raise Clear-loss.
+        if delta > margin and extra_loss <= 0:
+            verdict = "ADOPT-CANDIDATE"
+        elif delta > margin:
+            verdict = f"REVIEW - better on gold but Clear-loss +{extra_loss:,}"
+        elif delta >= -margin:
+            verdict = "parity"
+        else:
+            verdict = "REGRESSION"
         print(
             f"  {r['value']}: macro_f1={r['macro_f1']:.4f} "
             f"({delta:+.4f} vs shipped)  Clear-loss={r['clear_loss']:,}  -> {verdict}"
@@ -83,6 +102,10 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
     print(
         "  A candidate is only worth adopting when it beats the shipped labels against gold "
         "AND does not raise Clear-loss."
+    )
+    print(
+        "  A macro_f1 delta on a small annotated set is not yet a result: report b/c and an "
+        "exact McNemar before quoting it as one."
     )
 
 

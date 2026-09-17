@@ -143,6 +143,14 @@ def classify_line(text: str, word_count: int | None = None) -> dict:
 
 
 def _iter_csv_rows(paths: list[Path]):
+    """Yield (locator, text, word_count, stored_categ) per scoreable line.
+
+    ``locator`` is ``(file, page_num, line_num)`` -- the gold sidecar key from
+    ``recategorize_from_csv.GOLD_SIDECAR_KEYS``, carried so that an annotated
+    ``--out`` file can be joined straight back onto the batch. It used to be
+    ``path.name`` alone, which made the candidate file a dead end: see the
+    comment on the writer.
+    """
     for path in paths:
         with path.open(newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
@@ -154,14 +162,20 @@ def _iter_csv_rows(paths: list[Path]):
                     wc = int(raw_wc) if raw_wc else None
                 except ValueError:
                     wc = None
-                yield path.name, text, wc, (row.get("categ") or "").strip() or "?"
+                locator = (
+                    (row.get("file") or path.stem).strip(),
+                    (row.get("page_num") or "").strip(),
+                    (row.get("line_num") or "").strip(),
+                )
+                yield locator, text, wc, (row.get("categ") or "").strip() or "?"
 
 
 def _iter_plain_lines(path: Path):
+    """--lines mode has no locators, so the sidecar columns come back blank."""
     for line in path.read_text(encoding="utf-8").splitlines():
         text = line.strip()
         if text:
-            yield path.name, text, None, "?"
+            yield (path.stem, "", ""), text, None, "?"
 
 
 def _collect_csvs(path: Path) -> list[Path]:
@@ -202,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total = 0
     eligible = 0
-    witnessed_rows: list[tuple[str, dict, str]] = []
+    witnessed_rows: list[tuple[tuple[str, str, str], dict, str]] = []
     by_categ: Counter = Counter()
     witnessed_by_categ: Counter = Counter()
     clause_counts: Counter = Counter()
@@ -276,12 +290,40 @@ def main(argv: list[str] | None = None) -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["document", "text", "word_count", "categ_current", "clauses", "gold_categ"])
-            for doc, verdict, categ in witnessed_rows:
-                writer.writerow([doc, verdict["text"], verdict["word_count"], categ, verdict["clauses"], ""])
+            # (file, page_num, line_num) FIRST, and named exactly as
+            # GOLD_SIDECAR_KEYS names them, so an annotated file is a usable gold
+            # sidecar with no reshaping.
+            #
+            # This used to emit a single `document` column holding `path.name`
+            # -- the filename, extension included -- and no locators at all, while
+            # the closing message promised the annotated result was "a gold set
+            # gold_gate() can consume". It was not: `--gold-sidecar` joins on
+            # (file, page_num, line_num) and refuses a frame without them, and
+            # dropping the file into tools/gold/ breaks the per-document
+            # invariant that directory is checked for. The annotation queue was a
+            # dead end in both directions, which is the worst possible defect in
+            # a file whose entire purpose is to be filled in by hand.
+            writer.writerow(
+                ["file", "page_num", "line_num", "text", "word_count", "categ_current", "clauses", "gold_categ"]
+            )
+            for (file_id, page_num, line_num), verdict, categ in witnessed_rows:
+                writer.writerow(
+                    [
+                        file_id,
+                        page_num,
+                        line_num,
+                        verdict["text"],
+                        verdict["word_count"],
+                        categ,
+                        verdict["clauses"],
+                        "",
+                    ]
+                )
         print(f"\nwrote {len(witnessed_rows)} candidate lines to {out_path}")
-        print("  `gold_categ` is left blank on purpose: fill it blind, then the file is a gold set")
-        print("  `tools/quality_model/evaluate.py::gold_gate()` can consume.")
+        print("  `gold_categ` is left blank on purpose: fill it blind, then join it back with")
+        print(f"    --gold-sidecar {out_path} --gold-column gold_categ")
+        print("  Keep it OUT of tools/gold/ -- that directory is one CSV per document and this")
+        print("  file spans many. Sidecars live in tools/gold/sidecars/.")
 
     return 0
 
