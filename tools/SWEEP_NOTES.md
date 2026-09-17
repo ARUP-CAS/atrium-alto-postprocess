@@ -55,6 +55,18 @@ retirement decisions.
 baseline therefore still holds on a corpus 145× the committed sample, which is
 worth recording because every driver in `tools/` reads flips as damage.
 
+> [!NOTE]
+> **Two caveats on that sentence, both raised elsewhere and reconciled here.**
+> `tests/test_recategorize_parity.py` no longer *enforces* `flip_rate == 0`; it
+> allows 5% globally and 30% per document, relaxed when the structural rules were
+> added (see `agent_dev_logs/plans/30.plan.md`, and the stale-log warning further
+> down this file, which says the same thing). The baseline is an observation on
+> this corpus, not a guarantee. And until 2026-09-10 `rescore_csv`'s diff report
+> sorted one frame and not the other before comparing positionally, so a
+> `changed category: 0` on rows not written in page/line order was luck rather
+> than truth — delivered CSVs happen to be written in that order, which is the
+> only reason it never bit. Any `0` predating that fix carries the asterisk.
+
 | rule                         | fire_count | fire_rate | decisive | clear_loss | class          |
 |:-----------------------------|-----------:|----------:|---------:|-----------:|:---------------|
 | `rule_absolute_ppl`          |          4 |    0.0027 |        1 |          0 | LOAD-BEARING   |
@@ -119,9 +131,12 @@ Three points worth keeping in view:
   sample does contain post-2000 material (CTX2006, CTX2014, CTX2016 — roughly 250
   lines), so this is not simply the absence of modern documents; the notation
   shapes it recovers are just rare here, and on its single fire an earlier rule
-  reached the same verdict. Its measured effect on the issue-#30 population — 30
-  of 508 graded lines, 29 matching the annotation — came from the contributor's
-  corpora, not from this set, and that remains the figure to cite for it.
+  reached the same verdict. Its measured effect on the issue-#30 population came from
+  the contributor's corpora, not from this set. **Cite the digest, not this
+  file:** the "30 of 508 graded lines, 29 matching" figure recorded here was
+  superseded on 2026-09-09 — closing the label lexicon narrowed
+  `is_domain_notation()` to **24 of 508**, of which **25 of the 30** original
+  matches survive. `agent_dev_logs/digests/30.digest.md` §5 carries the table.
 
 <details>
     <summary>Latest console output from the pipeline run (no optuna due to sqlite3 dep)</summary>
@@ -521,7 +536,7 @@ After running the full suite of importance sweeps and rule coverage on the full 
 
 1. **The "Big Two" dominate**: The readability gate (`MOSTLY_READABLE_VALID_MIN`) and low-perplexity rescue (`LOWPPL_CLEAR_MAX`) control the vast majority of categorization movement.
 2. **`QS_WEIGHT_*` are non-identifiable**: The 9 quality score weights sum to 1.0; tuning them offline merely shifts the distribution arbitrarily without moving the actual accuracy frontier. They are frozen by default and should not be deleted, just left at their current values.
-3. **No Dead Rules**: The `rule_coverage_report.py` proved that **0 rules are dead code**. While the greedy backward elimination tool with loose tolerances (`--macro-tol 0.02`) suggested pruning 12 rules, coverage instrumentation shows they *do* fire and act as critical safeguards (e.g. inverted run detection). Do not act on the greedy output as a deletion mandate. All 14 rules stay.
+3. **No Dead Rules**: The `rule_coverage_report.py` proved that **0 rules are dead code**. While the greedy backward elimination tool with loose tolerances (`--macro-tol 0.02`) suggested pruning 12 rules, coverage instrumentation shows they *do* fire and act as critical safeguards (e.g. inverted run detection). Do not act on the greedy output as a deletion mandate. All 14 rules stay. *(Stale count: the registry is now **23** rules — see "Current figures" above, where 2 read DEAD and both are accounted for in `tests/test_pipeline_parity.UNREACHABLE_RULES`. The conclusion holds; the number does not.)*
 4. **Garbage Density De-confounded**: `CATEG_GARBAGE_DENSITY_HIGH` was decoupled from the QS scaling factor (`QS_GARBAGE_NORM_MAX`). Sweep results (via Sobol S1/ST separation) show the hard gate is what matters (~9% importance), while the QS scale drops to the noise floor.
 5. **Near-Optimum caveat**: The best configurations found by the surrogate only achieve a ~2.4% flip rate deviation with minimal KL divergence (KL ≈ 0.0015). The current production configuration is already near-optimal against its own labels. *Do not adopt `best_config.json` blindly*, as values for low-importance parameters in that file are simply statistical noise.
 
