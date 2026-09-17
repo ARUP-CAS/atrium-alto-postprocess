@@ -287,6 +287,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.out:
         out_path = Path(args.out)
+        # Refuse the one directory this file breaks. `tools/gold/` is one CSV per
+        # document; this queue spans many and carries no `categ`, so dropping it
+        # there poisons every consumer of that directory -- which is exactly what
+        # happened, and it happened because this tool used to close by calling the
+        # annotated result "a gold set gold_gate() can consume". Sidecars go in
+        # tools/gold/sidecars/.
+        resolved = out_path.resolve()
+        gold_dir = (Path(__file__).resolve().parent / "gold").resolve()
+        if resolved.parent == gold_dir:
+            print(
+                f"error: refusing to write {out_path.name} into {gold_dir}.\n"
+                f"       That directory is one CSV per document and this file spans many;\n"
+                f"       a multi-document annotation set is a SIDECAR.\n"
+                f"       Use: --out {gold_dir / 'sidecars' / out_path.name}",
+                file=sys.stderr,
+            )
+            return 2
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)

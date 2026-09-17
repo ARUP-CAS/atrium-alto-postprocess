@@ -330,6 +330,17 @@ def rescore_csv(in_path: Path, constants: Mapping[str, Any] | None = None) -> tu
         new = new[cols]
 
     if not old.empty:
+        # Named error rather than KeyError from inside pandas' sort. A CSV in a
+        # corpus directory without locators is almost always a sidecar or an
+        # annotation queue that was filed in the wrong place, and saying so is
+        # more use than a bare KeyError('page_num').
+        missing = [c for c in ("page_num", "line_num") if c not in old.columns]
+        if missing:
+            raise ValueError(
+                f"{in_path} has no {', '.join(missing)} column, so it cannot be re-scored as a "
+                "document. A key-indexed gold sidecar or a --out annotation queue is joined with "
+                "--gold-sidecar; it does not belong in a DOC_LINE_CATEG directory."
+            )
         old = old.sort_values(by=["page_num", "line_num"], ascending=True)
         # `new` comes back in the INPUT frame's order, so sorting only `old`
         # leaves the two frames misaligned whenever a CSV is not already stored
@@ -575,7 +586,7 @@ def load_csvs(input_dir: Path, recursive: bool = False) -> pd.DataFrame:
     Read as strings with NA disabled so the offline path sees the same raw cell
     values that ``rescore_csv`` does (consistent dtype/NA handling).
 
-    A CSV with no ``text`` column is skipped with a printed note rather than
+    A CSV lacking ``text`` OR ``categ`` is skipped with a printed note rather than
     concatenated. That is the gold-sidecar footgun, which ``tools/gold/GOLD.md``
     could only warn about: ``ab_constant_eval``, ``run_ablation_study`` and
     ``greedy_backward_elimination`` all load recursively, so pointing one of them
@@ -583,6 +594,18 @@ def load_csvs(input_dir: Path, recursive: bool = False) -> pd.DataFrame:
     key-only rows were corpus lines. Nothing failed -- the run reported 2,082
     lines instead of 15 and printed a complete, entirely meaningless table. A
     frame the re-scorer cannot score is not a frame worth concatenating.
+
+    BOTH columns, and the second one is the one that matters. This guard first
+    required only ``text``, which catches a key-only sidecar and misses the other
+    shape that lands in this directory: an annotation queue from
+    ``short_garbage_witness_report.py --out``, which HAS ``text`` and no
+    ``categ``. One such file in ``tools/gold/`` added 20k unscoreable rows to the
+    frame and took ``flip_rate`` from 0 to 0.999 -- a parity alarm that was
+    entirely an artefact of the loader.
+
+    ``categ`` is the right discriminator because it is the baseline label every
+    consumer here scores against, and ``test_sidecars_are_not_reachable_as_per_document_gold``
+    had already encoded exactly that rule. This guard now agrees with it.
     """
     paths = csv_paths(input_dir, recursive=recursive)
     if not paths:
@@ -592,8 +615,9 @@ def load_csvs(input_dir: Path, recursive: bool = False) -> pd.DataFrame:
     skipped: list[str] = []
     for path in paths:
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
-        if "text" not in df.columns:
-            skipped.append(str(path.relative_to(input_dir)))
+        missing = [c for c in ("text", "categ") if c not in df.columns]
+        if missing:
+            skipped.append(f"{path.relative_to(input_dir)} (no {'/'.join(missing)})")
             continue
         df["_source_file"] = str(path.relative_to(input_dir))
         if "file" not in df.columns:
@@ -602,13 +626,14 @@ def load_csvs(input_dir: Path, recursive: bool = False) -> pd.DataFrame:
 
     if skipped:
         print(
-            f"  note: skipped {len(skipped)} CSV(s) with no 'text' column "
-            f"(not scoreable rows): {', '.join(skipped[:5])}" + (" …" if len(skipped) > 5 else "")
+            f"  note: skipped {len(skipped)} CSV(s) that are not scoreable document rows: "
+            f"{', '.join(skipped[:5])}" + (" …" if len(skipped) > 5 else "")
         )
     if not frames:
         raise FileNotFoundError(
-            f"No scoreable CSV files found in {input_dir} — every file lacked a 'text' column. "
-            "A gold sidecar is joined with --gold-sidecar, not loaded as input."
+            f"No scoreable CSV files found in {input_dir} — every file lacked 'text' and/or "
+            "'categ'. A gold sidecar or an annotation queue is joined with --gold-sidecar, "
+            "not loaded as input."
         )
     return pd.concat(frames, ignore_index=True)
 

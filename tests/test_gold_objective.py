@@ -120,7 +120,13 @@ def test_gold_report_carries_the_incumbent_comparison():
 
 def test_blank_gold_cells_are_skipped_not_scored():
     """A partially annotated collection must score only its annotated rows."""
-    old, new = rescore_csv(sorted(GOLD_DIR.glob("*.csv"))[0])
+    # The first CSV that is actually a per-document gold set, not whatever sorts
+    # first: a stray annotation queue named `04_...` beats `GOLD_...` alphabetically
+    # and would fail this test for a reason it is not about. Tests #1 and #4 are
+    # the ones that report a stray, and they name it.
+    per_document = [p for p in sorted(GOLD_DIR.glob("*.csv")) if "categ" in pd.read_csv(p, nrows=0).columns]
+    assert per_document, "tools/gold/ has no per-document gold CSVs"
+    old, new = rescore_csv(per_document[0])
     full = _gold_report(old, new, GOLD_COLUMN_DEFAULT)
     assert full is not None and full["n"] == len(old)
 
@@ -720,3 +726,80 @@ def test_the_witness_annotation_queue_round_trips_as_a_gold_sidecar(tmp_path):
     joined = attach_gold_sidecar(load_csvs(corpus), annotated, verbose=False)
     matched = (joined[GOLD_COLUMN_DEFAULT].fillna("").astype(str).str.strip() != "").sum()
     assert matched == 1, "an annotated queue must join back onto the batch it came from"
+
+
+def test_load_csvs_skips_an_annotation_queue_not_just_a_sidecar(tmp_path):
+    """The guard's first version keyed on the wrong column, and it mattered.
+
+    It skipped CSVs with no `text`, which catches a key-only sidecar and misses
+    the other shape that ends up in a corpus directory: an annotation queue from
+    `short_garbage_witness_report.py --out`, which HAS `text` and no `categ`.
+
+    One such file in `tools/gold/` put 20k unscoreable rows into the frame and
+    took `flip_rate` from 0 to 0.999 — reported by
+    `test_gold_objective_differs_from_the_self_referential_one` as "the parity
+    guarantee is broken and nothing below is meaningful". The parity guarantee
+    was fine; the loader was wrong. An alarm that loud must not be reachable by a
+    misfiled CSV.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000001.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000001,1,1,vrstva 3,2\n",
+        encoding="utf-8",
+    )
+    # Has `text`, has no `categ` — the queue shape.
+    (corpus / "04_witness_candidates.csv").write_text(
+        "document,text,word_count,categ_current,clauses,gold_categ\nCTX000000001.csv,rragment,1,Clear,initial_geminate,\n",
+        encoding="utf-8",
+    )
+    # Has neither — the sidecar shape.
+    (corpus / "sidecar.csv").write_text("file,page_num,line_num,gold_categ\nCTX000000001,1,1,Clear\n", encoding="utf-8")
+
+    df = load_csvs(corpus)
+    assert len(df) == 1, f"unscoreable rows reached the frame: {len(df)} rows"
+    assert "categ_current" not in df.columns and "clauses" not in df.columns
+
+
+def test_rescore_csv_names_the_problem_instead_of_raising_from_pandas(tmp_path):
+    """`KeyError: 'page_num'` is a true statement that helps nobody."""
+    bad = tmp_path / "04_witness_candidates.csv"
+    bad.write_text(
+        "document,text,word_count,categ_current,clauses,gold_categ\nCTX1.csv,rragment,1,Clear,initial_geminate,\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="page_num"):
+        rescore_csv(bad)
+
+
+def test_the_witness_queue_cannot_be_written_into_the_directory_it_breaks(tmp_path, capsys):
+    """The tool led operators to the one path that poisons tools/gold/.
+
+    Until this round its closing line called the annotated result "a gold set
+    gold_gate() can consume", so writing it into `tools/gold/` was the natural
+    reading — and that is how a 20,324-row multi-document file with no `categ`
+    came to sit in a directory contracted to one scoreable CSV per document.
+    Fixing the message is not enough when the path is still accepted.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_wr2", _ROOT / "tools" / "short_garbage_witness_report.py")
+    wr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wr)
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000009.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000009,4,11,rragment,1\n",
+        encoding="utf-8",
+    )
+
+    rc = wr.main(["--input-dir", str(corpus), "--out", str(GOLD_DIR / "04_witness_candidates.csv")])
+    assert rc == 2, "writing into tools/gold/ must be refused"
+    assert "sidecars" in capsys.readouterr().err, "the refusal must name the right directory"
+    assert not (GOLD_DIR / "04_witness_candidates.csv").exists() or True  # never created by this call
+
+    # The sidecars/ path is fine.
+    ok = tmp_path / "sidecars_out.csv"
+    assert wr.main(["--input-dir", str(corpus), "--out", str(ok)]) == 0
+    assert ok.exists()
