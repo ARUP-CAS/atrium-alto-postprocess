@@ -168,6 +168,26 @@ collection, with document names and line text. And 2,067 lines spread over 816
 documents would mean 816 CSVs averaging 2.5 rows each, which is not a corpus
 layout, it is a filesystem full of fragments.
 
+> [!IMPORTANT]
+> **The rows are not missing — they are on the cluster, and they have been the
+> whole time.** For a month this file, `agent_dev_logs/plans/30.plan.md` and
+> `agent_dev_logs/digests/30.digest.md` all recorded the work as blocked because
+> "the gold is here; the rows it labels are not", and every measurement that
+> gates `SHORT_GARBAGE_WITNESS_ENABLE` was parked behind it.
+>
+> Checked against the directory listing on 2026-09-17: **all 816 gold documents,
+> and therefore all 2,067 gold rows, are present in**
+> `/lnet/work/projects/atrium/alto_util/data_samples/DOC_LINE_CATEG` — the same
+> 822-document, 12.7M-line directory the rule-coverage sweep was already being
+> run against. The sidecar's very first key, `CTX192400709,1,47`, names a file in
+> it.
+>
+> What is genuinely unverified is the **per-line** match rate: documents are
+> 816/816, but whether each `(file, page_num, line_num)` resolves has never been
+> run. That is the pre-flight in `30.runbook.md`, it takes seconds, and it is the
+> one number nobody has. "Needs the delivered batch" should not be written in
+> this repository again without checking that directory first.
+
 The rule it exists to serve is still enforced, just at a different moment:
 because the sidecar carries no `categ` of its own, it can only be scored after
 being joined onto real `DOC_LINE_CATEG` rows, and that join is per document. The
@@ -221,8 +241,11 @@ The sidecar makes the objective non-circular. It does not make it complete:
 * **Per-line only.** `apply_document_postprocessing()` changes the category of
   roughly 27% of these lines in production and is absent from the per-line
   grading that produced the quality figures. `evaluate_dataframe` *does* apply
-  the smoothing, so a document-aware re-grade is now possible — it needs the
-  `2907` delivery, not more annotation.
+  the smoothing, so a document-aware re-grade is now possible — and, per the
+  note above, runnable: point it at the cluster `DOC_LINE_CATEG` directory.
+  `tools/rule_coverage_report.py --split-cascade` measures the same boundary from
+  the other side, by reporting each rule's per-line effect separately from the
+  page cascade its removal triggers.
 * **The 850 cap.** Raw uncapped perplexity for the changed population exists as
   an external file and is deliberately not in this repository; see
   `tools/issue30_perplex_report.py`.

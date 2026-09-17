@@ -20,13 +20,55 @@ never runs. That is the only gold-free, config-independent retirement criterion.
 
 ## Coverage columns
 
-| Column           | Source                                                 | Meaning                                                            |
-|------------------|--------------------------------------------------------|--------------------------------------------------------------------|
-| `fire_count`     | `rule_fire_capture()` over one recategorize pass       | raw execution count                                                |
-| `fire_rate`      | `fire_count / n_scored_lines`                          | fraction of scored lines that triggered this rule                  |
-| `decisive_count` | LOO: `evaluate_dataframe` with `DISABLED_RULES={rule}` | lines whose category changes vs. stored categ when rule is removed |
-| `clear_loss`     | confusion["Clear"]["Trash"] + ["Non-text"] in LOO run  | valid text destroyed if rule removed                               |
-| `class`          | derived                                                | DEAD / REDUNDANT-HERE / LOAD-BEARING                               |
+| Column                | Source                                                  | Meaning                                                            |
+|-----------------------|---------------------------------------------------------|--------------------------------------------------------------------|
+| `fire_count`          | `rule_fire_capture()` over one recategorize pass        | raw execution count                                                |
+| `fire_rate`           | `fire_count / n_scored_lines`                           | fraction of scored lines that triggered this rule                  |
+| `decisive_count`      | LOO: `evaluate_dataframe` with `DISABLED_RULES={rule}`  | lines whose category changes vs. stored categ when rule is removed |
+| `decisive_share`      | `decisive_count / fire_count`                           | the column to read when `gate_marker` is true                      |
+| `clear_loss`          | confusion["Clear"]["Trash"] + ["Non-text"] in LOO run   | lines the pipeline currently calls Clear that would fall to Trash  |
+| `class`               | derived                                                 | DEAD / REDUNDANT-HERE / LOAD-BEARING                               |
+| `gate_marker`         | `GATE_MARKER_RULES`                                     | the rule's `_fire()` is at the entry of a gate that always returns |
+| `decisive_line`       | `--split-cascade`: LOO with smoothing disabled          | the rule's own per-line effect                                     |
+| `decisive_cascade`    | `--split-cascade`: `decisive_count − decisive_line`     | the page-level cascade its removal sets off                        |
+| `gold_delta_macro_f1` | `--gold-column`: LOO macro-F1 vs gold − shipped vs gold | negative = removing the rule costs correctness                     |
+
+> [!WARNING]
+> **`decisive_count` and `clear_loss` are self-referential unless `--gold-column`
+> is passed.** They are scored against the pipeline's own stored `categ`, which
+> the offline re-score reproduces exactly at the shipped config — so the baseline
+> is zero by construction and the numbers say how much a rule changes *what we
+> already output*, never whether the output is right. `clear_loss` in particular
+> means "lines the pipeline currently calls Clear", not "valid text".
+>
+> This mattered: `rule_coverage_report` was the only one of the five
+> `evaluate_dataframe` callers that never forwarded the gold column, while
+> accepting `--gold-sidecar`, joining it, and printing `N labels matched` on the
+> way past. Every classification below — the retirement criterion — inherited it,
+> and no test covered it. Both are fixed; the JSON payload now records
+> `gold_column` and `decisive_scored_against` so a self-scored run cannot be
+> mistaken for a gold one after the fact.
+>
+> Note the fix was not a forwarded keyword. With a gold column, `flip_count`
+> counts *disagreements with gold*, not lines the rule moved, so forwarding it
+> would have redefined `decisive_count` into a different quantity under the same
+> name. The structural figures are unchanged; `gold_delta_macro_f1` is added
+> beside them.
+
+### Gate markers
+
+A rule whose `_fire()` sits at the entry of a gate that always returns reports a
+population size, not a rule temperature. `rule_short_line` is the case: gate 7
+fires on entry for every `word_count <= 2` line and every branch below it
+returns, so on a corpus of archival tables it reads **44.6% of scored lines** and
+sorts to the top of this table as if it were the hottest rule in the engine. It
+is the short-line population.
+
+Moving the `_fire()` call would not change the count — the gate is total on its
+entry condition — so the fix is to label it. Read `decisive_share` for these
+rules. `GATE_MARKER_RULES` is declared rather than inferred, and pinned by
+`tests/test_rule_coverage.py`, so that a gate growing a fall-through path shows
+up as a failing test instead of a quietly mislabelled row.
 
 ## Classification logic
 
@@ -49,6 +91,13 @@ A rule may be permanently deleted **only when all of these hold**:
 1. `fire_count == 0` aggregated across the **full multi-collection corpus** (not
    just the smoke fixture). Run `rule_coverage_report.py` on the cluster with the
    production `DOC_LINE_CATEG` corpus.
+
+   A 12.7M-line run over
+   `/lnet/work/projects/atrium/alto_util/data_samples/DOC_LINE_CATEG` is **not**
+   that corpus: it is roughly 18% of the two collections (113,101 documents,
+   71.8M lines) and does not satisfy this criterion on its own. It is, however,
+   the directory that contains every gold-annotated row, so it is the right place
+   to run the *gold-scored* pass from.
 2. The rule is **not** one of the cheap structural guards (`rule_inverted`,
    `rule_allcaps`, `rule_garbage_density`) unless coverage-empty across a
    broad, explicitly approved collection set — these guards cost ~nothing and

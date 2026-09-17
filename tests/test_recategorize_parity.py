@@ -171,11 +171,11 @@ _DELIBERATELY_NOT_TUNABLE: dict[str, str] = {
     "ANCHOR_WORD_LEN": "rotation-anchor shape test",
     "HEADLINE_MAX_WORDS": "forgiven-headline shape test",
     "HEADLINE_MAX_DIGITS": "forgiven-headline shape test",
-    # Issue #30. These four steer _has_shape_garbage_evidence(), which is only
+    # Issue #30. These five steer _has_shape_garbage_evidence(), which is only
     # read when SHORT_GARBAGE_WITNESS_ENABLE is true -- and it ships false. A
     # constant that cannot change any outcome sweeps as zero-importance, and
     # every driver in tools/ reads zero variance as an argument to PRUNE, so
-    # registering them now would manufacture four bogus prune recommendations.
+    # registering them now would manufacture bogus prune recommendations.
     # Move them into _THRESHOLD_NAMES (and const_importance_sweep.SEARCH_SPACE,
     # which raises at import for a tunable with no range) in the SAME commit
     # that flips the flag on. This entry is the reminder.
@@ -183,6 +183,14 @@ _DELIBERATELY_NOT_TUNABLE: dict[str, str] = {
     "SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA": "inert while the witness flag is false — register when it flips",
     "SHORT_GARBAGE_WITNESS_VARIETY_MAX": "inert while the witness flag is false — register when it flips",
     "SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA": "inert while the witness flag is false — register when it flips",
+    "SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN": "inert while the witness flag is false — register when it flips",
+    # Issue #30 D14, same rule one step further out. This one is inert for TWO
+    # reasons at once: the witness flag is false, and SHORT_GARBAGE_LEXICON_PATH
+    # ships empty, so with no table loaded neither the veto nor the conviction
+    # clause is reachable. Registering it would sweep a threshold against a set
+    # that is always empty. Move it in when a table is configured AND the witness
+    # flag flips, not before.
+    "SHORT_GARBAGE_LEXICON_MIN_DF": "inert while the witness flag is false and no lexicon table is configured",
     # Issue #30, 2026-09-10. The same failure mode, found by applying the rule
     # above to the rest of the registry: apply_page_perplexity_blend() returns
     # early while PAGE_PPL_BLEND_ENABLE is false (it ships false), so these three

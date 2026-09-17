@@ -27,10 +27,36 @@ Coverage columns
   decisive_count  LOO: lines whose final category changes when the rule is
                   disabled via DISABLED_RULES, measured against the stored
                   categ (flip_rate × n_lines).
+  decisive_share  decisive_count / fire_count. The column to read for a rule
+                  marked `gate_marker`, whose fire_count is a population size.
   clear_loss      LOO: lines that were Clear in the stored categ but become
                   Trash or Non-text when the rule is removed — the most
                   operationally expensive failure mode.
   class           Derived classification: DEAD / REDUNDANT-HERE / LOAD-BEARING.
+  gate_marker     True when the rule's _fire() sits at the entry of a gate that
+                  always returns, so its count reports how many lines entered
+                  the gate, not how often it decided. See GATE_MARKER_RULES.
+
+With --split-cascade:
+  decisive_line     LOO flips with document post-processing disabled.
+  decisive_cascade  decisive_count − decisive_line: the residual attributable to
+                    the page-level smoothing a rule's removal sets off.
+
+With --gold-column (and --gold-sidecar):
+  gold_delta_macro_f1  macro-F1 against the HUMAN labels with the rule removed,
+                       minus the shipped pipeline's macro-F1 against the same
+                       labels. Negative = removing the rule costs correctness.
+  gold_n               annotated rows scored.
+
+READ THIS BEFORE QUOTING A NUMBER FROM THIS TOOL
+------------------------------------------------
+Without --gold-column, `decisive_count` and `clear_loss` are scored against the
+pipeline's OWN stored `categ`. The offline re-score reproduces it exactly at the
+shipped config, so the baseline is zero by construction and every figure means
+"how much does this rule change what we already output", never "is the output
+right". DEAD / REDUNDANT-HERE / LOAD-BEARING inherit that. The JSON payload
+records `gold_column: null` and `decisive_scored_against` so a self-referential
+run can never be mistaken for a gold one after the fact.
 
 Usage
 -----
@@ -73,6 +99,7 @@ from text_util import override_constants, rule_fire_capture  # noqa: E402
 from tools.recategorize_from_csv import (  # noqa: E402
     _load_lang_config,
     add_gold_column_argument,
+    annotated_mask,
     attach_gold_sidecar_from_args,
     coerce_constants,
     evaluate_dataframe,
@@ -187,8 +214,12 @@ def _loo_metrics(
     expected_langs: list[str],
     known_bases: frozenset,
     constants: dict | None = None,
-) -> tuple[int, int]:
-    """Return (decisive_count, clear_loss) for a single LOO disable of *rule*.
+    gold_column: str | None = None,
+    split_cascade: bool = False,
+) -> dict[str, int | float | None]:
+    """Leave-one-out metrics for a single disable of *rule*.
+
+    Structural (always, and always self-referential — see the warning below):
 
     decisive_count — lines whose category changes vs. the stored categ when
                      this rule is removed (flip_count from evaluate_dataframe).
@@ -198,7 +229,48 @@ def _loo_metrics(
     is only DEAD or LOAD-BEARING *relative to a configuration*, and measuring
     that under the import-time defaults while the caller asked for another
     config answers a question nobody posed.
+
+    SELF-REFERENCE, AND WHY ``gold_column`` IS NOT JUST FORWARDED
+    ------------------------------------------------------------
+    The two figures above are measured against the pipeline's OWN stored
+    ``categ``. The offline re-score reproduces it exactly at the shipped config,
+    so the baseline sits at ``flip_rate == 0`` by construction: these say how
+    much a rule changes *what the pipeline currently outputs*, never whether the
+    output is right. This file is what classifies rules DEAD / REDUNDANT-HERE /
+    LOAD-BEARING and what ``RULE_COVERAGE.md`` cites as the retirement criterion,
+    and it was the only one of the five ``evaluate_dataframe`` callers that never
+    passed ``gold_category_column`` — while accepting ``--gold-sidecar`` and
+    printing a reassuring "N labels matched" on the way past.
+
+    The fix is not a forwarded keyword. With a gold column, ``flip_count`` counts
+    DISAGREEMENTS WITH GOLD, not lines the rule moved, and the baseline is no
+    longer zero — so forwarding it would have quietly redefined ``decisive_count``
+    into a different quantity under the same name. Instead the structural pass is
+    kept as-is and a second, gold-scored pass is added:
+
+    gold_delta_macro_f1 — macro-F1 against gold with the rule removed, minus the
+                          shipped pipeline's macro-F1 against gold. NEGATIVE means
+                          removing the rule makes agreement with gold worse, i.e.
+                          the rule earns its place on CORRECTNESS and not merely on
+                          influence. POSITIVE means the corpus would agree with the
+                          annotator better without it.
+    gold_n              — annotated rows actually scored (the sidecar join is
+                          partial by design; see tools/gold/GOLD.md).
+
+    ``split_cascade`` adds a third pass with document post-processing disabled, to
+    separate a rule's own per-line effect from the page-level cascade it triggers.
+    That distinction is what makes ``decisive_count > fire_count`` readable: a rescue
+    rule that stops firing pushes its line to Trash, the page's garbage ratio rises,
+    and the page passes sweep the neighbours. It costs an extra full pass per rule,
+    so it is opt-in.
     """
+    out: dict[str, int | float | None] = {
+        "gold_delta_macro_f1": None,
+        "gold_n": None,
+        "decisive_line": None,
+        "decisive_cascade": None,
+    }
+
     with override_constants({"DISABLED_RULES": frozenset([rule])}):
         metrics = evaluate_dataframe(
             df,
@@ -207,10 +279,37 @@ def _loo_metrics(
             known_bases=known_bases,
         )
 
-    decisive_count = int(metrics["flip_count"])
+        if gold_column:
+            gold_metrics = evaluate_dataframe(
+                df,
+                constants=constants,
+                expected_langs=expected_langs,
+                known_bases=known_bases,
+                gold_category_column=gold_column,
+            )
+            out["gold_delta_macro_f1"] = float(gold_metrics.get("gold_delta_macro_f1", 0.0))
+            out["gold_n"] = int(gold_metrics.get("line_count", 0))
+
+        if split_cascade:
+            per_line = evaluate_dataframe(
+                df,
+                constants=constants,
+                expected_langs=expected_langs,
+                known_bases=known_bases,
+                apply_postprocessing=False,
+            )
+            out["decisive_line"] = int(per_line["flip_count"])
+
+    out["decisive_count"] = int(metrics["flip_count"])
     clear_row = metrics.get("confusion", {}).get("Clear", {})
-    clear_loss = int(clear_row.get("Trash", 0)) + int(clear_row.get("Non-text", 0))
-    return decisive_count, clear_loss
+    out["clear_loss"] = int(clear_row.get("Trash", 0)) + int(clear_row.get("Non-text", 0))
+    if out["decisive_line"] is not None:
+        # Not a subtraction of disjoint sets -- the per-line pass is scored against
+        # the same stored categ, which is itself post-smoothing, so this is the
+        # difference between two flip counts and not a partition. It is reported as
+        # a residual for exactly that reason.
+        out["decisive_cascade"] = int(out["decisive_count"]) - int(out["decisive_line"])
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +323,30 @@ def _classify(fire_count: int, decisive_count: int) -> str:
     if decisive_count == 0:
         return "REDUNDANT-HERE"
     return "LOAD-BEARING"
+
+
+# ---------------------------------------------------------------------------
+# Gate-entry markers
+# ---------------------------------------------------------------------------
+#
+# A rule whose `_fire()` sits at the ENTRY of a gate that always returns is not
+# reporting how often it decided; it is reporting how large its population is.
+# `rule_short_line` is the case that matters: gate 7 fires on entry for every
+# `word_count <= 2` line and every branch below it returns, so on a corpus of
+# archival tables it reads 44.6% of scored lines and sorts to the top of this
+# table as if it were the hottest rule in the engine. It is not a rule
+# temperature, it is the short-line population.
+#
+# Moving the `_fire()` call would not fix it -- the gate is a total function on
+# its entry condition, so the count is the same wherever inside it the call
+# sits. The fix is to say so in the output. `decisive_share` is the number that
+# carries information for these rules.
+#
+# Kept as an explicit declaration rather than inferred, and pinned by
+# tests/test_rule_coverage.py, so that a gate growing a fall-through path (which
+# would make its fire count meaningful again) shows up as a failing test rather
+# than as a quietly mislabelled row.
+GATE_MARKER_RULES: frozenset[str] = frozenset({"rule_short_line"})
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +456,7 @@ def run_coverage(
     quiet: bool = False,
     skip_loo: bool = False,
     gold_args=None,
+    split_cascade: bool = False,
 ) -> dict[str, dict]:
     """Run coverage instrumentation + optional LOO analysis over *raw_path*.
 
@@ -343,6 +467,13 @@ def run_coverage(
     output_path: If given, write ``rule_coverage.json`` to this path.
     quiet:       Suppress the per-rule table.
     skip_loo:    Skip the LOO decisive-count pass (faster; coverage only).
+    gold_args:   Namespace carrying --gold-column / --gold-sidecar. With a gold
+                 column the LOO pass additionally scores each rule's removal
+                 against the human labels; without one every figure it produces
+                 is agreement with the pipeline's own output.
+    split_cascade: Also measure each rule's per-line effect with document
+                 post-processing disabled, so the page cascade can be separated
+                 from the rule itself. One extra pass per rule.
 
     Returns
     -------
@@ -378,17 +509,53 @@ def run_coverage(
     # ------------------------------------------------------------------
     # Phase 2: LOO decisive count (one recategorize pass per rule)
     # ------------------------------------------------------------------
-    loo: dict[str, tuple[int, int]] = {}
+    gold_column = getattr(gold_args, "gold_column", None) if gold_args is not None else None
+    gold_sidecar = getattr(gold_args, "gold_sidecar", None) if gold_args is not None else None
+    n_annotated = 0
+    if gold_column:
+        try:
+            n_annotated = int(annotated_mask(df, gold_column).sum())
+        except KeyError:
+            # evaluate_dataframe raises on this too; failing here is clearer and
+            # happens before the multi-hour LOO pass rather than inside it.
+            raise
+
+    loo: dict[str, dict] = {}
+    passes = 1 + (1 if gold_column else 0) + (1 if split_cascade else 0)
     if skip_loo:
         print("Phase 2 — LOO skipped (--skip-loo).")
         for rule in RULES:
-            loo[rule] = (0, 0)
+            loo[rule] = {"decisive_count": 0, "clear_loss": 0}
     else:
-        print(f"Phase 2 — LOO pass ({len(RULES)} rules × 1 recategorize each) …")
+        print(f"Phase 2 — LOO pass ({len(RULES)} rules × {passes} recategorize each) …")
+        if gold_column:
+            print(f"  scoring against gold column {gold_column!r} on {n_annotated:,} annotated row(s)")
+        else:
+            print(
+                "  NOTE: no --gold-column. decisive_count / clear_loss are measured against the\n"
+                "  pipeline's OWN stored categ, whose baseline is zero by construction. They say\n"
+                "  how much each rule changes the current output, not whether it is right."
+            )
         for i, rule in enumerate(RULES, 1):
-            decisive, closs = _loo_metrics(df, rule, expected_langs, known_bases, constants)
-            loo[rule] = (decisive, closs)
-            print(f"  [{i:>2}/{len(RULES)}] {rule:<34} decisive={decisive}  clear_loss={closs}")
+            m = _loo_metrics(
+                df,
+                rule,
+                expected_langs,
+                known_bases,
+                constants,
+                gold_column=gold_column,
+                split_cascade=split_cascade,
+            )
+            loo[rule] = m
+            extra = ""
+            if m.get("gold_delta_macro_f1") is not None:
+                extra += f"  gold_dF1={m['gold_delta_macro_f1']:+.4f}"
+            if m.get("decisive_line") is not None:
+                extra += f"  line={m['decisive_line']}  cascade={m['decisive_cascade']}"
+            print(
+                f"  [{i:>2}/{len(RULES)}] {rule:<34} "
+                f"decisive={m['decisive_count']}  clear_loss={m['clear_loss']}{extra}"
+            )
 
     # ------------------------------------------------------------------
     # Assemble result dict
@@ -397,15 +564,23 @@ def run_coverage(
     for rule in RULES:
         fc = raw_counts.get(rule, 0)
         fr = fc / n_scored if n_scored > 0 else 0.0
-        decisive, closs = loo[rule]
+        m = loo[rule]
+        decisive = int(m["decisive_count"])
+        closs = int(m["clear_loss"])
         cls = _classify(fc, decisive)
-        results[rule] = {
+        entry = {
             "fire_count": fc,
             "fire_rate": round(fr, 6),
             "decisive_count": decisive,
+            "decisive_share": round(decisive / fc, 4) if fc else None,
             "clear_loss": closs,
             "class": cls,
+            "gate_marker": rule in GATE_MARKER_RULES,
         }
+        for key in ("decisive_line", "decisive_cascade", "gold_delta_macro_f1", "gold_n"):
+            if m.get(key) is not None:
+                entry[key] = m[key]
+        results[rule] = entry
 
     # ------------------------------------------------------------------
     # Output
@@ -420,6 +595,15 @@ def run_coverage(
             "input": str(in_path),
             "n_lines": n_total,
             "n_scored": n_scored,
+            # Provenance, so a report can never again LOOK like a gold run while
+            # being scored against the pipeline's own output. `gold_column: null`
+            # is the honest reading of every figure below as self-referential.
+            "gold_column": gold_column,
+            "gold_sidecar": str(gold_sidecar) if gold_sidecar else None,
+            "gold_annotated_rows": n_annotated if gold_column else 0,
+            "decisive_scored_against": "gold" if gold_column else "stored categ (self-referential)",
+            "cascade_split": bool(split_cascade),
+            "config": resolved_config,
             "rules": results,
         }
         out = Path(output_path)
@@ -442,6 +626,7 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
         f" | {'fire_count':>{_W_COUNT}}"
         f" | {'fire_rate':>{_W_RATE}}"
         f" | {'decisive':>{_W_DEC}}"
+        f" | {'dec/fire':>7}"
         f" | {'clr_loss':>{_W_LOSS}}"
         f" | {'class':<{_W_CLASS}}"
     )
@@ -455,15 +640,35 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
         print(f"\n  {section_label}")
         for rule in section_rules:
             r = results[rule]
-            dead_flag = "  ← DEAD" if r["class"] == "DEAD" else ""
+            flag = "  ← DEAD" if r["class"] == "DEAD" else ""
+            if r.get("gate_marker"):
+                flag += "  ← gate marker (fire_count is a population size)"
+            share = r.get("decisive_share")
+            share_txt = f"{share:>7.1%}" if share is not None else f"{'--':>7}"
             print(
                 f"  {rule:<{_W_NAME}}"
                 f" | {r['fire_count']:>{_W_COUNT}}"
                 f" | {r['fire_rate']:>{_W_RATE}.4f}"
                 f" | {r['decisive_count']:>{_W_DEC}}"
+                f" | {share_txt}"
                 f" | {r['clear_loss']:>{_W_LOSS}}"
-                f" | {r['class']:<{_W_CLASS}}{dead_flag}"
+                f" | {r['class']:<{_W_CLASS}}{flag}"
             )
+            if r.get("decisive_line") is not None:
+                print(
+                    f"  {'':<{_W_NAME}} | per-line {r['decisive_line']:,}"
+                    f"  page-cascade residual {r['decisive_cascade']:,}"
+                )
+            if r.get("gold_delta_macro_f1") is not None:
+                verdict = (
+                    "worse without it"
+                    if r["gold_delta_macro_f1"] < 0
+                    else ("better without it" if r["gold_delta_macro_f1"] > 0 else "no gold effect")
+                )
+                print(
+                    f"  {'':<{_W_NAME}} | vs gold: ΔmacroF1 {r['gold_delta_macro_f1']:+.4f}"
+                    f" on {r['gold_n']:,} row(s) — {verdict}"
+                )
     print()
 
 
@@ -531,6 +736,16 @@ def build_parser() -> argparse.ArgumentParser:
             "line that caused it (issue #30). Per-line only: document post-processing is not applied."
         ),
     )
+    ap.add_argument(
+        "--split-cascade",
+        dest="split_cascade",
+        action="store_true",
+        help=(
+            "Also measure each rule's per-line effect with document post-processing disabled, so "
+            "the page cascade it triggers can be separated from the rule itself. This is what makes "
+            "decisive_count > fire_count readable. Costs one extra pass per rule."
+        ),
+    )
     add_gold_column_argument(ap)
     return ap
 
@@ -564,6 +779,7 @@ def main(argv: list[str] | None = None) -> int:
             quiet=args.quiet,
             skip_loo=args.skip_loo,
             gold_args=args,
+            split_cascade=args.split_cascade,
         )
     except (FileNotFoundError, ValueError) as exc:
         # ValueError is the gold-sidecar join refusing a zero-match or a

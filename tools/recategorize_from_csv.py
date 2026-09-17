@@ -222,10 +222,22 @@ def _coerce_locators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _recategorize_one_document(doc: pd.DataFrame, expected_langs, known_bases) -> pd.DataFrame:
+def _recategorize_one_document(
+    doc: pd.DataFrame,
+    expected_langs,
+    known_bases,
+    apply_postprocessing: bool = True,
+) -> pd.DataFrame:
     """Re-score one document's rows then apply the real page post-processing.
 
     Index is preserved so callers can realign with the input frame.
+
+    ``apply_postprocessing=False`` stops after the per-line decision. It exists
+    for one caller -- the cascade split in ``tools/rule_coverage_report.py`` --
+    and it is NOT a faster path: the smoothing is where roughly a quarter of the
+    #30 population lands, so a frame produced this way is the categoriser's
+    answer, not the pipeline's. Nothing that reports a production figure may use
+    it.
     """
     rows: list[dict] = []
     index: list = []
@@ -242,6 +254,8 @@ def _recategorize_one_document(doc: pd.DataFrame, expected_langs, known_bases) -
     # the offline re-scorer stays byte-identical to production. No-op with
     # PAGE_PPL_BLEND_ENABLE off.
     new = apply_page_perplexity_blend(new, known_lang_bases=known_bases, expected_langs=expected_langs)
+    if not apply_postprocessing:
+        return new
     # The real, byte-identical document smoothing (dedup / surrounded-trash /
     # page-majority + inverted-run sweep). Honours any active override_constants.
     return apply_document_postprocessing(new)
@@ -253,6 +267,7 @@ def recategorize_dataframe(
     *,
     expected_langs: list[str] | None = None,
     known_bases: frozenset | None = None,
+    apply_postprocessing: bool = True,
 ) -> pd.DataFrame:
     """Faithful, document-aware re-categorisation under an explicit constant set.
 
@@ -260,6 +275,11 @@ def recategorize_dataframe(
     (one production document per group) and each group is re-scored and smoothed
     independently, exactly like production. The returned frame preserves the input
     row order/index.
+
+    ``apply_postprocessing=False`` returns the per-line decision without document
+    smoothing. The default is the faithful path and every production figure uses
+    it; see ``_recategorize_one_document`` for why the other one is not a
+    shortcut.
     """
     if expected_langs is None or known_bases is None:
         expected_langs, known_bases = _load_lang_config(os.getenv("LANGID_CONFIG", str(_ROOT / "setup/config.txt")))
@@ -275,9 +295,9 @@ def recategorize_dataframe(
     with ctx:
         if "file" in work.columns:
             for _, doc in work.groupby("file", sort=False):
-                frames.append(_recategorize_one_document(doc, expected_langs, known_bases))
+                frames.append(_recategorize_one_document(doc, expected_langs, known_bases, apply_postprocessing))
         else:
-            frames.append(_recategorize_one_document(work, expected_langs, known_bases))
+            frames.append(_recategorize_one_document(work, expected_langs, known_bases, apply_postprocessing))
 
     if not frames:
         return work
@@ -554,18 +574,42 @@ def load_csvs(input_dir: Path, recursive: bool = False) -> pd.DataFrame:
 
     Read as strings with NA disabled so the offline path sees the same raw cell
     values that ``rescore_csv`` does (consistent dtype/NA handling).
+
+    A CSV with no ``text`` column is skipped with a printed note rather than
+    concatenated. That is the gold-sidecar footgun, which ``tools/gold/GOLD.md``
+    could only warn about: ``ab_constant_eval``, ``run_ablation_study`` and
+    ``greedy_backward_elimination`` all load recursively, so pointing one of them
+    at ``tools/gold/`` swept ``sidecars/issue30_gold_2067.csv`` in as if its 2,067
+    key-only rows were corpus lines. Nothing failed -- the run reported 2,082
+    lines instead of 15 and printed a complete, entirely meaningless table. A
+    frame the re-scorer cannot score is not a frame worth concatenating.
     """
     paths = csv_paths(input_dir, recursive=recursive)
     if not paths:
         raise FileNotFoundError(f"No CSV files found in {input_dir}")
 
     frames: list[pd.DataFrame] = []
+    skipped: list[str] = []
     for path in paths:
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
+        if "text" not in df.columns:
+            skipped.append(str(path.relative_to(input_dir)))
+            continue
         df["_source_file"] = str(path.relative_to(input_dir))
         if "file" not in df.columns:
             df["file"] = path.stem
         frames.append(df)
+
+    if skipped:
+        print(
+            f"  note: skipped {len(skipped)} CSV(s) with no 'text' column "
+            f"(not scoreable rows): {', '.join(skipped[:5])}" + (" …" if len(skipped) > 5 else "")
+        )
+    if not frames:
+        raise FileNotFoundError(
+            f"No scoreable CSV files found in {input_dir} — every file lacked a 'text' column. "
+            "A gold sidecar is joined with --gold-sidecar, not loaded as input."
+        )
     return pd.concat(frames, ignore_index=True)
 
 
@@ -840,6 +884,7 @@ def evaluate_dataframe(
     gold_category_column: str | None = None,
     expected_langs: list[str] | None = None,
     known_bases: frozenset | None = None,
+    apply_postprocessing: bool = True,
 ) -> dict[str, Any]:
     """Faithfully re-categorise ``df`` under ``constants`` and score the result.
 
@@ -862,7 +907,13 @@ def evaluate_dataframe(
     """
     stored = _stored_labels(df, original_category_column)
 
-    predicted_df = recategorize_dataframe(df, constants, expected_langs=expected_langs, known_bases=known_bases)
+    predicted_df = recategorize_dataframe(
+        df,
+        constants,
+        expected_langs=expected_langs,
+        known_bases=known_bases,
+        apply_postprocessing=apply_postprocessing,
+    )
     predicted = predicted_df["categ"].map(normalize_category).to_numpy()
 
     if gold_category_column is not None:

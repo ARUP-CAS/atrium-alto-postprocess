@@ -209,6 +209,35 @@ SHORT_GARBAGE_WITNESS_VARIETY_MAX       = 0.50
 # `sektlll` and `NINNNIC` are 7; the cap is what keeps the German compound
 # `Schifffahrt` out.
 SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA  = 8
+# Vowel-run clause length, decoupled from FUSED_VOWEL_RUN_MIN so it can be tuned
+# without moving `fused_ratio` in the quality score on every line in the corpus.
+# 3 is the shipped behaviour. The trade at 4 is measured and asymmetric: `oueussd`
+# (`oueu`) stays convicted, `cuxoaid` (`oai`) escapes with no other clause
+# catching it, and the `Naiade` / `Beuern` / `Oueste` loan false positives stop
+# firing. Let the sweep decide against gold rather than settling it by reading.
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
+
+# ── rule_short_garbage vocabulary signal (issue #30 D14) ────────────────────
+# The lexical half of the witness, and the only thing in this module that can
+# reach the phonotactically legal residue (`edelite`, `vfetennl k.`). Built from
+# the corpus's own token/document-frequency, NOT from an external dictionary --
+# the Czech ones are CC BY-NC-SA and would change this pipeline's output-licence
+# story. Build a table with:
+#     python tools/build_token_lexicon.py <DOC_LINE_CATEG dir> -o tools/gold/token_df.tsv
+# EMPTY PATH = inert. With no table the predicate is byte-identical to the
+# shape-only version, which is the shipped state.
+SHORT_GARBAGE_LEXICON_PATH              =
+# A token must appear in at least this many DISTINCT documents to count as
+# attested. Document frequency, not line frequency: OCR noise repeats within the
+# scan that produced it and almost never across scans.
+SHORT_GARBAGE_LEXICON_MIN_DF            = 3
+# When true, absence from the table becomes EVIDENCE rather than the presence of
+# a token becoming an exemption -- i.e. an unattested token convicts. This is the
+# only clause of the witness that can ADD a conviction, so it carries its own key
+# and ships false. "Unattested" is not "not a word": rare vocabulary, personal
+# names and a table built too narrowly all land here. Measure before enabling;
+# see 30.runbook.md.
+SHORT_GARBAGE_LEXICON_CONVICT           = false
 SYM_LET_DIG_NONTEXT         = true
 MOSTLY_READABLE_VALID_MIN   = 0.85
 SHORT_NOISY_QS_PENALTY      = 0.20

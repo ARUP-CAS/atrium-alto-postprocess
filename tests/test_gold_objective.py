@@ -416,3 +416,42 @@ def test_the_gold_report_always_shows_its_composition():
     assert {"1920s", "2010s"} <= set(report["strata"]["decade"])
     for group in report["strata"]["decade"].values():
         assert group["n"] > 0 and 0.0 <= group["agreement"] <= 1.0
+
+
+def test_a_sidecar_swept_in_as_input_is_skipped_not_concatenated(tmp_path):
+    """The footgun GOLD.md could only warn about, now guarded in code.
+
+    `ab_constant_eval`, `run_ablation_study` and `greedy_backward_elimination`
+    all call `load_csvs(..., recursive=True)`. Pointing one of them at
+    `tools/gold/` swept `sidecars/issue30_gold_2067.csv` in as if its 2,067
+    key-only rows were corpus lines: the run reported 2,082 lines instead of 15
+    and printed a complete, plausible, entirely meaningless table. Nothing failed,
+    which is the same failure shape as scoring against the pipeline's own labels.
+
+    A frame the re-scorer cannot score is not a frame worth concatenating.
+    """
+    corpus = tmp_path / "corpus"
+    (corpus / "sidecars").mkdir(parents=True)
+    (corpus / "CTX000000001.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000001,1,1,vrstva 3,2\n",
+        encoding="utf-8",
+    )
+    (corpus / "sidecars" / "gold.csv").write_text(
+        "file,page_num,line_num,gold_categ\nCTX000000001,1,1,Clear\nCTX000000001,1,2,Trash\n",
+        encoding="utf-8",
+    )
+
+    df = load_csvs(corpus, recursive=True)
+    assert len(df) == 1, f"the sidecar's rows were loaded as corpus lines: {len(df)} rows"
+    assert "gold_categ" not in df.columns, "sidecar columns leaked into the scoreable frame"
+
+
+def test_a_directory_of_only_sidecars_is_an_error_not_an_empty_success(tmp_path):
+    """Refusing loudly beats returning a frame nothing can be concluded from."""
+    only_sidecars = tmp_path / "gold"
+    only_sidecars.mkdir()
+    (only_sidecars / "gold.csv").write_text(
+        "file,page_num,line_num,gold_categ\nCTX000000001,1,1,Clear\n", encoding="utf-8"
+    )
+    with pytest.raises(FileNotFoundError, match="No scoreable CSV files"):
+        load_csvs(only_sidecars, recursive=True)

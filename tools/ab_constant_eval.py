@@ -86,10 +86,48 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
     )
 
 
+_TRUEISH = {"true", "1", "yes", "on"}
+_FALSEISH = {"false", "0", "no", "off"}
+
+
+def _parse_values(raw: str) -> List[Any]:
+    """Parse --values as numbers OR booleans.
+
+    This used to be ``[float(v) for v in ...]``, which meant the tool could not
+    express the one kind of constant the #30 decision actually turns on. Both
+    `SHORT_GARBAGE_WITNESS_ENABLE` and `SHORT_GARBAGE_LEXICON_CONVICT` are flags,
+    and "measure it against gold before flipping it" was the standing instruction
+    for both -- with no way to say `--values false,true` to the tool written for
+    exactly that comparison.
+
+    `0`/`1` stay numeric: they are ambiguous, and a constant that is genuinely
+    numeric is the commoner case. Spell a flag `false,true`.
+    """
+    out: List[Any] = []
+    for item in raw.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        lowered = token.lower()
+        if lowered in _TRUEISH - {"1"}:
+            out.append(True)
+        elif lowered in _FALSEISH - {"0"}:
+            out.append(False)
+        else:
+            try:
+                out.append(float(token))
+            except ValueError as exc:
+                raise ValueError(
+                    f"--values entry {token!r} is neither a number nor a boolean "
+                    f"({'/'.join(sorted(_TRUEISH | _FALSEISH))})"
+                ) from exc
+    return out
+
+
 def run_ab(
     df,
     const_name: str,
-    values: List[float],
+    values: List[Any],
     base_constants: Dict[str, Any],
     eval_kwargs: Dict[str, Any],
 ) -> None:
@@ -170,7 +208,11 @@ def main() -> None:
     add_gold_column_argument(parser)
     args = parser.parse_args()
 
-    values = [float(v.strip()) for v in args.values.split(",") if v.strip()]
+    try:
+        values = _parse_values(args.values)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if not values:
         print("error: provide at least one --values entry", file=sys.stderr)
         sys.exit(1)

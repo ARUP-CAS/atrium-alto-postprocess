@@ -427,3 +427,157 @@ def test_wc_breakdown_totals_agree_with_the_coverage_pass():
         f"instruments disagree on which rules fire: only in --by-wc {sorted(fired_by_wc - fired_by_coverage)}, "
         f"only in coverage {sorted(fired_by_coverage - fired_by_wc)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. Gold threading — the guard whose absence let a real defect live
+# ---------------------------------------------------------------------------
+#
+# `rule_coverage_report` was the only one of the five `evaluate_dataframe`
+# callers that never passed `gold_category_column`, while happily accepting
+# `--gold-sidecar`, joining it, and printing "N labels matched" on the way past.
+# Every DEAD / REDUNDANT-HERE / LOAD-BEARING verdict it produced -- the
+# classification `RULE_COVERAGE.md` cites as the retirement criterion -- was
+# therefore agreement with the pipeline's own stored `categ`, which the offline
+# re-score reproduces exactly, so the baseline was zero by construction.
+#
+# Nothing failed. `tests/test_rule_coverage.py` contained no occurrence of the
+# word "gold", and a self-referential run looks exactly like a successful one.
+# These tests are the missing guard.
+
+
+def test_every_evaluate_dataframe_driver_forwards_the_gold_column():
+    """Source-level check across all five drivers, not just this one.
+
+    A per-driver behavioural test would have to run each driver; this asks the
+    cheaper and more durable question -- does any module that calls
+    `evaluate_dataframe` do so without ever mentioning `gold_category_column`?
+    The answer was yes for two years in one file, and the cost was invisible.
+    """
+    import re
+
+    offenders = []
+    for path in sorted((_ROOT / "tools").glob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        if not re.search(r"\bevaluate_dataframe\s*\(", src):
+            continue
+        if path.name == "recategorize_from_csv.py":
+            continue  # defines it
+        if "gold_category_column" not in src:
+            offenders.append(path.name)
+
+    assert not offenders, (
+        f"these tools call evaluate_dataframe but never mention gold_category_column: {offenders}. "
+        "Without it every metric they report is scored against the pipeline's own stored categ, "
+        "whose baseline is zero by construction — see tools/gold/GOLD.md."
+    )
+
+
+@pytest.mark.skipif(not _HAS_SAMPLES, reason="sample DOC_LINE_CATEG fixtures not present")
+def test_coverage_payload_records_whether_it_was_scored_against_gold(tmp_path):
+    """A finished report must say what it was scored against.
+
+    The JSON payload used to carry `input`, `n_lines`, `n_scored` and `rules` and
+    nothing else, so a self-referential run and a gold run were indistinguishable
+    after the fact -- including in this issue's own thread, where a 23-rule table
+    was read as evidence about rule quality.
+    """
+    import json
+
+    import tools.rule_coverage_report as RC
+
+    out = tmp_path / "rc.json"
+    RC.run_coverage(
+        str(_SAMPLE_DIR),
+        config_path=str(_ROOT / "setup" / "config.txt"),
+        output_path=str(out),
+        quiet=True,
+        skip_loo=True,
+    )
+    payload = json.loads(out.read_text(encoding="utf-8"))
+
+    assert payload["gold_column"] is None
+    assert "self-referential" in payload["decisive_scored_against"]
+    assert payload["config"].endswith("config.txt")
+
+
+@pytest.mark.skipif(not _HAS_SAMPLES, reason="sample DOC_LINE_CATEG fixtures not present")
+def test_loo_metrics_scores_against_gold_when_asked():
+    """`_loo_metrics` must add the gold verdict rather than redefine the old one.
+
+    Forwarding `gold_category_column` into the existing call would have been the
+    obvious fix and the wrong one: with a gold column `flip_count` counts
+    DISAGREEMENTS WITH GOLD rather than lines the rule moved, and the baseline is
+    no longer zero — so `decisive_count` would have silently become a different
+    quantity under the same name. The structural figure stays; the gold figure is
+    additional.
+    """
+    import tools.rule_coverage_report as RC
+    from tools.recategorize_from_csv import load_csvs
+
+    df = load_csvs(_SAMPLE_DIR)
+    df["gold_categ"] = df["categ"]  # a gold column that agrees with the pipeline
+    expected_langs, known_bases = RC._load_lang_config(str(_ROOT / "setup" / "config.txt"))
+
+    plain = RC._loo_metrics(df, "rule_hard_sweep", expected_langs, known_bases)
+    scored = RC._loo_metrics(df, "rule_hard_sweep", expected_langs, known_bases, gold_column="gold_categ")
+
+    assert plain["gold_delta_macro_f1"] is None, "no gold column means no gold verdict"
+    assert scored["gold_delta_macro_f1"] is not None
+    assert scored["gold_n"] == len(df)
+    assert scored["decisive_count"] == plain["decisive_count"], (
+        "the structural figure must not change meaning when a gold column is supplied"
+    )
+
+
+@pytest.mark.skipif(not _HAS_SAMPLES, reason="sample DOC_LINE_CATEG fixtures not present")
+def test_cascade_split_separates_the_per_line_effect():
+    """`decisive_count > fire_count` is only readable once the cascade is split.
+
+    Three rules in the last full-corpus run reported more decisive lines than
+    fires -- `rule_forgiven_headline` 6,773 against 3,545, `rule_trailing_fill_rescue`
+    71,378 against 51,134, `rule_damaged_token` 30,158 against 29,596. That is not
+    a paradox: removing a rescue pushes its line to Trash, the page's garbage
+    ratio rises, and the page passes sweep the neighbours. The split is what says
+    so instead of leaving it to be argued.
+    """
+    import tools.rule_coverage_report as RC
+    from tools.recategorize_from_csv import load_csvs
+
+    df = load_csvs(_SAMPLE_DIR)
+    expected_langs, known_bases = RC._load_lang_config(str(_ROOT / "setup" / "config.txt"))
+
+    m = RC._loo_metrics(df, "rule_hard_sweep", expected_langs, known_bases, split_cascade=True)
+    assert m["decisive_line"] is not None
+    assert m["decisive_cascade"] == m["decisive_count"] - m["decisive_line"]
+
+
+def test_gate_marker_rules_are_declared_and_real():
+    """A gate marker must name a rule whose gate always returns.
+
+    `rule_short_line` fires on entry to gate 7, and every branch of gate 7
+    returns, so its fire count is the size of the `word_count <= 2` population --
+    44.6% of scored lines on the cluster corpus, which sorts it to the top of the
+    table as if it were the hottest rule in the engine. Moving the `_fire()` call
+    would not change the number; saying what the number is does.
+
+    If the gate ever grows a fall-through path, the count becomes meaningful
+    again and this declaration is wrong -- so it is pinned rather than inferred.
+    """
+    import tools.rule_coverage_report as RC
+
+    assert RC.GATE_MARKER_RULES <= set(RC.RULES)
+    assert "rule_short_line" in RC.GATE_MARKER_RULES
+
+    src = (_ROOT / "text_util.py").read_text(encoding="utf-8")
+    gate = src.split('if "rule_short_line" not in DISABLED_RULES and word_count <= 2:', 1)
+    assert len(gate) == 2, "gate 7's entry condition moved; re-check the marker declaration"
+    body = gate[1].split("\n    # ---", 1)[0]
+    # The last statement of the gate body is an unconditional return: that is what
+    # makes the gate total on its entry condition, hence a population marker.
+    last = [ln for ln in body.rstrip().splitlines() if ln.strip()][-1]
+    assert last.strip().startswith("return "), (
+        f"gate 7 no longer ends in an unconditional return (found {last.strip()!r}); "
+        "if it can now fall through, rule_short_line's fire_count is meaningful and "
+        "it should leave GATE_MARKER_RULES."
+    )

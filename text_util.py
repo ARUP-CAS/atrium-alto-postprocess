@@ -23,6 +23,7 @@ that is deliberate and is not drift to reconcile.
 """
 
 import configparser
+import functools
 import itertools
 import os
 import re
@@ -413,6 +414,34 @@ SHORT_GARBAGE_WITNESS_MIN_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_
 SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA", 7)
 SHORT_GARBAGE_WITNESS_VARIETY_MAX = _get_float("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VARIETY_MAX", 0.50)
 SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA", 8)
+# (#30) The witness's OWN vowel-run length, decoupled from FUSED_VOWEL_RUN_MIN.
+# It defaults to that value, so the shipped behaviour is unchanged -- but
+# detect_fused_words() feeds `fused_ratio` in the quality score and the
+# `fused_words` CSV column, so the two knobs steering each other meant the only
+# clause that discriminates on the #30 population could not be tuned without
+# moving scores on every line in the corpus. See the vowel-run clause for the
+# measured trade at 3 vs 4.
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN", FUSED_VOWEL_RUN_MIN)
+# (#30 D14) The lexical signal for the residue. A path to a token/document-frequency
+# table built by tools/build_token_lexicon.py. EMPTY BY DEFAULT: with no table the
+# veto is inert and the predicate is byte-identical to the shape-only version, so
+# this key changes nothing until an operator points it at a built table.
+SHORT_GARBAGE_LEXICON_PATH = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_PATH", "").strip()
+SHORT_GARBAGE_LEXICON_MIN_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_MIN_DF", 3)
+# (#30 D14) The lexicon used as EVIDENCE rather than as a veto: a token with no
+# attestation anywhere in the collection convicts. This is the only mechanism in
+# this module that can reach `edelite` -- the phonotactically legal residue -- and
+# it is the only part of the witness that can ADD a conviction, so it is gated
+# separately and ships false. Double-gated in practice: it is read only when
+# SHORT_GARBAGE_WITNESS_ENABLE is also true, and only when a table is configured.
+# Do not enable without the measurement in 30.runbook.md -- an unattested token is
+# not the same thing as a non-word, and rare real vocabulary is the failure mode.
+SHORT_GARBAGE_LEXICON_CONVICT = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_CONVICT", "false").strip().lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
 SYM_LET_DIG_NONTEXT = _get_str("TEXT_UTILS", "SYM_LET_DIG_NONTEXT", "true").strip().lower() in (
     "true",
     "1",
@@ -1843,10 +1872,110 @@ def _has_strong_garbage_evidence(
 _RE_TRIPLE_ALPHA_RUN: re.Pattern = re.compile(r"([^\W\d_])\1\1", re.IGNORECASE)
 _RE_INITIAL_CONSONANT_GEMINATE: re.Pattern = re.compile(r"^([bcdfghjklmnpqrstvwxz])\1", re.IGNORECASE)
 
+# (#30) Latin taxonomic endings. Closed, and deliberately only the ones that
+# CONTAIN a 3+ vowel run -- this exists to stop one clause convicting one class,
+# not to hand every Latinate word an exemption. `-aceae` (and `-oideae`) are the
+# botanical FAMILY suffix: every family name ends in it, so the vowel-run clause
+# was not making an occasional mistake on this class, it was convicting all of
+# it. Measured 2026-09-17 on the shipped predicate, 10 of 10: Poaceae, Rosaceae,
+# Fabaceae, Brassicaceae, Cyperaceae, Chenopodiaceae, Asteraceae, Betulaceae,
+# Fagaceae, Polygonaceae.
+#
+# `-idae` / `-inae` are the zoological family and subfamily suffixes; they carry
+# only a 2-vowel run today, so they are listed for the case where
+# SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN is ever lowered, not because they fire now.
+_RE_TAXONOMIC_SUFFIX: re.Pattern = re.compile(r"(?:aceae|oideae|eae|iae|aea|oidea|idae|inae)$", re.IGNORECASE)
+# Below this many letters a suffix match is a coincidence, not a taxon.
+_TAXONOMIC_SUFFIX_MIN_ALPHA: int = 5
+
+
+@functools.lru_cache(maxsize=8)
+def _compile_vowel_run(min_run: int) -> re.Pattern:
+    """The vowel-run pattern at an arbitrary length, cached per length.
+
+    ``_RE_FUSED_VOWEL_RUN`` is compiled once at import from ``FUSED_VOWEL_RUN_MIN``
+    and therefore does not respond to ``override_constants``. The witness needs a
+    knob the sweep can actually move, so it compiles its own.
+    """
+    return re.compile(r"[aeiouyáéíóúýěůäöü]{%d,}" % max(2, int(min_run)), re.IGNORECASE)
+
+
+@functools.lru_cache(maxsize=4)
+def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
+    """Load a token/document-frequency table, keyed on path+mtime so edits are seen.
+
+    Format, as written by ``tools/build_token_lexicon.py``: ``#``-prefixed
+    provenance header, then ``token<TAB>document_frequency`` per line. ``mtime``
+    is a cache key and nothing else -- it is what lets a rebuilt table be picked
+    up inside one process, which the test suite relies on.
+
+    A malformed or unreadable table yields an EMPTY set rather than an exception.
+    This predicate is consulted per sub-token inside the categoriser; a corrupt
+    optional file must degrade to "no vocabulary signal", never take the pipeline
+    down mid-corpus.
+    """
+    del mtime  # cache key only
+    try:
+        out: set[str] = set()
+        # errors="replace" rather than strict: a table is operator-supplied and
+        # may have been moved through a Windows editor or a lossy transfer. A
+        # mangled byte should cost that one token, not the corpus run.
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line or line.startswith("#"):
+                    continue
+                token, _, df = line.rstrip("\n").partition("\t")
+                if not token:
+                    continue
+                try:
+                    if int(df) < min_df:
+                        continue
+                except ValueError:
+                    continue
+                out.add(token)
+        return frozenset(out)
+    except (OSError, ValueError, UnicodeError):
+        return frozenset()
+
+
+def token_lexicon() -> frozenset:
+    """The vocabulary table currently in force, or an empty set when none is configured."""
+    path = (SHORT_GARBAGE_LEXICON_PATH or "").strip()
+    if not path:
+        return frozenset()
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return frozenset()
+    return _read_token_lexicon(path, mtime, int(SHORT_GARBAGE_LEXICON_MIN_DF))
+
+
+def _has_vocabulary_support(token: str) -> bool:
+    """Is this token attested as vocabulary elsewhere in the collection?
+
+    (#30 D14.) The residue the shape witness cannot reach -- `edelite`,
+    `vfetennl k.` -- is phonotactically legal, so no character-level test
+    separates it from `malakofauna`. Both sides of the issue thread concluded the
+    way out is a lexicon; the external Czech ones are CC BY-NC-SA, which would
+    change this pipeline's output-licence story, so this uses the corpus as its
+    own dictionary.
+
+    The signal is DOCUMENT frequency, not line frequency and not category: a
+    token that appears in many distinct documents is vocabulary, because OCR
+    noise is idiosyncratic to the scan that produced it. Document frequency is a
+    property of the data, so consulting it does not re-introduce the circularity
+    of scoring against the pipeline's own labels -- which is the mistake this
+    issue has already made once, in the sweep objective.
+
+    Veto only: it can withdraw a conviction, never add one.
+    """
+    lex = token_lexicon()
+    return bool(lex) and token.lower() in lex
+
 
 # The clause names, in report order. Canonical here rather than in the reporting
 # tool, because a second copy of this vocabulary is a second thing to drift.
-SHAPE_GARBAGE_CLAUSES: tuple[str, ...] = ("vowel_run", "triple", "initial_geminate", "low_variety")
+SHAPE_GARBAGE_CLAUSES: tuple[str, ...] = ("vowel_run", "triple", "initial_geminate", "low_variety", "no_vocabulary")
 
 
 def _has_shape_garbage_evidence(text_source: str) -> bool:
@@ -1925,8 +2054,68 @@ def shape_garbage_clauses(text_source: str) -> list[str]:
             if _RE_ROMAN_TOKEN.match("".join(letters)):
                 continue
 
+            # LATIN TAXONOMY is exempt, and like the roman-numeral exemption it
+            # sits above every clause rather than inside the one that fires
+            # today. Same reason: `-aceae` is a vowel run now, and on a longer
+            # name it is one clause away from the others.
+            #
+            # The block above this function called this class "KNOWN false
+            # positives ... a real but THIN margin, since it depends on a signal
+            # outside this predicate" -- the margin being that most such lines
+            # carry weird_ratio 0.0 and never reach the route. Measuring the
+            # class was recorded as a PRECONDITION for enabling the flag. It has
+            # now been measured against the predicate, and the predicate convicts
+            # the whole botanical family suffix, 10 of 10 (see
+            # _RE_TAXONOMIC_SUFFIX). Leaning on weird_ratio to keep taxonomy out
+            # of Trash is leaning on a signal this predicate does not control, in
+            # a corpus whose archaeobotany and osteology reports are exactly
+            # where `-aceae` lives.
+            #
+            # NOT covered here, and left to _has_vocabulary_support() on purpose:
+            # `Naiade` (aia), `Beuern` (eue), `Oueste` (Oue). Those are name-like
+            # rather than suffixed, and inventing a "legal vowel sequence" list to
+            # catch them is the same guessing that cost 12 lines the last time
+            # this predicate was widened by reading rather than by measuring.
+            if len(letters) >= _TAXONOMIC_SUFFIX_MIN_ALPHA and _RE_TAXONOMIC_SUFFIX.search("".join(letters)):
+                continue
+
+            # ATTESTED VOCABULARY is exempt (#30 D14). Inert unless
+            # SHORT_GARBAGE_LEXICON_PATH points at a built table, so this is a
+            # no-op in the shipped configuration. This is what reaches the loans
+            # the suffix rule above deliberately does not -- `Naiade`, `Beuern`,
+            # `Oueste` -- without anybody guessing at which vowel sequences a
+            # European language is allowed to contain.
+            if _has_vocabulary_support(core):
+                continue
+
+            # THE RESIDUE, and the only clause here that can ADD a conviction.
+            # `edelite` and `vfetennl k.` are spelled the way words are spelled,
+            # so no shape test reaches them; what they lack is attestation. A
+            # token absent from a document-frequency table built over the whole
+            # collection appeared in no other document, which is what OCR noise
+            # looks like and what vocabulary does not.
+            #
+            # Off by default and gated on its own key, because "unattested" is
+            # not "not a word": a genuinely rare term, a personal name, or a
+            # token the table was simply built too narrowly to contain all land
+            # here. That is a measurement, not a reading -- see 30.runbook.md.
+            if (
+                SHORT_GARBAGE_LEXICON_CONVICT
+                and token_lexicon()
+                and not _has_vocabulary_support(core)
+                and "".join(letters).isalpha()
+            ):
+                found.add("no_vocabulary")
+
             # 3+ consecutive vowels: `oueussd`, `cuxoaid`, `IDIDIDIDIDIDUOID`.
-            if _RE_FUSED_VOWEL_RUN.search(core):
+            #
+            # The length is SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN, which defaults to
+            # FUSED_VOWEL_RUN_MIN (3) and is now separately tunable. The trade at
+            # the next step up is measured and asymmetric, so it belongs to the
+            # sweep and not to a reading of the code: at 4, `oueussd` (`oueu`)
+            # stays convicted while `cuxoaid` (`oai`) escapes this clause and no
+            # other clause catches it, and `Naiade`/`Beuern`/`Oueste` stop firing.
+            if _compile_vowel_run(SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN).search(core):
                 found.add("vowel_run")
 
             # The same character three times: `sektlll`, `NINNNIC`. Capped by
