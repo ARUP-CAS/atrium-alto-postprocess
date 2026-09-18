@@ -396,6 +396,28 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  witnessed and currently Trash        : {retained:8d}   would stay Trash with the witness armed")
     print(f"  witnessed and currently Clear/Noisy  : {exposure:8d}   false-positive candidates — annotate these first")
 
+    # The line counts above are the wrong unit for a decision and always have
+    # been, so the distinct count is printed here rather than only under
+    # --distinct. On the 822-document corpus the two differ by ~4x overall and by
+    # 20x on the worst single string: 20,324 witnessed lines are 5,243 strings,
+    # and `ppole` alone is 11,562 lines but one decision. Every ratio anyone has
+    # quoted from this block -- the "1:3 against" that argued the vocabulary veto
+    # was mandatory included -- was a line ratio, and `ppole` was 76.8% of the
+    # false-positive candidates in it. Archival tables repeat one string thousands
+    # of times; the decision surface is the strings.
+    distinct_texts = {v["text"] for _, v, _ in witnessed_rows}
+    distinct_fp = {v["text"] for _, v, c in witnessed_rows if c in ("Clear", "Noisy")}
+    print(
+        f"  distinct strings                     : {len(distinct_texts):8d}   "
+        f"({len(distinct_fp)} of them currently Clear/Noisy)"
+    )
+    if witnessed_rows and distinct_texts:
+        ratio = len(witnessed_rows) / len(distinct_texts)
+        print(f"  lines per distinct string            : {ratio:8.1f}   read the string counts, not the line counts")
+        top_text, top_n = Counter(v["text"] for _, v, _ in witnessed_rows).most_common(1)[0]
+        print(f"  most repeated string                 : {top_n:8d}   {top_text!r} — one decision, not {top_n}")
+    print("  Use --distinct to get the annotation queue in that unit.")
+
     if args.examples:
         print("\n=== examples ===")
         for clause in _CLAUSE_ORDER:

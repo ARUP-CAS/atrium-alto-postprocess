@@ -1915,6 +1915,65 @@ _RE_TAXONOMIC_SUFFIX: re.Pattern = re.compile(r"(?:aceae|oideae|eae|iae|aea|oide
 _TAXONOMIC_SUFFIX_MIN_ALPHA: int = 5
 
 
+# (#30, 2026-09-18) A grid/context reference whose trailing sub-letter is FUSED to
+# the roman segment: `S-VIIIb`, `K-VIIIc`, `AA-VIIIb`. `is_domain_notation()`
+# already recognises the hyphenated form -- `S-VIII-b` and `B-XII-c` both return
+# True -- and the unhyphenated twin differs from it by one character, so this is a
+# near-miss in that predicate rather than a new class.
+#
+# It is exempted HERE, witness-locally, and NOT by widening
+# `is_domain_notation()`, which is also read by `rule_short_garbage`'s outer guard
+# and by the two perplexity-only routes. Widening it there would change production
+# behaviour for these seven strings while the witness flag is still false; doing it
+# here cannot change anything until the flag flips, which is the same discipline the
+# roman-numeral and taxonomy exemptions above follow.
+#
+# Measured on the 822-document corpus: seven distinct strings, one excavation's
+# grid series -- AA-VIIIb, E-VIIIb, F-VIIIb, J-VIIIb, K-VIIIc, L-VIIIb, S-VIIIb --
+# across 7 witnessed lines, 6 of them currently Clear. `S-VIIIb` is annotated
+# `Clear` in tools/gold/sidecars/issue30_gold_2067.csv and is one of the exactly two
+# gold-Clear lines the witness convicts, i.e. one half of the Clear-loss 40 -> 42
+# that fails the adoption gate in 30.runbook.md stage 5a.
+_RE_FUSED_GRID_REF: re.Pattern = re.compile(r"^[A-Za-z]{1,3}[-/][IVXLCDM]{1,7}[a-z]?$")
+
+
+@functools.lru_cache(maxsize=1)
+def _expected_lang_diacritics() -> frozenset:
+    """Diacritic glyphs of every language in EXPECTED_LANGS that has a set here.
+
+    `_LANG_DIACRITICS` is keyed by language base and already carries `ces` and
+    `deu`; `infer_lang_from_diacritics()` reads it. This unions the entries for
+    the configured EXPECTED_LANGS, so the witness's veto follows the collection's
+    declared languages instead of hardcoding one of them.
+    """
+    out: set = set()
+    for base in _EXPECTED_LANGS_BASES:
+        out |= set(_LANG_DIACRITICS.get(base, ()))
+    return frozenset(out)
+
+
+def has_expected_lang_diacs(text: str) -> bool:
+    """True if *text* carries a diacritic of any EXPECTED_LANGS language.
+
+    (#30, 2026-09-18.) The witness vetoed on `has_cz_diacs()` alone while
+    EXPECTED_LANGS is `ces,deu,eng` and `DEU_DIACS` has been in the config since
+    the #7 Tier-1 pass. A German line therefore reached the shape clauses with no
+    diacritic veto at all, and German is where the vowel-run clause is least safe:
+    `Frauen`, `Bauern`, `Feuer`, `Neue` are all 3-vowel runs in ordinary words.
+
+    Measured on the 822-document corpus: 239 witnessed lines carry a German
+    diacritic, 156 of them currently Clear or Noisy -- `Grauer, geschlämmter Ton.`
+    and its family, which is readable German pottery description. One of them,
+    `Frauenzimmerbad", sämtlic Gesellschastsbäder,`, is annotated `Clear` and is the
+    other half of the Clear-loss 40 -> 42 in 30.runbook.md stage 5a.
+
+    Kept separate from `has_cz_diacs()` rather than replacing it: that function is
+    read at fifteen other sites whose meaning is specifically "Czech", and this one
+    means "a language this collection expects".
+    """
+    return any(ch in _expected_lang_diacritics() for ch in text)
+
+
 @functools.lru_cache(maxsize=8)
 def _compile_vowel_run(min_run: int) -> re.Pattern:
     """The vowel-run pattern at an arbitrary length, cached per length.
@@ -2168,7 +2227,15 @@ def shape_garbage_clauses(text_source: str) -> list[str]:
     short-circuited on the first hit; this does not, because the report needs the
     full breakdown. The flag ships false, so nothing in production pays for it.
     """
-    if has_cz_diacs(text_source) or is_structured_line(text_source) or is_domain_notation(text_source):
+    # Line-level vetoes. `has_expected_lang_diacs` rather than `has_cz_diacs`
+    # (#30, 2026-09-18): see that function for the measurement. `_RE_FUSED_GRID_REF`
+    # is the unhyphenated twin of a shape `is_domain_notation()` already accepts.
+    if (
+        has_expected_lang_diacs(text_source)
+        or is_structured_line(text_source)
+        or is_domain_notation(text_source)
+        or _RE_FUSED_GRID_REF.match(text_source.strip())
+    ):
         return []
 
     found: set[str] = set()

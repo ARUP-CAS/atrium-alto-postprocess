@@ -196,16 +196,45 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # sample corpus holds 15 lines and cannot validate it. See
 # agent_dev_logs/plans/30.plan.md.
 #
-# AND DO NOT TURN IT ON WITHOUT A LEXICON. These two keys are one decision.
-# Measured on the cluster over 1,480,119 in-scope lines (2026-09-17): the shape
-# witness ALONE confirms 5,107 existing Trash verdicts and newly convicts 15,217
-# lines currently called Clear or Noisy -- 1:3 against. With the vocabulary veto
-# below at MIN_DF 3 the same witness scores 3,905 against 2,306, i.e. 1.7:1 in
-# favour. The veto is not a refinement of the witness; it is the difference
-# between a narrowing worth arming and one that trashes three readable lines for
-# every garbage line it catches. text_util prints an advisory if you set this
-# without SHORT_GARBAGE_LEXICON_PATH -- advisory, because 30.runbook.md step 5a
-# measures the shape-only configuration deliberately.
+# THE LEXICON IS NOT A PRECONDITION. This block used to say the opposite, in
+# capitals, and the gold A/B falsified it. The claim rested on a self-scored
+# exposure count (2026-09-17, 1,480,119 in-scope lines): shape alone confirms
+# 5,107 existing Trash verdicts and newly convicts 15,217 lines currently called
+# Clear or Noisy -- "1:3 against" -- against 3,905 / 2,306 with the veto armed,
+# "1.7:1 in favour". Both ratios are scored against `categ`, which is the answer
+# the pipeline already gave, and both are dominated by one string: the `ppole`
+# family is 11,685 of those 15,217 candidates (76.8%) and 90.5% of the 12,911
+# lines the veto "rescued". `ppole` is an OCR doubling of `pole` and belongs in
+# Trash, so the veto's headline benefit was protecting garbage.
+#
+# Against gold (2,064 of 2,067 sidecar rows joined; 30.runbook.md stages 5a and
+# 5a-bis, 2026-09-18) the ordering reverses, and on every column:
+#
+#   arm                      macro_f1  Trash-recall  Clear-loss
+#   shipped (witness off)      0.6173     22/180         40
+#   witness on, NO lexicon     0.6366     36/180         42
+#   witness on + vocab veto    0.6338     34/180         42
+#
+# The veto returns no Clear lines and costs two true Trash catches. Both are the
+# line `cuxoaid ,`, which is annotated Trash and which the veto exempts because
+# `cuxoaid` reaches document frequency 4 -- attested garbage. That is the whole
+# of its measured effect on human labels.
+#
+# So: arm the witness with or without a table, on the measurement, not on this
+# file's former instruction. text_util.uncoupled_witness_warning() still prints
+# an advisory when the two are uncoupled; it is advisory precisely because the
+# uncoupled arm is the better-scoring one.
+#
+# STILL FALSE, for a different reason. Clear-loss 40 -> 42 fails the adoption
+# gate in tools/GOLD.md ("must not raise Clear-loss"), and the two lines are
+# identified: `Frauenzimmerbad", sämtlic Gesellschastsbäder,` (German, no Czech
+# diacritic) and `S-VIIIb` (a grid reference `is_domain_notation()` accepts only
+# when hyphenated). Both now have witness-local guards in text_util.py --
+# has_expected_lang_diacs() and _RE_FUSED_GRID_REF -- which veto exactly those
+# two gold rows and cost none of the 16 gold-Trash catches. If a re-run of stage
+# 5a with them in place reports Clear-loss 40 and Trash-recall 36/180, this key
+# becomes an ADOPT-CANDIDATE on the repository's own gate. Nothing before that
+# re-run justifies flipping it.
 SHORT_GARBAGE_WITNESS_ENABLE            = false
 # Minimum ALPHABETIC characters in a sub-token before any shape test applies.
 # Also what keeps every SHORT_VALID_WORDS / _NEUTRAL_LEXICON member out by
@@ -225,7 +254,14 @@ SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA  = 8
 # 3 is the shipped behaviour. The trade at 4 is measured and asymmetric: `oueussd`
 # (`oueu`) stays convicted, `cuxoaid` (`oai`) escapes with no other clause
 # catching it, and the `Naiade` / `Beuern` / `Oueste` loan false positives stop
-# firing. Let the sweep decide against gold rather than settling it by reading.
+# firing.
+#
+# THE SWEEP HAS NOW DECIDED, and it decided for 3. Stage 5b against gold, witness
+# and veto armed: 3 scores macro_f1 0.6338 with Trash-recall 34/180; 4 scores
+# 0.6319 with 32/180, at the SAME Clear-loss of 42. Moving to 4 gives up two true
+# Trash catches and buys back no readable line, so the asymmetry above resolves
+# against the longer run. Keep 3; this question is closed unless the clause set
+# changes.
 SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
 
 # ── rule_short_garbage vocabulary signal (issue #30 D14) ────────────────────
@@ -260,16 +296,41 @@ SHORT_GARBAGE_LEXICON_MIN_DF            = 3
 # SHORT_GARBAGE_WITNESS_ENABLE is false, like everything else here.
 # On the 822-document table the two populations do not overlap: 8 tokens at or
 # above 4x, every one a templated artefact (`ppole`, `oobjekt`, `jjámy`, `ssuti`,
-# `vvkop`, `ssutí`, `ssutě`, `llocm`); 36 below 2x, every one a Roman numeral or a
-# character run (`xxiii` vs `xiii` are different numerals, not a doubling). 4.0
-# sits in the empty gap between them. 0 disables the check.
+# `vvkop`, `ssutí`, `ssutě`, `llocm`); the rest below 2x are Roman numerals and
+# character runs (`xxiii` vs `xiii` are different numerals, not a doubling). 4.0
+# sits in the empty gap between them -- re-measured 2026-09-18, the gap runs from
+# 2.60x to 4.66x with nothing in it. 0 disables the check.
+#
+# Two corrections to the figures above, from that re-measurement. The "36 below
+# 2x" is 51 when both the doubled form and its twin are attested at MIN_DF, and
+# 66 when the twin is counted at any frequency; 36 matches neither filter. And on
+# this corpus the guard's ENTIRE reach is one family: of the 11,690 witnessed
+# lines it restores a conviction on, all 11,690 are `ppole` and its 17 surface
+# forms. It is doing exactly one job here. That is not an argument against it --
+# the job needed doing, and it is the single change that separates the 2026-09-17
+# exposure figures from the 2026-09-18 gold ones -- but do not read it as a
+# general de-gemination rule until a wider table says it is.
 SHORT_GARBAGE_LEXICON_GEMINATE_RATIO    = 4.0
 # When true, absence from the table becomes EVIDENCE rather than the presence of
 # a token becoming an exemption -- i.e. an unattested token convicts. This is the
 # only clause of the witness that can ADD a conviction, so it carries its own key
 # and ships false. "Unattested" is not "not a word": rare vocabulary, personal
-# names and a table built too narrowly all land here. Measure before enabling;
-# see 30.runbook.md.
+# names and a table built too narrowly all land here.
+#
+# NOW MEASURED AGAINST GOLD (stage 5c, 2026-09-18), and it stays false. Turning it
+# on takes Trash-recall 34/180 -> 78/180 and Clear-loss 42 -> 63: 44 more garbage
+# lines found for 21 more readable lines destroyed. That is a real effect, not
+# noise -- exact McNemar p is about 0.006 -- and it is the best macro_f1 on the
+# board at 0.6570. It is still a reject: a 50% rise in Clear-loss fails the
+# adoption gate in tools/GOLD.md outright, and it is the arm that most clearly
+# shows why macro_f1 is not the gate. The fixture evidence points the same way --
+# at MIN_DF 3 on the 822-document table the clause misjudges 5 of 31 pinned
+# vocabulary fixtures (`Pinii`, `Uniocrassus`, `Aachen`, `Hannah`, `Emma`).
+#
+# Note the direction this key argues in, though: it is the only thing in the
+# module that reaches `edelite`, and 44 recovered lines is the largest single
+# gain anything in issue #30 has shown. The question it leaves open is a
+# threshold and a table, not the mechanism.
 SHORT_GARBAGE_LEXICON_CONVICT           = false
 SYM_LET_DIG_NONTEXT         = true
 MOSTLY_READABLE_VALID_MIN   = 0.85

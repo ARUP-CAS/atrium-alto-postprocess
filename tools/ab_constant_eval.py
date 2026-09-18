@@ -99,12 +99,62 @@ def _paired_counts(candidate: Any, incumbent: Any) -> Tuple[int, int]:
     return b, c
 
 
+def _trash_counts(metrics: Dict[str, Any]) -> Tuple[int, int]:
+    """(caught, support): ground-truth Trash lines still predicted Trash, and how many there are."""
+    trash_row = metrics.get("confusion", {}).get("Trash", {})
+    return int(trash_row.get("Trash", 0)), sum(int(v) for v in trash_row.values())
+
+
 def _trash_recall(metrics: Dict[str, Any]) -> float:
     """Share of ground-truth Trash lines still predicted Trash (catches garbage leakage)."""
-    conf = metrics.get("confusion", {})
-    trash_row = conf.get("Trash", {})
-    support = sum(int(v) for v in trash_row.values())
-    return float(int(trash_row.get("Trash", 0)) / support) if support else float("nan")
+    caught, support = _trash_counts(metrics)
+    return float(caught / support) if support else float("nan")
+
+
+def wilson_interval(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
+    """Wilson score interval for k successes in n trials. Default z is 95%.
+
+    Wilson rather than the normal approximation because the rates here sit near
+    the ends of the range on a small n -- ``22/180`` -- where the textbook
+    interval runs past zero and stops meaning anything.
+    """
+    if n <= 0:
+        return (float("nan"), float("nan"))
+    p = k / n
+    denom = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def _print_class_supports(metrics: Dict[str, Any]) -> None:
+    """Print the gold class supports once, above the verdicts.
+
+    THE DENOMINATOR IS NOT OPTIONAL. `Trash-recall` shipped as a bare four-decimal
+    rate, and `0.1222` over this gold set is 22 of 180 -- but it is also exactly
+    11 of 90, and nothing in the output said which. That is not a hypothetical
+    ambiguity: a reader reconstructing the discordant counts from the recall delta
+    picked the smaller denominator, halved b, and got an exact McNemar p of 0.18
+    where the real figure is 0.004 -- an "underpowered, do not quote it" reading of
+    a result that is significant at 0.01. One printed integer prevents it.
+
+    The supports are also what makes `macro_f1` legible: it averages F1 over five
+    classes regardless of their size, so on this set one gold-Trash line moves it
+    roughly as much as seven gold-Clear lines. That is why `macro_f1` and
+    `Clear-loss` disagreed on every arm of issue #30 stage 5, and why the gate
+    above is built on errors/cost/Clear-loss instead.
+    """
+    supports = metrics.get("per_class_support") or {}
+    if not supports:
+        return
+    total = sum(supports.values())
+    if not total:
+        return
+    print("\n  Gold class support (what every rate below divides by):")
+    for label in sorted(supports, key=lambda lab: -supports[lab]):
+        n = int(supports[label])
+        print(f"    {label:10} {n:6,}  ({n / total:5.1%})")
+    print(f"    {'TOTAL':10} {int(total):6,}")
 
 
 def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: float = 0.0) -> None:
@@ -120,6 +170,9 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
         print("  No stored `categ` column alongside gold -- cannot compare against the shipped labels.")
         return
     print(f"  Shipped labels vs gold: macro_f1={baseline:.4f}")
+    supports = next((r.get("per_class_support") for r in rows if r.get("per_class_support")), None)
+    if supports:
+        _print_class_supports({"per_class_support": supports})
     # The reference Clear-loss is the incumbent's: the first trial whose value
     # matches the shipped config, else the first row. `--values false,true` puts
     # the incumbent first by convention, which is why the runbook says to.
@@ -203,6 +256,22 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
         "arms actually disagree on, and it is usually far smaller than the gold set."
     )
 
+    # Trash-recall is the figure most often quoted out of this table, and on a
+    # support in the low hundreds its interval is wide enough that two arms which
+    # look ordered are not. Printing it beside the point estimate stops the table
+    # being read as a ranking.
+    if any(r.get("trash_support") for r in rows):
+        print("\n  Trash-recall with a 95% Wilson interval (overlapping intervals are not a ranking):")
+        for r in rows:
+            support = r.get("trash_support") or 0
+            if not support:
+                continue
+            lo, hi = wilson_interval(r["trash_caught"], support)
+            print(
+                f"    {str(r['value']):>10}: {r['trash_caught']:4d}/{support:<4d} = "
+                f"{r['trash_recall']:6.1%}   95% CI [{lo:5.1%}, {hi:5.1%}]"
+            )
+
 
 _TRUEISH = {"true", "1", "yes", "on"}
 _FALSEISH = {"false", "0", "no", "off"}
@@ -281,6 +350,9 @@ def run_ab(
                 "kl": float(metrics["kl_divergence"]),
                 "clear_loss": _clear_loss(metrics),
                 "trash_recall": _trash_recall(metrics),
+                "trash_caught": _trash_counts(metrics)[0],
+                "trash_support": _trash_counts(metrics)[1],
+                "per_class_support": metrics.get("per_class_support"),
                 "baseline_vs_gold_macro_f1": (
                     float(metrics["baseline_vs_gold"]["macro_f1"]) if "baseline_vs_gold" in metrics else None
                 ),
@@ -320,7 +392,10 @@ def run_ab(
             f"{r['clear_rate']:.4f}",
             f"{r['kl']:.5f}",
             f"{r['clear_loss']:,}",
-            f"{r['trash_recall']:.4f}",
+            # caught/support, not a bare rate: see _print_class_supports().
+            f"{r['trash_recall']:.4f} ({r['trash_caught']}/{r['trash_support']})"
+            if r.get("trash_support")
+            else f"{r['trash_recall']:.4f}",
         ]
         print(f"| {r['value']} | " + " | ".join(cells) + " |")
 
