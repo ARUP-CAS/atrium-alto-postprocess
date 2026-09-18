@@ -83,6 +83,7 @@ import argparse
 import csv
 import sys
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -121,69 +122,101 @@ def iter_tokens(text: str):
 
 
 def build(
-    corpus: Path,
+    collections: "Sequence[tuple[str, Path]]",
     min_alpha: int = DEFAULT_MIN_ALPHA,
     text_column: str = "text",
     progress_every: int = 250_000,
     quiet: bool = False,
-) -> tuple[dict[str, int], dict[str, int]]:
-    """Count distinct documents per token over a DOC_LINE_CATEG directory or CSV.
+) -> tuple[dict[str, int], dict[str, dict[str, int]], dict[str, int]]:
+    """Count distinct documents per token across one or more named collections.
 
-    Returns ``(document_frequency, stats)``.
+    ``collections`` is a sequence of ``(name, path)``. A single unnamed corpus is
+    ``[("", path)]`` and behaves exactly as this function did before.
+
+    Returns ``(df_total, df_by_collection, stats)``.
+
+    **Totals are sums.** Document frequency is the unit and a document belongs to
+    exactly one collection, so a token's total is the sum of its per-collection
+    counts with no double counting -- which is what makes the split safe to read
+    and safe to add up again.
+
+    The split is worth carrying because a token strong in ARUP and absent from
+    ARUB is a *collection-specific scanning artefact*, and that is precisely the
+    `ppole` shape: a systematic misread that accrues document frequency like a
+    word because one pre-printed form was scanned many times. A single total
+    cannot show that; two columns can.
 
     Memory: one ``set`` of tokens per document, discarded at the end of that
-    document, plus the running counter. A 12.7M-line corpus builds in a few
+    document, plus the running counters. A 12.7M-line corpus builds in a few
     minutes on one core with no GPU and no model.
     """
-    files = sorted(corpus.glob("*.csv")) if corpus.is_dir() else [corpus]
-    if not files:
-        raise FileNotFoundError(f"no CSV files found in {corpus}")
-
-    df_counts: dict[str, int] = defaultdict(int)
+    df_total: dict[str, int] = defaultdict(int)
+    df_by_collection: dict[str, dict[str, int]] = {name: defaultdict(int) for name, _ in collections}
     stats = {"documents": 0, "lines": 0, "tokens_seen": 0, "files_unreadable": 0}
 
-    for n, path in enumerate(files, 1):
-        seen_in_doc: set[str] = set()
-        try:
-            with open(path, newline="", encoding="utf-8", errors="replace") as fh:
-                reader = csv.DictReader(fh)
-                if reader.fieldnames is None or text_column not in reader.fieldnames:
-                    stats["files_unreadable"] += 1
-                    continue
-                for row in reader:
-                    stats["lines"] += 1
-                    for token in iter_tokens(str(row.get(text_column) or "")):
-                        stats["tokens_seen"] += 1
-                        if sum(c.isalpha() for c in token) < min_alpha:
-                            continue
-                        seen_in_doc.add(token)
-        except OSError:
-            stats["files_unreadable"] += 1
-            continue
+    for name, corpus in collections:
+        files = sorted(corpus.glob("*.csv")) if corpus.is_dir() else [corpus]
+        if not files:
+            raise FileNotFoundError(f"no CSV files found in {corpus}")
+        per = df_by_collection[name]
 
-        # One document, one vote per token, however many times it occurs in it.
-        for token in seen_in_doc:
-            df_counts[token] += 1
-        stats["documents"] += 1
+        for n, path in enumerate(files, 1):
+            seen_in_doc: set[str] = set()
+            try:
+                with open(path, newline="", encoding="utf-8", errors="replace") as fh:
+                    reader = csv.DictReader(fh)
+                    if reader.fieldnames is None or text_column not in reader.fieldnames:
+                        stats["files_unreadable"] += 1
+                        continue
+                    for row in reader:
+                        stats["lines"] += 1
+                        for token in iter_tokens(str(row.get(text_column) or "")):
+                            stats["tokens_seen"] += 1
+                            if sum(c.isalpha() for c in token) < min_alpha:
+                                continue
+                            seen_in_doc.add(token)
+            except OSError:
+                stats["files_unreadable"] += 1
+                continue
 
-        if not quiet and progress_every and stats["lines"] >= progress_every and n % 50 == 0:
-            print(
-                f"  … {n:,}/{len(files):,} documents, {stats['lines']:,} lines, {len(df_counts):,} distinct tokens",
-                file=sys.stderr,
-            )
+            # One document, one vote per token, however many times it occurs in it.
+            for token in seen_in_doc:
+                df_total[token] += 1
+                per[token] += 1
+            stats["documents"] += 1
 
-    return dict(df_counts), stats
+            if not quiet and progress_every and stats["lines"] >= progress_every and n % 50 == 0:
+                label = f"{name}: " if name else ""
+                print(
+                    f"  … {label}{n:,}/{len(files):,} documents, {stats['lines']:,} lines, "
+                    f"{len(df_total):,} distinct tokens",
+                    file=sys.stderr,
+                )
+
+    return dict(df_total), {k: dict(v) for k, v in df_by_collection.items()}, stats
 
 
 def write_table(
     df_counts: dict[str, int],
     out_path: Path,
-    corpus: Path,
+    corpus: "str | Path",
     stats: dict[str, int],
     min_alpha: int,
     min_df_note: int,
+    df_by_collection: "dict[str, dict[str, int]] | None" = None,
 ) -> int:
-    """Write the TSV. Returns the number of rows written."""
+    """Write the TSV. Returns the number of rows written.
+
+    With one unnamed collection the output is ``token<TAB>document_frequency``,
+    byte-for-byte the format this tool has always written. With several, the
+    per-collection counts follow the total in the declared order.
+
+    **The total stays in field 1 in both cases**, because that is the only field
+    ``text_util._read_token_lexicon`` reads. Putting a collection there, or
+    re-ordering, would leave the predicate reading one collection's count while
+    the header said otherwise.
+    """
+    names = [n for n in (df_by_collection or {}) if n]
     rows = sorted(df_counts.items(), key=lambda kv: (-kv[1], kv[0]))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8", newline="") as fh:
@@ -196,12 +229,22 @@ def write_table(
             f"# intended SHORT_GARBAGE_LEXICON_MIN_DF: {min_df_note} "
             f"(rows at or above it: {sum(1 for _, v in rows if v >= min_df_note)})\n"
         )
-        fh.write("# columns: token<TAB>document_frequency\n")
+        if names:
+            fh.write(f"# columns: token<TAB>document_frequency<TAB>{'<TAB>'.join(names)}\n")
+            fh.write("# The per-collection counts sum to the total: a document belongs to one collection.\n")
+            fh.write("# A token strong in one collection and absent from another is a scanning\n")
+            fh.write("# artefact of that collection, not vocabulary. `ppole` is the worked example.\n")
+        else:
+            fh.write("# columns: token<TAB>document_frequency\n")
         fh.write("#\n")
         fh.write("# Attestation counts, NOT a claim that any row is a word of any language.\n")
         fh.write("# Contains no line text and no document identifiers.\n")
         for token, count in rows:
-            fh.write(f"{token}\t{count}\n")
+            if names:
+                per = "\t".join(str(df_by_collection[n].get(token, 0)) for n in names)
+                fh.write(f"{token}\t{count}\t{per}\n")
+            else:
+                fh.write(f"{token}\t{count}\n")
     return len(rows)
 
 
@@ -212,7 +255,25 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Emits tokens and counts only — no line text, no document names.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("corpus", metavar="PATH", help="DOC_LINE_CATEG directory, or a single CSV.")
+    ap.add_argument(
+        "corpus",
+        metavar="PATH",
+        nargs="?",
+        help="DOC_LINE_CATEG directory, or a single CSV. Omit when using --collection.",
+    )
+    ap.add_argument(
+        "--collection",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help=(
+            "A named collection, repeatable: --collection ARUP=../ARUP/DOC_LINE_CATEG_307 "
+            "--collection ARUB=../ARUB/DOC_LINE_CATEG_307. Counts are pooled into one table and "
+            "also reported per collection, which is how a collection-specific scanning artefact "
+            "becomes visible as one. Document frequency is the unit, so the per-collection "
+            "columns sum to the total."
+        ),
+    )
     ap.add_argument("-o", "--output", metavar="TSV", help="Where to write the table.")
     ap.add_argument(
         "--min-alpha",
@@ -246,22 +307,54 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def parse_collections(specs: list[str], positional: "str | None") -> "list[tuple[str, Path]] | str":
+    """Resolve CLI inputs to ``[(name, path)]``, or return an error message.
+
+    A bare positional path stays unnamed, which is what keeps the single-corpus
+    output format unchanged.
+    """
+    out: list[tuple[str, Path]] = []
+    for spec in specs:
+        name, sep, raw = spec.partition("=")
+        if not sep or not name.strip() or not raw.strip():
+            return f"--collection expects NAME=PATH, got {spec!r}"
+        if any(c in name for c in "\t\n"):
+            return f"collection name may not contain whitespace control characters: {name!r}"
+        out.append((name.strip(), Path(raw.strip())))
+    if positional:
+        out.append(("", Path(positional)))
+    if not out:
+        return "give a corpus PATH or at least one --collection NAME=PATH"
+    names = [n for n, _ in out if n]
+    if len(names) != len(set(names)):
+        return f"duplicate collection name in {names}"
+    if names and len(names) != len(out):
+        return "mixing a bare PATH with --collection is ambiguous; name every collection"
+    for _, path in out:
+        if not path.exists():
+            return f"path not found: {path}"
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    corpus = Path(args.corpus)
-    if not corpus.exists():
-        print(f"error: path not found: {corpus}", file=sys.stderr)
+    resolved = parse_collections(args.collection, args.corpus)
+    if isinstance(resolved, str):
+        print(f"error: {resolved}", file=sys.stderr)
         return 2
+    collections = resolved
+    corpus_label = ", ".join(f"{n}={p}" if n else str(p) for n, p in collections)
+
     if not args.output and not args.lookup:
         print("error: pass -o/--output to write a table, or --lookup to query without writing.", file=sys.stderr)
         return 2
 
     if not args.quiet:
-        print(f"Building token document-frequency over {corpus} …", file=sys.stderr)
+        print(f"Building token document-frequency over {corpus_label} …", file=sys.stderr)
 
     try:
-        df_counts, stats = build(
-            corpus,
+        df_counts, df_by_collection, stats = build(
+            collections,
             min_alpha=args.min_alpha,
             text_column=args.text_column,
             quiet=args.quiet,
@@ -296,22 +389,43 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    names = [n for n, _ in collections if n]
+    if len(names) > 1:
+        print("\n  per collection:", file=sys.stderr)
+        for name in names:
+            per = df_by_collection[name]
+            only_here = sum(1 for t, v in per.items() if v and df_counts.get(t, 0) == v)
+            print(
+                f"    {name:<12} {len(per):>9,} distinct tokens, {only_here:,} of them seen nowhere else",
+                file=sys.stderr,
+            )
+
     if args.lookup:
-        print(f"\n  {'token':<32} {'documents':>10}   verdict at min_df={args.min_df}")
+        header = f"\n  {'token':<32} {'documents':>10}"
+        if names:
+            header += "".join(f" {n:>10}" for n in names)
+        print(header + f"   verdict at min_df={args.min_df}")
         for raw in args.lookup:
             for token in iter_tokens(raw) or [raw.lower()]:
                 count = df_counts.get(token, 0)
                 verdict = "attested" if count >= args.min_df else "UNATTESTED"
-                print(f"  {token:<32} {count:>10}   {verdict}")
+                split = "".join(f" {df_by_collection[n].get(token, 0):>10}" for n in names)
+                print(f"  {token:<32} {count:>10}{split}   {verdict}")
+        if len(names) > 1:
+            print(
+                "\n  A token attested in ONE collection only is a candidate scanning artefact,\n"
+                "  not vocabulary — that is the `ppole` shape. Read the split, not just the total."
+            )
         return 0
 
     written = write_table(
         df_counts,
         Path(args.output),
-        corpus,
+        corpus_label,
         stats,
         min_alpha=args.min_alpha,
         min_df_note=args.min_df,
+        df_by_collection=df_by_collection if names else None,
     )
     print(f"\nTable written → {args.output} ({written:,} rows)", file=sys.stderr)
     print(
