@@ -440,6 +440,35 @@ SHORT_GARBAGE_LEXICON_MIN_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_MIN
 # clauses already reached and can never create one. 0 disables the check. See
 # _is_geminate_artefact for why the threshold is a ratio and not a numeral test.
 SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = _get_float("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO", 4.0)
+# (#30, 2026-09-19) The ceiling the ratio above cannot supply. A doubled-initial
+# token attested in MORE than this many documents is a convention -- an
+# abbreviation like `ppole` (popelnicová pole) -- not a scanning error, whatever
+# its ratio. Measured: `ppole` df 35 against every confirmed artefact at df <= 8.
+# 0 disables the cap and restores the ratio-only behaviour that convicted `ppole`.
+SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF", 10)
+# (#30, 2026-09-19) Feed the corpus lexicon to `compute_valid_ratio` as its
+# `word_set`. SHIPS FALSE: `valid_word_ratio` feeds `compute_quality_score` and
+# every threshold under it, so this moves scores on every line in the corpus --
+# the largest change this issue has proposed. Off, it is byte-identical.
+QUALITY_VOCABULARY_ENABLE = _get_str("TEXT_UTILS", "QUALITY_VOCABULARY_ENABLE", "false").strip().lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
+# (#30, 2026-09-19) Strip bullet and marker glyphs alongside punctuation. The full
+# table ends in `♦zkoumaná`, `✓stopy`, `•nevelká` -- a marker fused to a real
+# word, which corrupts the lexicon at build time AND hides the real word at
+# lookup time. SHIPS FALSE because it changes tokenisation for every line.
+STRIP_SYMBOL_GLYPHS = _get_str("TEXT_UTILS", "STRIP_SYMBOL_GLYPHS", "false").strip().lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
+#: The glyphs STRIP_SYMBOL_GLYPHS adds. Markers and bullets only -- no character
+#: that can carry meaning inside an excavation code.
+_SYMBOL_GLYPHS = "♦✓■□●○•▪▫★☆†‡§¶–—―‹›«»„“”‘’"
 # (#30 D14) The lexicon used as EVIDENCE rather than as a veto: a token with no
 # attestation anywhere in the collection convicts. This is the only mechanism in
 # this module that can reach `edelite` -- the phonotactically legal residue -- and
@@ -477,6 +506,12 @@ SYM_LET_DIG_NONTEXT = _get_str("TEXT_UTILS", "SYM_LET_DIG_NONTEXT", "true").stri
 
 ALLOWED_INTERNAL: frozenset = frozenset(_get_str("TEXT_UTILS", "ALLOWED_INTERNAL", ".-,+()\"'/—–:%;?!/"))
 _STRIP_CHARS: str = _get_str("TEXT_UTILS", "STRIP_CHARS", ".,;:!?()[]\"'/\\")
+# (#30 D27) Extended here rather than at the 28 call sites, so the builder and the
+# predicate cannot drift apart -- the divergence this repository has been bitten by
+# four times. Off by default: with the flag false this line is a no-op and
+# tokenisation is byte-identical to every table already built.
+if STRIP_SYMBOL_GLYPHS:
+    _STRIP_CHARS = _STRIP_CHARS + _SYMBOL_GLYPHS
 
 RE_TRASH_MULTI_SYMBOL: re.Pattern = re.compile(r"[^\w\s]{2,}")
 RE_TRASH_LDL: re.Pattern = re.compile(r"[a-zA-Z][^a-zA-Z\s]+[a-zA-Z]")
@@ -2093,9 +2128,12 @@ def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
     """Is this attested token a doubled-initial OCR artefact rather than a word?
 
     (#30.) `initial_geminate` convicts a doubled consonant in first position on
-    the grounds that no European orthography opens a word that way -- and it is
-    right. What defeats it is not the clause but the veto in front of it: a
-    templated scanning error recurs across documents and so looks attested.
+    the grounds that no European orthography opens a word that way. **That
+    premise is false for ABBREVIATIONS** -- `pp` doubled for a plural is a
+    standard Czech convention, the same one behind `pp.` for pages and `ss.` for
+    sections -- and the corpus's flagship case is exactly that: `ppole` is
+    *popelnicová pole*, urnfield culture, not a scan error (@david-spacil,
+    2026-09-19). The clause is right about the rest.
 
     The discriminator is that the artefact's own source word is also in the
     table, and is MORE common: `ppole` df 35 against `pole` 163, `oobjekt` 3
@@ -2131,6 +2169,18 @@ def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
         return False
     df_token = lex.get(token, 0)
     if df_token <= 0:
+        return False
+    # An ABBREVIATION is derived from its base word, so the base is ALWAYS the
+    # commoner of the two and the ratio below always fires. The ratio therefore
+    # cannot tell a convention from a scan error, and on the measured data it
+    # does not try to: `ppole` sits at ratio 4.7 and `ssuti` at 5.2.
+    #
+    # Absolute frequency does separate them, with a wide margin. A scanning error
+    # appears in a handful of documents; an abbreviation appears in many. On the
+    # 822-document table `ppole` is df 35 while every confirmed artefact --
+    # `oobjekt` 3, `ssutě` 4, `jjámy` 5, `ssutí` 5, `vvkop` 5, `ssuti` 8 -- sits
+    # at or below 8. This cap is the whole of the fix for the ppole error.
+    if SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF > 0 and df_token > SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF:
         return False
     # Both sides are necessarily present in the table when this fires: the
     # geminate is attested by the caller's own membership test, and the source
@@ -2905,6 +2955,37 @@ def is_clean_reference(text: str) -> bool:
     if count_damaged_tokens(text) > 0:
         return False
     return bool(_RE_REF_MARKER.search(text) or _RE_MEASUREMENT.search(text))
+
+
+@functools.lru_cache(maxsize=1)
+def quality_word_set() -> "frozenset | None":
+    """The vocabulary `compute_valid_ratio` should score against, or None.
+
+    (#30 D26.) `compute_valid_ratio` has always taken a `word_set` and production
+    has never passed one, so it falls back to a SHAPE test -- at least 3
+    characters, at least 70% alphabetic, nothing strange -- and
+    ``compute_valid_ratio("oueussd edelite sektlll")`` returns **1.00**. That
+    value feeds `compute_quality_score`, which feeds every threshold in this
+    module, so the pipeline's primary "is this text?" signal is fooled precisely
+    by the population issue #30 is about.
+
+    Returns None unless ``QUALITY_VOCABULARY_ENABLE`` is set AND a lexicon is
+    configured, which keeps the shipped behaviour byte-identical.
+
+    KNOWN INCOMPLETE, and measured before it is extended: this is exact
+    attestation only. A damaged-but-readable line scores 0 -- ``1 fraament
+    okraie`` is "1 fragment okraje" and every token of it is unattested in its
+    damaged form -- so the armed signal punishes recoverable text as hard as
+    garbage. `tools/ocr_neighbours.recoverability` draws the distinction this
+    lacks, and runbook stage 07b measures whether that gap actually costs
+    anything before a neighbour index is built into production. Adding the
+    complexity first and checking afterwards is how this issue acquired three
+    instrument-level errors.
+    """
+    if not QUALITY_VOCABULARY_ENABLE:
+        return None
+    lex = token_lexicon()
+    return frozenset(lex) if lex else None
 
 
 def compute_valid_ratio(text: str, word_set: set | None = None) -> float:

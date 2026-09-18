@@ -94,6 +94,7 @@ from text_util import (
     is_structured_line,
     parse_line_splits,
     pre_filter_line,
+    quality_word_set,
     remap_lang,
     score_words_in_line,
 )
@@ -242,7 +243,12 @@ def score_line(
     is_upright_czech, ghost_dominated = analyze_rotation_signals(text_content)
     caps_header = is_all_caps_line(text_content)
     weird_ratio = compute_word_weird_ratio(score_words_in_line(text_content))
-    valid_ratio = compute_valid_ratio(text_content)
+    # (#30 D26) `quality_word_set()` is None unless QUALITY_VOCABULARY_ENABLE is
+    # set and a lexicon is configured, in which case this call is exactly what it
+    # has always been. Armed, `valid_word_ratio` stops being a shape proxy and
+    # becomes a real vocabulary measure -- and moves quality_score on every line,
+    # which is why it ships off and stage 07b measures it first.
+    valid_ratio = compute_valid_ratio(text_content, quality_word_set())
 
     structured_flag = is_structured_line(text_content)
     damaged_flag = count_damaged_tokens(text_content) > 0

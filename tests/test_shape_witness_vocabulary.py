@@ -464,7 +464,6 @@ def test_the_shipped_configuration_raises_no_advisory():
 
 #: Templated OCR artefacts: attested, but their own source word is far commoner.
 GEMINATE_ARTEFACTS = {
-    "ppole": (35, "pole", 163),
     "oobjekt": (3, "objekt", 378),
     "jjámy": (5, "jámy", 356),
     "ssuti": (8, "suti", 42),
@@ -486,9 +485,24 @@ GEMINATE_LOOKALIKES = {
 }
 
 
+#: ABBREVIATIONS. A doubled initial that is a real convention, not a scan error.
+#: `pp` for a plural is standard Czech -- `pp.` for pages, `ss.` for sections --
+#: and `ppole` is *popelnicová pole*, urnfield culture (@david-spacil,
+#: 2026-09-19). This document previously called it the flagship OCR artefact and
+#: built a guard that convicted it on 11,562 lines.
+#:
+#: An abbreviation is DERIVED from its base, so its base is always commoner and
+#: the ratio test always fires. Only ABSOLUTE frequency separates the classes:
+#: every artefact above sits at df <= 8, `ppole` at 35.
+GEMINATE_ABBREVIATIONS = {
+    "ppole": (35, "pole", 163),
+}
+
+
 def _geminate_table(tmp_path: Path) -> str:
     rows: dict[str, int] = {}
-    for tok, (df_tok, source, df_source) in {**GEMINATE_ARTEFACTS, **GEMINATE_LOOKALIKES}.items():
+    merged = {**GEMINATE_ARTEFACTS, **GEMINATE_LOOKALIKES, **GEMINATE_ABBREVIATIONS}
+    for tok, (df_tok, source, df_source) in merged.items():
         rows[tok] = df_tok
         rows[source] = df_source
     # Real vocabulary that must keep its exemption, at its measured frequency.
@@ -570,9 +584,14 @@ def test_the_ratio_can_be_disabled(tmp_path):
 def test_the_guard_never_adds_a_conviction_on_its_own(tmp_path):
     """Veto-only semantics survive: the guard withdraws exemptions, it cannot convict.
 
-    Stripping `ppole`'s attestation lets `initial_geminate` -- which had already
+    Stripping `ssuti`'s attestation lets `initial_geminate` -- which had already
     matched -- stand. It must not manufacture a clause for a line no clause
-    reached. `pole` is the control: a clean word, attested, never witnessed.
+    reached. `suti` is the control: a clean word, attested, never witnessed.
+
+    `ssuti` and not `oobjekt`: the clause matches doubled CONSONANTS only
+    (`^([bcdfghjklmnpqrstvwxz])\\1`), so a doubled vowel never reaches it. The
+    guard is deliberately broader than the clause -- see `_is_geminate_artefact`
+    -- and this test is about the clause.
     """
     with tu.override_constants(
         {
@@ -581,9 +600,9 @@ def test_the_guard_never_adds_a_conviction_on_its_own(tmp_path):
             "SHORT_GARBAGE_WITNESS_ENABLE": True,
         }
     ):
-        assert shape_garbage_clauses("ppole") == ["initial_geminate"]
-        assert shape_garbage_clauses("pole") == []
-        assert _has_shape_garbage_evidence("pole") is False
+        assert shape_garbage_clauses("ssuti") == ["initial_geminate"]
+        assert shape_garbage_clauses("suti") == []
+        assert _has_shape_garbage_evidence("suti") is False
 
     # The counterfactual, without which the assertions above would also pass on
     # the unfixed code: with the ratio disabled the veto swallows the clause.
@@ -595,4 +614,103 @@ def test_the_guard_never_adds_a_conviction_on_its_own(tmp_path):
             "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": 0,
         }
     ):
-        assert shape_garbage_clauses("ppole") == []
+        assert shape_garbage_clauses("ssuti") == []
+
+
+# ---------------------------------------------------------------------------
+# The abbreviation class (#30, 2026-09-19) — the guard's measured false positive
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("token", sorted(GEMINATE_ABBREVIATIONS))
+def test_an_abbreviation_keeps_its_veto(tmp_path, token):
+    """`ppole` is *popelnicová pole*, not a scanning error.
+
+    @david-spacil, 2026-09-19: *"`ppole` is not an OCR artefact (at least not
+    every time), it's an abbreviation for urnfield culture, which also explains
+    its frequency (and also the same position on pages with forms)."*
+
+    `pp` doubled for a plural is a standard Czech convention — `pp.` for pages,
+    `ss.` for sections — so `initial_geminate`'s premise that no European
+    orthography opens a word that way is simply false for abbreviations. The
+    de-gemination guard convicted it on 11,562 lines, which is the largest single
+    population in the witnessed queue.
+
+    The ratio cannot fix this: an abbreviation is DERIVED from its base, so the
+    base is always commoner and the ratio always fires. Only the absolute cap can.
+    """
+    with tu.override_constants(
+        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+    ):
+        assert token in tu.token_lexicon(), "fixture error: the token should be attested"
+        assert tu._is_geminate_artefact(token, tu.token_lexicon()) is False, (
+            f"{token!r} is an abbreviation and the guard convicted it as a scan error"
+        )
+        assert tu._has_vocabulary_support(token) is True, f"{token!r} lost the veto that protects it"
+
+
+def test_the_cap_and_not_the_ratio_is_what_separates_the_two_classes(tmp_path):
+    """Pin the reason the fix is a frequency cap rather than a higher ratio.
+
+    `ppole` sits at ratio 4.7 and `ssuti` at 5.2 — no threshold lives between
+    them that is not fitted to two data points. The absolute frequencies are 35
+    and 8, which is a real gap.
+    """
+    table = _geminate_table(tmp_path)
+    with tu.override_constants(
+        {
+            "SHORT_GARBAGE_LEXICON_PATH": table,
+            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
+            "SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF": 0,  # cap disabled
+        }
+    ):
+        lex = tu.token_lexicon()
+        assert tu._is_geminate_artefact("ppole", lex) is True, (
+            "with the cap off the ratio alone convicts the abbreviation — the bug being fixed"
+        )
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": table, "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
+        lex = tu.token_lexicon()
+        assert tu._is_geminate_artefact("ppole", lex) is False
+        # ... and the cap must not cost a single genuine artefact.
+        for artefact in GEMINATE_ARTEFACTS:
+            assert tu._is_geminate_artefact(artefact, lex) is True, f"the cap lost {artefact!r}"
+
+
+# ---------------------------------------------------------------------------
+# D26 / D27 — two signals that exist and ship off
+# ---------------------------------------------------------------------------
+
+
+def test_valid_ratio_falls_back_to_shape_and_that_is_the_problem():
+    """The measurement behind D26, pinned so it cannot be quietly disputed.
+
+    `compute_valid_ratio` has always taken a `word_set`; production never passes
+    one, so the fallback is shape — >=3 characters, >=70% alphabetic, nothing
+    strange. Under it, three garbage tokens score a perfect 1.00, and that value
+    feeds `compute_quality_score` and every threshold below it.
+    """
+    assert tu.compute_valid_ratio("oueussd edelite sektlll") == 1.0
+    assert tu.compute_valid_ratio("oueussd edelite sektlll", {"vrstva"}) == 0.0
+
+
+def test_the_vocabulary_signal_ships_off(tmp_path):
+    """Off, `quality_word_set()` is None and the call is byte-identical to before."""
+    assert tu.QUALITY_VOCABULARY_ENABLE is False
+    assert tu.quality_word_set() is None
+
+    table = _table(tmp_path, {"vrstva": 429, "nalez": 200})
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": table, "QUALITY_VOCABULARY_ENABLE": True}):
+        tu.quality_word_set.cache_clear()
+        got = tu.quality_word_set()
+        assert got is not None and "vrstva" in got
+    tu.quality_word_set.cache_clear()
+    assert tu.quality_word_set() is None, "the flag must not leak past its context"
+
+
+def test_symbol_glyph_stripping_ships_off():
+    """Off, tokenisation is unchanged — every table already built stays valid."""
+    assert tu.STRIP_SYMBOL_GLYPHS is False
+    for glyph in "♦✓■•":
+        assert glyph not in tu._STRIP_CHARS, "a symbol glyph reached the shipped strip set"
+    # The constant exists and is non-empty, so arming it is a config change only.
+    assert set("♦✓■•") <= set(tu._SYMBOL_GLYPHS)

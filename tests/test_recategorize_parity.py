@@ -199,6 +199,13 @@ _DELIBERATELY_NOT_TUNABLE: dict[str, str] = {
     # (8 tokens >= 4x, 36 <= 2x, nothing between), so any value in 2.2-4.7 gives
     # byte-identical output and the sweep would read that flat as zero importance.
     "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": "inert while the witness flag is false and no lexicon table is configured",
+    # Issue #30, 2026-09-19. The ceiling the ratio cannot supply: an abbreviation
+    # is derived from its base word, so the base is always commoner and the ratio
+    # always fires -- which is how `ppole` (popelnicová pole) got convicted as an
+    # artefact. Inert for the same two reasons as the ratio, and equally
+    # unsweepable: the artefact and abbreviation populations sit at df <= 8 and
+    # df 35, so any value in 9..34 gives byte-identical output.
+    "SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF": "inert while the witness flag is false and no lexicon table is configured",
     # Issue #30, 2026-09-10. The same failure mode, found by applying the rule
     # above to the rest of the registry: apply_page_perplexity_blend() returns
     # early while PAGE_PPL_BLEND_ENABLE is false (it ships false), so these three
