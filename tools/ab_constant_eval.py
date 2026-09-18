@@ -28,6 +28,7 @@ Example
 """
 
 import argparse
+import csv
 import math
 import sys
 from pathlib import Path
@@ -38,8 +39,10 @@ if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR.parent))
 
 from recategorize_from_csv import (  # noqa: E402
+    GOLD_SIDECAR_KEYS,
     _load_lang_config,
     add_gold_column_argument,
+    annotated_mask,
     attach_gold_sidecar_from_args,
     evaluate_dataframe,
     load_csvs,
@@ -155,6 +158,91 @@ def _print_class_supports(metrics: Dict[str, Any]) -> None:
         n = int(supports[label])
         print(f"    {label:10} {n:6,}  ({n / total:5.1%})")
     print(f"    {'TOTAL':10} {int(total):6,}")
+
+
+def _refuses_dump_inside_input(dump_path: Path, input_dir: Path) -> bool:
+    """Refuse to write the dump anywhere `--input-dir` will glob it back. True == refused.
+
+    `load_csvs(..., recursive=True)` takes every `*.csv` under the input directory,
+    and the loader admits any file carrying both `text` and `categ` -- which the
+    dump does, because those are the columns that make it readable. Writing it
+    into the corpus therefore adds phantom lines to the NEXT run: measured on the
+    15-line fixture, a second invocation loaded 16 rows and every support, rate
+    and interval shifted with it, silently.
+
+    This is the same defect `tools/short_garbage_witness_report.py::_refuses_gold_dir`
+    exists for, one directory along. Refusing is cheap; a quietly reweighted
+    objective is not.
+    """
+    try:
+        dump_res, input_res = dump_path.resolve(), input_dir.resolve()
+    except OSError:
+        return False
+    if input_res not in dump_res.parents:
+        return False
+    print(
+        f"error: refusing to write {dump_path.name} inside --input-dir ({input_res}).\n"
+        f"       That directory is globbed recursively for *.csv and this file has\n"
+        f"       `text` and `categ` columns, so the next run would load it as corpus\n"
+        f"       rows. Write it somewhere outside the corpus instead.",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _dump_discordant(
+    path: Path,
+    df: Any,
+    rows: List[Dict[str, Any]],
+    gold_column: str,
+) -> None:
+    """Write the rows behind `fixes N, breaks M` — the ones the arms disagree on.
+
+    The paired test reports HOW MANY rows a candidate fixes and breaks and never
+    which, and on this issue's gold set those counts are single digits: stage 5a
+    is 14 and 1. Identifying the one broken row had to be done by elimination
+    against the witness's own candidate queue, which only worked because that
+    queue happened to exist. This makes it a column instead.
+
+    That mattered concretely. Stage 5a's single break turned out NOT to be a line
+    the rule under test fires on at all -- it is produced by the modal dedup in
+    ``apply_document_postprocessing``, which rewrites every occurrence of a
+    repeated string in a document to that string's majority category. A rule that
+    convicts a few occurrences can therefore flip the vote and carry a `Clear`
+    line with it. `--no-postprocessing` is the other half of telling those apart.
+
+    One row per (arm, discordant row). `direction` is `fix` when the arm is right
+    where the reference is wrong and `break` the other way round, so the two
+    counts in the verdict line are recoverable by grouping on it.
+    """
+    ref = rows[0]
+    if ref.get("correct_mask") is None:
+        print("  (no correctness masks — nothing to dump)", file=sys.stderr)
+        return
+
+    # `correct_mask` is ordered over the SCORED rows: `evaluate_dataframe` keeps
+    # `df.loc[annotated_mask(...)]` in frame order, so the same mask indexes back.
+    scored = df.loc[annotated_mask(df, gold_column)]
+    locator_cols = [c for c in GOLD_SIDECAR_KEYS if c in scored.columns]
+    carry = locator_cols + [c for c in ("text", "categ", gold_column) if c in scored.columns]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["arm", "reference", "direction", *carry])
+        for r in rows[1:]:
+            mask = r.get("correct_mask")
+            if mask is None:
+                continue
+            for direction, sel in (("fix", mask & ~ref["correct_mask"]), ("break", ref["correct_mask"] & ~mask)):
+                for _, row in scored[sel].iterrows():
+                    writer.writerow([r["value"], ref["value"], direction, *(row[c] for c in carry)])
+                    written += 1
+    print(f"\n  wrote {written} discordant row(s) to {path}")
+    print("     `break` rows are the ones the adoption gate turns on. If a break is not a line")
+    print("     the rule fires on, look at the modal dedup in apply_document_postprocessing()")
+    print("     and re-run with --no-postprocessing.")
 
 
 def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: float = 0.0) -> None:
@@ -317,6 +405,7 @@ def run_ab(
     values: List[Any],
     base_constants: Dict[str, Any],
     eval_kwargs: Dict[str, Any],
+    dump_discordant: Path | None = None,
 ) -> None:
     base_value = base_constants.get(const_name)
     n_lines = len(df)
@@ -416,7 +505,15 @@ def run_ab(
         )
     if gold_column:
         _print_gold_verdict(rows, gold_column)
+        if dump_discordant is not None:
+            _dump_discordant(dump_discordant, df, rows, gold_column)
     else:
+        if dump_discordant is not None:
+            print(
+                "\nNote: --dump-discordant needs --gold-column; without one there is no "
+                "notion of a row being right or wrong to disagree about.",
+                file=sys.stderr,
+            )
         print(
             "\nNote: ground-truth flip_rate is ~0 at the current config by construction, so a "
             "non-zero flip_rate / macro_f1 < 1 here is deviation FROM the stored categories.\n"
@@ -437,6 +534,28 @@ def main() -> None:
         default="0.35,0.55",
         help="Comma-separated values to test (first is the reference for deltas).",
     )
+    parser.add_argument(
+        "--dump-discordant",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write the rows behind `fixes N, breaks M` to this CSV: locator, text, gold label, "
+            "stored categ and direction. Needs --gold-column. The verdict counts them; this "
+            "names them."
+        ),
+    )
+    parser.add_argument(
+        "--no-postprocessing",
+        action="store_true",
+        help=(
+            "Score the per-line decision only, with apply_document_postprocessing() disabled. "
+            "`evaluate_dataframe` has always taken this and no CLI exposed it except "
+            "`rule_coverage_report --split-cascade`, which costs days. Run an arm both ways to "
+            "separate a rule's own effect from the page cascade its convictions set off -- the "
+            "modal dedup can move lines the rule never touched."
+        ),
+    )
     add_gold_column_argument(parser)
     args = parser.parse_args()
 
@@ -449,6 +568,9 @@ def main() -> None:
         print("error: provide at least one --values entry", file=sys.stderr)
         sys.exit(1)
 
+    if args.dump_discordant is not None and _refuses_dump_inside_input(args.dump_discordant, args.input_dir):
+        sys.exit(2)
+
     df = load_csvs(args.input_dir, recursive=True)
     df = attach_gold_sidecar_from_args(df, args)
     expected_langs, known_bases = _load_lang_config(args.config)
@@ -457,9 +579,16 @@ def main() -> None:
         "expected_langs": expected_langs,
         "known_bases": known_bases,
         "gold_category_column": args.gold_column,
+        "apply_postprocessing": not args.no_postprocessing,
     }
+    if args.no_postprocessing:
+        print(
+            "apply_document_postprocessing() DISABLED — these are per-line figures. "
+            "Compare them against the same A/B run without the flag; the difference is "
+            "the page cascade.\n"
+        )
 
-    run_ab(df, args.const, values, base_constants, eval_kwargs)
+    run_ab(df, args.const, values, base_constants, eval_kwargs, dump_discordant=args.dump_discordant)
 
 
 if __name__ == "__main__":

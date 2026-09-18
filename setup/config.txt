@@ -225,16 +225,40 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # an advisory when the two are uncoupled; it is advisory precisely because the
 # uncoupled arm is the better-scoring one.
 #
-# STILL FALSE, for a different reason. Clear-loss 40 -> 42 fails the adoption
-# gate in tools/GOLD.md ("must not raise Clear-loss"), and the two lines are
-# identified: `Frauenzimmerbad", sämtlic Gesellschastsbäder,` (German, no Czech
-# diacritic) and `S-VIIIb` (a grid reference `is_domain_notation()` accepts only
-# when hyphenated). Both now have witness-local guards in text_util.py --
-# has_expected_lang_diacs() and _RE_FUSED_GRID_REF -- which veto exactly those
-# two gold rows and cost none of the 16 gold-Trash catches. If a re-run of stage
-# 5a with them in place reports Clear-loss 40 and Trash-recall 36/180, this key
-# becomes an ADOPT-CANDIDATE on the repository's own gate. Nothing before that
-# re-run justifies flipping it.
+# STILL FALSE, and the re-run narrowed why to a single line. The two per-line
+# Clear-losses are gone: `Frauenzimmerbad", sämtlic Gesellschastsbäder,` (German,
+# no Czech diacritic) and `S-VIIIb` (a grid reference `is_domain_notation()`
+# accepts only when hyphenated) are both vetoed by the witness-local guards in
+# text_util.py -- has_expected_lang_diacs() and _RE_FUSED_GRID_REF -- at a cost of
+# none of the 16 gold-Trash catches. Stage 5a re-run with them in place
+# (2026-09-18):
+#
+#   arm     macro_f1  errors  cost    Clear-loss  Trash-recall
+#   False     0.6173    513   0.2917      40         22/180
+#   True      0.6371    500   0.2822      41         36/180
+#   -> fixes 14, breaks 1, exact McNemar p = 0.00098
+#
+# Errors DOWN 13, cost DOWN 0.0094, significant at 0.001 -- and the gate still
+# rejects it, on Clear-loss +1.
+#
+# THAT ONE LINE IS NOT THE WITNESS'S. Of the gold-Clear lines the witness still
+# reaches, none is anything other than already-Trash, and gate 5's entry condition
+# is exactly the population `short_garbage_witness_report` enumerates, so no
+# gold-Clear line outside it can be convicted either. The 41st is produced by
+# `apply_document_postprocessing()`, and only one of its branches can move a line
+# out of Clear: the modal dedup, which rewrites every occurrence of a repeated
+# string in a document to that string's majority category. Steps 2 and 3 take
+# `Noisy` as input; the inverted sweep's mask is computed from signal columns and
+# is invariant to the witness. So a rule that convicts a few occurrences can flip
+# the vote and carry a Clear line with it.
+#
+# The consequence is larger than the one line, and it is not specific to this
+# witness: PER-LINE PRECISION DOES NOT BOUND Clear-loss. `ppole` alone is 22 dedup
+# votes controlling 11,562 lines. Confirm with
+# `tools/ab_constant_eval.py --no-postprocessing` and `--dump-discordant`, which
+# name the row and separate the per-line effect from the cascade in one 2.5h A/B
+# (30.runbook stage 5f). Do not flip this key, and do not touch the dedup, before
+# that run says which it is.
 SHORT_GARBAGE_WITNESS_ENABLE            = false
 # Minimum ALPHABETIC characters in a sub-token before any shape test applies.
 # Also what keeps every SHORT_VALID_WORDS / _NEUTRAL_LEXICON member out by

@@ -29,9 +29,10 @@ Coverage columns
                   categ (flip_rate × n_lines).
   decisive_share  decisive_count / fire_count. The column to read for a rule
                   marked `gate_marker`, whose fire_count is a population size.
-  clear_loss      LOO: lines that were Clear in the stored categ but become
+  clear_loss      LOO: lines that were Clear in the STORED categ but become
                   Trash or Non-text when the rule is removed — the most
-                  operationally expensive failure mode.
+                  operationally expensive failure mode. Always self-referential;
+                  read `gold_clear_loss` instead when it is present.
   class           Derived classification: DEAD / REDUNDANT-HERE / LOAD-BEARING.
   gate_marker     True when the rule's _fire() sits at the entry of a gate that
                   always returns, so its count reports how many lines entered
@@ -47,15 +48,30 @@ With --gold-column (and --gold-sidecar):
                        minus the shipped pipeline's macro-F1 against the same
                        labels. Negative = removing the rule costs correctness.
   gold_n               annotated rows scored.
+  gold_clear_loss      the same failure mode as `clear_loss`, but counted over
+                       lines the ANNOTATOR called Clear. This is the column the
+                       adoption gate in tools/GOLD.md is written against; the
+                       plain `clear_loss` beside it is not.
 
 READ THIS BEFORE QUOTING A NUMBER FROM THIS TOOL
 ------------------------------------------------
-Without --gold-column, `decisive_count` and `clear_loss` are scored against the
-pipeline's OWN stored `categ`. The offline re-score reproduces it exactly at the
-shipped config, so the baseline is zero by construction and every figure means
-"how much does this rule change what we already output", never "is the output
-right". DEAD / REDUNDANT-HERE / LOAD-BEARING inherit that. The JSON payload
-records `gold_column: null` and `decisive_scored_against` so a self-referential
+`decisive_count` and `clear_loss` are scored against the pipeline's OWN stored
+`categ` — with or WITHOUT --gold-column. The offline re-score reproduces the
+stored labels exactly at the shipped config, so the baseline is zero by
+construction and those figures mean "how much does this rule change what we
+already output", never "is the output right".
+
+For `decisive_count` that is the right measurement and needs no gold: how many
+lines a rule moves is a property of the rule. DEAD / REDUNDANT-HERE /
+LOAD-BEARING inherit it and are sound as they stand.
+
+For `clear_loss` it is NOT, because that column is read as a correctness claim —
+"true-Clear lines pushed to Trash" — and against stored `categ` it only counts
+lines the pipeline already called Clear. Pass --gold-column and read
+`gold_clear_loss`, which is computed from the gold pass that already runs.
+
+The JSON payload records `gold_column`, `decisive_scored_against`,
+`clear_loss_scored_against` and `gold_clear_loss_available` so a self-referential
 run can never be mistaken for a gold one after the fact.
 
 Usage
@@ -267,6 +283,7 @@ def _loo_metrics(
     out: dict[str, int | float | None] = {
         "gold_delta_macro_f1": None,
         "gold_n": None,
+        "gold_clear_loss": None,
         "decisive_line": None,
         "decisive_cascade": None,
     }
@@ -289,6 +306,17 @@ def _loo_metrics(
             )
             out["gold_delta_macro_f1"] = float(gold_metrics.get("gold_delta_macro_f1", 0.0))
             out["gold_n"] = int(gold_metrics.get("line_count", 0))
+            # The gold pass already computed a confusion matrix against the HUMAN
+            # labels and this function used to throw it away, keeping only the
+            # macro-F1 delta. `clear_loss` below is therefore scored against the
+            # pipeline's own `categ` even on a --gold-column run -- it counts lines
+            # the pipeline CALLED Clear, not lines that ARE Clear, which is not the
+            # question anyone reads that column for. Issue #30's next-step 3 ("every
+            # DEAD / LOAD-BEARING / clear_loss verdict measured agreement with the
+            # pipeline's own output; the plumbing is fixed") was half right: passing
+            # the gold column fixed the macro-F1 and left this. Zero extra passes.
+            gold_clear_row = gold_metrics.get("confusion", {}).get("Clear", {})
+            out["gold_clear_loss"] = int(gold_clear_row.get("Trash", 0)) + int(gold_clear_row.get("Non-text", 0))
 
         if split_cascade:
             per_line = evaluate_dataframe(
@@ -525,7 +553,7 @@ def run_coverage(
     if skip_loo:
         print("Phase 2 — LOO skipped (--skip-loo).")
         for rule in RULES:
-            loo[rule] = {"decisive_count": 0, "clear_loss": 0}
+            loo[rule] = {"decisive_count": 0, "clear_loss": 0, "gold_clear_loss": None}
     else:
         print(f"Phase 2 — LOO pass ({len(RULES)} rules × {passes} recategorize each) …")
         if gold_column:
@@ -550,6 +578,8 @@ def run_coverage(
             extra = ""
             if m.get("gold_delta_macro_f1") is not None:
                 extra += f"  gold_dF1={m['gold_delta_macro_f1']:+.4f}"
+            if m.get("gold_clear_loss") is not None:
+                extra += f"  gold_clear_loss={m['gold_clear_loss']}"
             if m.get("decisive_line") is not None:
                 extra += f"  line={m['decisive_line']}  cascade={m['decisive_cascade']}"
             print(
@@ -577,7 +607,7 @@ def run_coverage(
             "class": cls,
             "gate_marker": rule in GATE_MARKER_RULES,
         }
-        for key in ("decisive_line", "decisive_cascade", "gold_delta_macro_f1", "gold_n"):
+        for key in ("decisive_line", "decisive_cascade", "gold_delta_macro_f1", "gold_n", "gold_clear_loss"):
             if m.get(key) is not None:
                 entry[key] = m[key]
         results[rule] = entry
@@ -601,7 +631,17 @@ def run_coverage(
             "gold_column": gold_column,
             "gold_sidecar": str(gold_sidecar) if gold_sidecar else None,
             "gold_annotated_rows": n_annotated if gold_column else 0,
-            "decisive_scored_against": "gold" if gold_column else "stored categ (self-referential)",
+            # `decisive_count` is ALWAYS scored against the stored `categ`, with or
+            # without a gold column, and that is correct: it measures how many lines
+            # a rule changes, which is a property of the rule and not a claim about
+            # truth. DEAD / REDUNDANT-HERE / LOAD-BEARING inherit that and need
+            # nothing else. This field used to read "gold" on a --gold-column run,
+            # which mislabelled the one thing it exists to label honestly.
+            "decisive_scored_against": "stored categ (self-referential by design: change magnitude, not correctness)",
+            # `clear_loss` IS a correctness claim, so it gets its own provenance and
+            # a gold-scored twin. Read `gold_clear_loss` when it is present.
+            "clear_loss_scored_against": "stored categ (self-referential)",
+            "gold_clear_loss_available": bool(gold_column),
             "cascade_split": bool(split_cascade),
             "config": resolved_config,
             "rules": results,
@@ -665,9 +705,11 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
                     if r["gold_delta_macro_f1"] < 0
                     else ("better without it" if r["gold_delta_macro_f1"] > 0 else "no gold effect")
                 )
+                gold_loss = r.get("gold_clear_loss")
+                loss_txt = f"  gold clear_loss {gold_loss:,}" if gold_loss is not None else ""
                 print(
                     f"  {'':<{_W_NAME}} | vs gold: ΔmacroF1 {r['gold_delta_macro_f1']:+.4f}"
-                    f" on {r['gold_n']:,} row(s) — {verdict}"
+                    f" on {r['gold_n']:,} row(s) — {verdict}{loss_txt}"
                 )
     print()
 
