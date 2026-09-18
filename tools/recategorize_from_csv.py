@@ -910,6 +910,7 @@ def evaluate_dataframe(
     expected_langs: list[str] | None = None,
     known_bases: frozenset | None = None,
     apply_postprocessing: bool = True,
+    return_correctness: bool = False,
 ) -> dict[str, Any]:
     """Faithfully re-categorise ``df`` under ``constants`` and score the result.
 
@@ -929,6 +930,17 @@ def evaluate_dataframe(
     A missing gold column is an error, never a silent fallback: scoring predictions
     against themselves yields a perfect score, which is exactly the kind of quiet
     no-op this repository has been bitten by before.
+
+    ``return_correctness`` adds ``correct_mask`` -- a per-row boolean array over the
+    scored rows, in frame order -- to the returned metrics, and to
+    ``baseline_vs_gold`` when that is present. Two arms evaluated on the same frame
+    get masks over the same rows in the same order, which is what makes a PAIRED
+    test possible; see ``ab_constant_eval.mcnemar_exact``.
+
+    OPT-IN, and default off, for one blunt reason: the mask is a numpy array and
+    ``const_importance_sweep.save_json`` serialises this whole dict with a plain
+    ``json.dumps``. Adding it unconditionally would break every sweep that writes
+    baseline_metrics.json. Callers that want it are the ones that pop it.
     """
     stored = _stored_labels(df, original_category_column)
 
@@ -960,6 +972,8 @@ def evaluate_dataframe(
         reference = predicted.copy()
 
     metrics = _metrics_from_labels(reference, predicted, sample_weight=weights)
+    if return_correctness:
+        metrics["correct_mask"] = reference == predicted
 
     if gold_category_column is not None:
         metrics["gold_column"] = gold_category_column
@@ -967,6 +981,8 @@ def evaluate_dataframe(
             baseline = _metrics_from_labels(reference, stored, sample_weight=weights)
             metrics["baseline_vs_gold"] = baseline
             metrics["gold_delta_macro_f1"] = float(metrics["macro_f1"] - baseline["macro_f1"])
+            if return_correctness:
+                baseline["correct_mask"] = reference == stored
 
     return metrics
 

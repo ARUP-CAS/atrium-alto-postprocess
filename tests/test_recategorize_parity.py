@@ -191,6 +191,14 @@ _DELIBERATELY_NOT_TUNABLE: dict[str, str] = {
     # that is always empty. Move it in when a table is configured AND the witness
     # flag flips, not before.
     "SHORT_GARBAGE_LEXICON_MIN_DF": "inert while the witness flag is false and no lexicon table is configured",
+    # Issue #30, 2026-09-17. Guards the veto rather than a category boundary: it
+    # decides whether an ATTESTED token counts as vocabulary, so it is inert for
+    # the same two reasons as MIN_DF above and would sweep against an always-empty
+    # table. It is also not a threshold a sweep could sensibly move -- on the real
+    # table the artefact and numeral populations sit either side of an empty gap
+    # (8 tokens >= 4x, 36 <= 2x, nothing between), so any value in 2.2-4.7 gives
+    # byte-identical output and the sweep would read that flat as zero importance.
+    "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": "inert while the witness flag is false and no lexicon table is configured",
     # Issue #30, 2026-09-10. The same failure mode, found by applying the rule
     # above to the rest of the registry: apply_page_perplexity_blend() returns
     # early while PAGE_PPL_BLEND_ENABLE is false (it ships false), so these three

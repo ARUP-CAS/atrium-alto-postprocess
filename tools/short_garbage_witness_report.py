@@ -184,6 +184,106 @@ def _collect_csvs(path: Path) -> list[Path]:
     return [path]
 
 
+def _refuses_gold_dir(path: Path, flag: str) -> bool:
+    """Refuse the one directory these files break, printing why. True == refused.
+
+    `tools/gold/` is one CSV per document; these queues span many and carry no
+    `categ`, so dropping one there poisons every consumer of that directory --
+    which is exactly what happened, because this tool used to close by calling the
+    annotated result "a gold set gold_gate() can consume". Sidecars go in
+    tools/gold/sidecars/.
+    """
+    gold_dir = (Path(__file__).resolve().parent / "gold").resolve()
+    if path.resolve().parent != gold_dir:
+        return False
+    print(
+        f"error: refusing to write {path.name} into {gold_dir} ({flag}).\n"
+        f"       That directory is one CSV per document and this file spans many;\n"
+        f"       a multi-document annotation set is a SIDECAR.\n"
+        f"       Use: {flag} {gold_dir / 'sidecars' / path.name}",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _write_distinct(path: Path, witnessed_rows: list) -> None:
+    """One row per distinct STRING, most frequent first.
+
+    (#30, 2026-09-17.) The line-level queue is 20,324 rows but only 5,243
+    strings, 94% of which occur exactly once, and `ppole` alone is 57% of the
+    lines. Annotating per line spends almost all of an archivist's attention
+    re-deciding `ppole` 11,562 times.
+
+    `occurrences` is carried so the reader can work in frequency order and know
+    what each decision buys, and `categ_current` records the MIX rather than one
+    value, because the pipeline does not always agree with itself on a repeated
+    string -- `Linum usitatissimum` is 22 Clear / 40 Trash. That disagreement is
+    worth seeing while deciding, not averaging away.
+    """
+    by_text: dict[str, dict] = {}
+    for (file_id, page_num, line_num), verdict, categ in witnessed_rows:
+        entry = by_text.setdefault(
+            verdict["text"],
+            {
+                "n": 0,
+                "wc": verdict["word_count"],
+                "clauses": verdict["clauses"],
+                "categs": Counter(),
+                "example": (file_id, page_num, line_num),
+            },
+        )
+        entry["n"] += 1
+        entry["categs"][categ] += 1
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                "text",
+                "occurrences",
+                "word_count",
+                "clauses",
+                "categ_current",
+                "example_file",
+                "example_page_num",
+                "example_line_num",
+                "gold_categ",
+            ]
+        )
+        for text, e in sorted(by_text.items(), key=lambda kv: (-kv[1]["n"], kv[0])):
+            mix = "|".join(f"{c}:{n}" for c, n in e["categs"].most_common())
+            writer.writerow([text, e["n"], e["wc"], e["clauses"], mix, *e["example"], ""])
+
+    n_lines = sum(e["n"] for e in by_text.values())
+    print(f"\nwrote {len(by_text)} distinct string(s) to {path}  (covering {n_lines} lines)")
+    running = 0
+    for cut in (1, 20, 100, 500):
+        running = sum(e["n"] for _, e in sorted(by_text.items(), key=lambda kv: -kv[1]["n"])[:cut])
+        if cut <= len(by_text):
+            print(f"  top {cut:5d} string(s) settle {running:8d} lines  ({running / n_lines:5.1%})")
+    print("  Fill `gold_categ` in frequency order, then project it back onto the line-level")
+    print(f"  queue with:  --from-distinct {path} --out <sidecar>.csv")
+
+
+def _read_filled_distinct(path: Path) -> dict[str, str]:
+    """Read a filled --distinct file into {text: gold_categ}, skipping blanks."""
+    with path.open(encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = [c for c in ("text", "gold_categ") if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(
+                f"{path} has no {', '.join(missing)} column, so it is not a filled --distinct "
+                "file. Generate one with --distinct, fill gold_categ, then pass it here."
+            )
+        out = {}
+        for row in reader:
+            label = (row.get("gold_categ") or "").strip()
+            if label:
+                out[row["text"]] = label
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -195,6 +295,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input-dir", help="Alias for the positional path (a directory).")
     parser.add_argument("--lines", help="Plain text file, one candidate line per row (no CSV schema).")
     parser.add_argument("--out", help="Write the witnessed candidate lines to this CSV, for annotation.")
+    parser.add_argument(
+        "--distinct",
+        metavar="PATH",
+        help=(
+            "Write ONE ROW PER DISTINCT STRING instead of per line, with an occurrence count. "
+            "The queue is heavily repeated -- on the 822-document corpus 20,324 lines are only "
+            "5,243 strings, and the single string `ppole` is 57%% of them -- so annotating by "
+            "string is a tenth of the work for the same coverage."
+        ),
+    )
+    parser.add_argument(
+        "--from-distinct",
+        metavar="PATH",
+        help=(
+            "Read a FILLED --distinct file and project its gold_categ onto every line carrying "
+            "that string, writing the result to --out as a joinable sidecar. This is the step "
+            "that turns string-level decisions back into (file, page_num, line_num) rows."
+        ),
+    )
     parser.add_argument("--examples", type=int, default=0, metavar="N", help="Print up to N examples per clause.")
     parser.add_argument(
         "--all-lengths",
@@ -285,25 +404,29 @@ def main(argv: list[str] | None = None) -> int:
                 for text in examples[clause]:
                     print(f"    {text!r}")
 
+    if args.distinct:
+        distinct_path = Path(args.distinct)
+        if _refuses_gold_dir(distinct_path, "--distinct"):
+            return 2
+        _write_distinct(distinct_path, witnessed_rows)
+
     if args.out:
         out_path = Path(args.out)
-        # Refuse the one directory this file breaks. `tools/gold/` is one CSV per
-        # document; this queue spans many and carries no `categ`, so dropping it
-        # there poisons every consumer of that directory -- which is exactly what
-        # happened, and it happened because this tool used to close by calling the
-        # annotated result "a gold set gold_gate() can consume". Sidecars go in
-        # tools/gold/sidecars/.
-        resolved = out_path.resolve()
-        gold_dir = (Path(__file__).resolve().parent / "gold").resolve()
-        if resolved.parent == gold_dir:
-            print(
-                f"error: refusing to write {out_path.name} into {gold_dir}.\n"
-                f"       That directory is one CSV per document and this file spans many;\n"
-                f"       a multi-document annotation set is a SIDECAR.\n"
-                f"       Use: --out {gold_dir / 'sidecars' / out_path.name}",
-                file=sys.stderr,
-            )
+        if _refuses_gold_dir(out_path, "--out"):
             return 2
+        projected: dict[str, str] = {}
+        if args.from_distinct:
+            try:
+                projected = _read_filled_distinct(Path(args.from_distinct))
+            except (OSError, ValueError) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            covered = sum(1 for _, v, _ in witnessed_rows if v["text"] in projected)
+            print(
+                f"\nprojecting {len(projected)} annotated string(s) from {args.from_distinct} "
+                f"onto {covered} of {len(witnessed_rows)} lines "
+                f"({covered / len(witnessed_rows) if witnessed_rows else 0:.1%} covered)"
+            )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
@@ -333,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
                         verdict["word_count"],
                         categ,
                         verdict["clauses"],
-                        "",
+                        projected.get(verdict["text"], ""),
                     ]
                 )
         print(f"\nwrote {len(witnessed_rows)} candidate lines to {out_path}")

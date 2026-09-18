@@ -242,13 +242,28 @@ SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
 SHORT_GARBAGE_LEXICON_PATH              =
 # A token must appear in at least this many DISTINCT documents to count as
 # attested. Document frequency, not line frequency: OCR noise repeats within the
-# scan that produced it and almost never across scans.
+# scan that produced it and -- WITH ONE MEASURED EXCEPTION -- rarely across scans.
+# The exception is a pre-printed form: the same misread recurs once per document
+# and accrues document frequency like a word. `ppole` (OCR of Czech `pole`)
+# reaches df 35 that way and is 57% of the witnessed population. Raising this
+# threshold does not reach it -- see SHORT_GARBAGE_LEXICON_GEMINATE_RATIO below.
 # On the 822-document table (2026-09-17) the veto's effect is flat between 2 and
 # 10, and 2 is marginally best; 3 is kept as the shipped value because the
 # threshold should be set on a table built over BOTH FULL COLLECTIONS, which that
 # one is 0.7% of. At 3 on that table the CONVICT clause below misjudges 5 of 31
 # pinned vocabulary fixtures, which is why it ships false.
 SHORT_GARBAGE_LEXICON_MIN_DF            = 3
+# How much more frequent a de-geminated form must be for its doubled-initial twin
+# to be treated as a scanning artefact rather than as vocabulary: `pole` 163 vs
+# `ppole` 35 is 4.7x. This guards the VETO only -- it can restore a conviction the
+# shape clauses already reached, never invent one -- so it is inert while
+# SHORT_GARBAGE_WITNESS_ENABLE is false, like everything else here.
+# On the 822-document table the two populations do not overlap: 8 tokens at or
+# above 4x, every one a templated artefact (`ppole`, `oobjekt`, `jjámy`, `ssuti`,
+# `vvkop`, `ssutí`, `ssutě`, `llocm`); 36 below 2x, every one a Roman numeral or a
+# character run (`xxiii` vs `xiii` are different numerals, not a doubling). 4.0
+# sits in the empty gap between them. 0 disables the check.
+SHORT_GARBAGE_LEXICON_GEMINATE_RATIO    = 4.0
 # When true, absence from the table becomes EVIDENCE rather than the presence of
 # a token becoming an exemption -- i.e. an unattested token convicts. This is the
 # only clause of the witness that can ADD a conviction, so it carries its own key

@@ -11,6 +11,7 @@ labels, or a diff report that compares row N against row M, are that failure mod
 in two new places.
 """
 
+import csv
 import sys
 from pathlib import Path
 
@@ -658,8 +659,12 @@ def test_the_adopt_verdict_honours_both_halves_of_its_own_criterion(capsys):
     _print_gold_verdict(rows, "gold_categ")
     out = capsys.readouterr().out
 
-    assert "REVIEW" in out, "a candidate that raises Clear-loss must not read as ADOPT-CANDIDATE"
-    assert "Clear-loss +2" in out, "the verdict must name the cost it is flagging"
+    # The verdict string moved from "REVIEW - ..." to "REJECT - ..." on 2026-09-18
+    # when the criterion stopped gating on macro_f1; the rule under test is the
+    # same one, and this row carries no `errors`/`costed_score`, which also pins
+    # that a caller supplying only the old fields still gets a correct verdict.
+    assert "REJECT" in out, "a candidate that raises Clear-loss must not read as ADOPT-CANDIDATE"
+    assert "Clear-loss" in out, "the verdict must name the cost it is flagging"
     assert "ADOPT-CANDIDATE" not in out
 
 
@@ -803,3 +808,303 @@ def test_the_witness_queue_cannot_be_written_into_the_directory_it_breaks(tmp_pa
     ok = tmp_path / "sidecars_out.csv"
     assert wr.main(["--input-dir", str(corpus), "--out", str(ok)]) == 0
     assert ok.exists()
+
+
+def test_the_distinct_queue_collapses_the_annotation_burden(tmp_path):
+    """One row per STRING, not per line — and it must project back onto lines.
+
+    (#30, 2026-09-17.) The line-level queue measured 20,324 rows but only 5,243
+    distinct strings, 94% of them occurring once, with `ppole` alone accounting
+    for 11,562. Annotating per line spends an archivist's whole budget
+    re-deciding one string, and the gold set is the binding constraint on every
+    figure in this issue.
+
+    Both halves are tested together on purpose: a string-level file that cannot
+    be projected back to (file, page_num, line_num) is the same dead end the
+    line-level queue already was.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_wr3", _ROOT / "tools" / "short_garbage_witness_report.py")
+    wr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wr)
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    # `rragment` five times across two documents, `Tthts` once. A repeated
+    # string is the whole point, so the fixture has to have one.
+    rows = ["categ,file,page_num,line_num,text,word_count"]
+    for page in range(1, 5):
+        rows.append(f"Clear,CTX000000010,{page},1,rragment,1")
+    rows.append("Trash,CTX000000010,9,3,Tthts,1")
+    (corpus / "CTX000000010.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (corpus / "CTX000000011.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000011,2,7,rragment,1\n",
+        encoding="utf-8",
+    )
+
+    distinct = tmp_path / "distinct.csv"
+    assert wr.main(["--input-dir", str(corpus), "--distinct", str(distinct)]) == 0
+
+    got = list(csv.DictReader(distinct.open(encoding="utf-8")))
+    assert [r["text"] for r in got] == ["rragment", "Tthts"], "rows must be most-frequent-first"
+    assert got[0]["occurrences"] == "5"
+    assert got[0]["categ_current"] == "Clear:5"
+    assert got[1]["categ_current"] == "Trash:1"
+    assert all(r["gold_categ"] == "" for r in got), "gold_categ is filled by a human, not by the tool"
+
+    # Fill only the frequent string, as an annotator working in frequency order
+    # would, and project it back.
+    for row in got:
+        row["gold_categ"] = "Trash" if row["text"] == "rragment" else ""
+    with distinct.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(got[0].keys()))
+        writer.writeheader()
+        writer.writerows(got)
+
+    sidecar = tmp_path / "sidecar.csv"
+    assert wr.main(["--input-dir", str(corpus), "--from-distinct", str(distinct), "--out", str(sidecar)]) == 0
+
+    joined = list(csv.DictReader(sidecar.open(encoding="utf-8")))
+    assert set(GOLD_SIDECAR_KEYS) <= set(joined[0].keys()), "the projection must stay joinable"
+    labelled = {(r["file"], r["page_num"], r["line_num"]): r["gold_categ"] for r in joined}
+    assert labelled[("CTX000000011", "2", "7")] == "Trash", "one decision must reach every line carrying it"
+    assert sum(1 for v in labelled.values() if v == "Trash") == 5
+    assert labelled[("CTX000000010", "9", "3")] == "", "an unannotated string must stay blank, not guessed"
+
+
+def test_the_distinct_queue_is_refused_in_the_directory_it_breaks(tmp_path, capsys):
+    """`--distinct` writes a multi-document file too, so it needs the same guard as `--out`."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_wr4", _ROOT / "tools" / "short_garbage_witness_report.py")
+    wr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wr)
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000012.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000012,1,1,rragment,1\n",
+        encoding="utf-8",
+    )
+
+    rc = wr.main(["--input-dir", str(corpus), "--distinct", str(GOLD_DIR / "distinct.csv")])
+    assert rc == 2
+    assert "sidecars" in capsys.readouterr().err
+    assert not (GOLD_DIR / "distinct.csv").exists()
+
+
+def test_projecting_from_a_file_that_is_not_a_distinct_queue_is_refused(tmp_path, capsys):
+    """A wrong `--from-distinct` must name the problem, not raise KeyError from csv."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_wr5", _ROOT / "tools" / "short_garbage_witness_report.py")
+    wr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wr)
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "CTX000000013.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count\nClear,CTX000000013,1,1,rragment,1\n",
+        encoding="utf-8",
+    )
+    wrong = tmp_path / "wrong.csv"
+    wrong.write_text("alpha,beta\n1,2\n", encoding="utf-8")
+
+    rc = wr.main(["--input-dir", str(corpus), "--from-distinct", str(wrong), "--out", str(tmp_path / "o.csv")])
+    assert rc == 2
+    assert "not a filled --distinct file" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The paired test, and the criterion that let stage 5c through (#30, 2026-09-18)
+# ---------------------------------------------------------------------------
+
+
+def _ab_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_ab", _ROOT / "tools" / "ab_constant_eval.py")
+    ab = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ab)
+    return ab
+
+
+def test_mcnemar_is_the_exact_binomial_tail():
+    """Hand-checked, because the counts this issue deals in are single digits.
+
+    Stage 5a moved 14 lines one way and 2 the other; at that size the
+    continuity-corrected chi-square is not trustworthy, so this is the exact
+    two-sided binomial tail 2 * P(X <= min(b, c)) for X ~ Bin(b + c, 0.5).
+    """
+    import math
+
+    ab = _ab_module()
+
+    # 2 * (C(16,0) + C(16,1) + C(16,2)) / 2**16 = 274/65536
+    assert ab.mcnemar_exact(14, 2) == pytest.approx(2 * sum(math.comb(16, k) for k in range(3)) / 2**16)
+    assert ab.mcnemar_exact(14, 2) == pytest.approx(0.00418091, abs=1e-8)
+    # Symmetric discordance is the null exactly; the doubling must be clamped.
+    assert ab.mcnemar_exact(5, 5) == 1.0
+    assert ab.mcnemar_exact(1, 1) == 1.0
+    # No discordant pairs at all: defined, and not a division by zero.
+    assert ab.mcnemar_exact(0, 0) == 1.0
+    # Direction does not change a two-sided p.
+    assert ab.mcnemar_exact(9, 1) == ab.mcnemar_exact(1, 9)
+    # A large one-sided split is significant.
+    assert ab.mcnemar_exact(20, 2) < 0.001
+
+
+def test_paired_counts_are_row_aligned():
+    """b and c come from masks over the same rows in the same order."""
+    import numpy as np
+
+    ab = _ab_module()
+    incumbent = np.array([True, True, False, False, True])
+    candidate = np.array([True, False, True, False, True])
+    b, c = ab._paired_counts(candidate, incumbent)
+    assert (b, c) == (1, 1), "one row fixed, one broken"
+
+
+def test_a_macro_f1_gain_that_costs_accuracy_is_rejected(capsys):
+    """The stage 5c shape: best macro_f1 on the board, more lines wrong than doing nothing.
+
+    On an imbalanced gold set macro_f1 averages per-class F1, so moving the
+    decision boundary toward the rare class pays for itself regardless of net
+    accuracy. Stage 5c scored +0.0397 macro_f1 while getting 8 MORE lines wrong
+    than changing nothing and costing 12% more, and the verdict function called it
+    "better on gold" because it gated on macro_f1 alone.
+    """
+    import numpy as np
+
+    ab = _ab_module()
+    rows = [
+        {
+            "value": False,
+            "macro_f1": 0.6338,
+            "errors": 504,
+            "costed_score": 0.2861,
+            "clear_loss": 42,
+            "correct_mask": np.array([True] * 60 + [False] * 40),
+            "baseline_vs_gold_macro_f1": 0.6173,
+        },
+        {
+            "value": True,
+            "macro_f1": 0.6570,  # the best on the board
+            "errors": 521,  # ... and the worst
+            "costed_score": 0.3273,
+            "clear_loss": 63,
+            "correct_mask": np.array([True] * 50 + [False] * 50),
+            "baseline_vs_gold_macro_f1": 0.6173,
+        },
+    ]
+    ab._print_gold_verdict(rows, "gold_categ")
+    out = capsys.readouterr().out
+
+    candidate_line = next(line for line in out.splitlines() if line.strip().startswith("True:"))
+    assert "REJECT" in candidate_line, "a macro_f1 gain that costs accuracy must not read as adoptable"
+    assert "ADOPT-CANDIDATE" not in candidate_line
+    for worsened in ("errors", "cost", "Clear-loss"):
+        assert worsened in candidate_line, f"the verdict must name {worsened} as a reason"
+    # The delta it would have been quoted on, still visible as a diagnostic.
+    assert "+0.0397" in candidate_line
+
+
+def test_an_adopt_candidate_resting_on_a_few_rows_says_so(capsys):
+    """Significance belongs ON the verdict line, where a reader quoting it will see it.
+
+    Stage 5a's entire result was 19 changed rows out of 2,064, quoted as a
+    four-decimal macro_f1. The number that stops that is the effective n.
+    """
+    import numpy as np
+
+    ab = _ab_module()
+    incumbent = np.array([True] * 97 + [False] * 3)
+    candidate = incumbent.copy()
+    candidate[97] = True  # fixes exactly one row, breaks none
+    rows = [
+        {
+            "value": False,
+            "macro_f1": 0.60,
+            "errors": 3,
+            "costed_score": 0.10,
+            "clear_loss": 0,
+            "correct_mask": incumbent,
+            "baseline_vs_gold_macro_f1": 0.60,
+        },
+        {
+            "value": True,
+            "macro_f1": 0.63,
+            "errors": 2,
+            "costed_score": 0.09,
+            "clear_loss": 0,
+            "correct_mask": candidate,
+            "baseline_vs_gold_macro_f1": 0.60,
+        },
+    ]
+    ab._print_gold_verdict(rows, "gold_categ")
+    out = capsys.readouterr().out
+
+    assert "ADOPT-CANDIDATE" in out, "nothing got worse, so it is still a candidate"
+    assert "NOT SIGNIFICANT" in out, "but it rests on one row and must say so"
+    assert "effective n=1" in out
+    assert "fixes 1, breaks 0" in out
+
+
+def test_identical_arms_report_identity_not_a_statistic(capsys):
+    import numpy as np
+
+    ab = _ab_module()
+    mask = np.array([True, False, True, True])
+    rows = [
+        {
+            "value": 3.0,
+            "macro_f1": 0.6,
+            "errors": 1,
+            "costed_score": 0.1,
+            "clear_loss": 0,
+            "correct_mask": mask,
+            "baseline_vs_gold_macro_f1": 0.6,
+        },
+        {
+            "value": 4.0,
+            "macro_f1": 0.6,
+            "errors": 1,
+            "costed_score": 0.1,
+            "clear_loss": 0,
+            "correct_mask": mask.copy(),
+            "baseline_vs_gold_macro_f1": 0.6,
+        },
+    ]
+    ab._print_gold_verdict(rows, "gold_categ")
+    out = capsys.readouterr().out
+    assert "identical on every scored row" in out
+    assert "McNemar" not in out.split("identical on every scored row")[1]
+
+
+def test_correctness_mask_is_opt_in_and_gold_scoped(tmp_path):
+    """It must not appear by default: `save_json` serialises this dict with plain json.dumps.
+
+    A numpy array in the metrics dict would break every sweep that writes
+    baseline_metrics.json, which is why the mask is behind a keyword.
+    """
+    corpus = tmp_path / "c"
+    corpus.mkdir()
+    (corpus / "CTX000000014.csv").write_text(
+        "categ,file,page_num,line_num,text,word_count,gold_categ\n"
+        "Clear,CTX000000014,1,1,ordinary text here,3,Clear\n"
+        "Clear,CTX000000014,1,2,rragment,1,Trash\n",
+        encoding="utf-8",
+    )
+    df = load_csvs(corpus)
+
+    plain = evaluate_dataframe(df, {}, gold_category_column="gold_categ")
+    assert "correct_mask" not in plain
+    import json
+
+    json.dumps({k: v for k, v in plain.items() if k != "baseline_vs_gold"}, default=str)  # must not raise
+
+    with_mask = evaluate_dataframe(df, {}, gold_category_column="gold_categ", return_correctness=True)
+    assert "correct_mask" in with_mask
+    assert len(with_mask["correct_mask"]) == 2, "one entry per ANNOTATED row"
+    assert "correct_mask" in with_mask["baseline_vs_gold"], "the incumbent needs a mask to be paired against"

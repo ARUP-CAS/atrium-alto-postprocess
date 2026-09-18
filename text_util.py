@@ -29,8 +29,14 @@ import os
 import re
 import sys
 import unicodedata
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from types import MappingProxyType
+
+# The empty lexicon, shared so that "no table configured" and "table unreadable"
+# return the same object rather than two equal-but-distinct ones.
+_EMPTY_LEXICON: Mapping[str, int] = MappingProxyType({})
 
 # ---------------------------------------------------------------------------
 # Line-category labels  (hub registry: atrium_vocab.LINE_CATEGORY_ORIGINATORS)
@@ -428,6 +434,12 @@ SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITN
 # this key changes nothing until an operator points it at a built table.
 SHORT_GARBAGE_LEXICON_PATH = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_PATH", "").strip()
 SHORT_GARBAGE_LEXICON_MIN_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_MIN_DF", 3)
+# (#30) How much more frequent a de-geminated form must be for its doubled-initial
+# twin to be read as a scanning artefact rather than vocabulary -- `pole` 163 vs
+# `ppole` 35. Guards the veto only, so it can restore a conviction the shape
+# clauses already reached and can never create one. 0 disables the check. See
+# _is_geminate_artefact for why the threshold is a ratio and not a numeral test.
+SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = _get_float("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO", 4.0)
 # (#30 D14) The lexicon used as EVIDENCE rather than as a veto: a token with no
 # attestation anywhere in the collection convicts. This is the only mechanism in
 # this module that can reach `edelite` -- the phonotactically legal residue -- and
@@ -1915,8 +1927,18 @@ def _compile_vowel_run(min_run: int) -> re.Pattern:
 
 
 @functools.lru_cache(maxsize=4)
-def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
+def _read_token_lexicon(path: str, mtime: float, min_df: int) -> Mapping[str, int]:
     """Load a token/document-frequency table, keyed on path+mtime so edits are seen.
+
+    Returns a READ-ONLY MAPPING token -> document frequency, restricted to tokens
+    at or above ``min_df``. It was a bare set until the de-gemination guard needed
+    to compare one token's frequency against another's (see
+    ``_is_geminate_artefact``); a set plus a parallel frequency dict would be a
+    second copy of this vocabulary and so a second thing to drift, which is the
+    argument already made for SHAPE_GARBAGE_CLAUSES. Membership tests and
+    ``bool()`` read identically on a mapping, so every existing caller is
+    unaffected. The proxy is because the result is cached: a caller that mutated
+    it would poison every later lookup in the process.
 
     Format, as written by ``tools/build_token_lexicon.py``: ``#``-prefixed
     provenance header, then ``token<TAB>document_frequency`` per line. ``mtime``
@@ -1938,7 +1960,7 @@ def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
     """
     del mtime  # cache key only
     try:
-        out: set[str] = set()
+        out: dict[str, int] = {}
         # errors="replace" rather than strict: a table is operator-supplied and
         # may have been moved through a Windows editor or a lossy transfer. A
         # mangled byte should cost that one token, not the corpus run.
@@ -1955,25 +1977,30 @@ def _read_token_lexicon(path: str, mtime: float, min_df: int) -> frozenset:
                 if not token:
                     continue
                 try:
-                    if int(df) < min_df:
-                        continue
+                    freq = int(df)
                 except ValueError:
                     continue
-                out.add(token)
-        return frozenset(out)
+                if freq < min_df:
+                    continue
+                out[token] = freq
+        return MappingProxyType(out)
     except (OSError, ValueError, UnicodeError):
-        return frozenset()
+        return _EMPTY_LEXICON
 
 
-def token_lexicon() -> frozenset:
-    """The vocabulary table currently in force, or an empty set when none is configured."""
+def token_lexicon() -> Mapping[str, int]:
+    """The vocabulary table currently in force, or an empty mapping when none is configured.
+
+    Maps token -> document frequency. Falsy when no table is configured, which is
+    the shipped state and what every caller gates on.
+    """
     path = (SHORT_GARBAGE_LEXICON_PATH or "").strip()
     if not path:
-        return frozenset()
+        return _EMPTY_LEXICON
     try:
         mtime = os.path.getmtime(path)
     except OSError:
-        return frozenset()
+        return _EMPTY_LEXICON
     return _read_token_lexicon(path, mtime, int(SHORT_GARBAGE_LEXICON_MIN_DF))
 
 
@@ -2037,9 +2064,73 @@ def _has_vocabulary_support(token: str) -> bool:
     issue has already made once, in the sweep objective.
 
     Veto only: it can withdraw a conviction, never add one.
+
+    MEASURED CAVEAT (2026-09-17, 822-document table). The premise above -- that
+    OCR noise is idiosyncratic to its scan -- FAILS for a pre-printed form
+    scanned across the collection. There the error is systematic: it reproduces
+    once per document and accrues document frequency exactly like a word. The
+    corpus case is `ppole`, an OCR doubling of Czech `pole` in the form label
+    `KULTURA: ppole`, which reaches df 35 and is 57% of the entire witnessed
+    population. Attestation therefore does not by itself mean vocabulary, and
+    `_is_geminate_artefact` below carves out the one shape where the corpus shows
+    this happening. It is a carve-out, not a repair: any templated artefact that
+    is not an initial geminate is still wrongly exempted here.
     """
     lex = token_lexicon()
-    return bool(lex) and token.lower() in lex
+    if not lex:
+        return False
+    lowered = token.lower()
+    return lowered in lex and not _is_geminate_artefact(lowered, lex)
+
+
+def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
+    """Is this attested token a doubled-initial OCR artefact rather than a word?
+
+    (#30.) `initial_geminate` convicts a doubled consonant in first position on
+    the grounds that no European orthography opens a word that way -- and it is
+    right. What defeats it is not the clause but the veto in front of it: a
+    templated scanning error recurs across documents and so looks attested.
+
+    The discriminator is that the artefact's own source word is also in the
+    table, and is MORE common: `ppole` df 35 against `pole` 163, `oobjekt` 3
+    against `objekt` 378, `jjámy` 5 against `jámy` 356. A real doubled-initial
+    token has no such shadow.
+
+    The natural false positive is Roman numerals -- `xxiii` against `xiii`,
+    `xxviii` against `xviii` -- which are genuinely different numerals and not
+    doublings at all. They are excluded by ratio rather than by a numeral test,
+    because on the real table the two populations do not overlap: every one of
+    the 8 tokens at or above 4x is a templated artefact and none is
+    numeral-shaped, while all 36 below 2x are numerals or character runs. A
+    character-class rule would have been the more obvious defence and a worse
+    one, since `xxxxx` and `iiiii` are not numerals either.
+
+    Deliberately BROADER than `initial_geminate`, which matches doubled
+    CONSONANTS only (`^([bcdfghjklmnpqrstvwxz])\\1`). `oobjekt` -- df 3 against
+    `objekt` 378, the strongest ratio in the table at 126x -- is a doubled vowel,
+    so that clause never sees it and withdrawing its exemption changes nothing on
+    the shape path. It earns the breadth through `no_vocabulary`, which convicts
+    on absence and is gated by this same predicate: there, un-attesting a
+    templated artefact is the whole point. The risk the narrower form would avoid
+    is a real doubled-vowel word, and it is not reachable here -- being stripped
+    needs the DE-geminated form to be a 4x more common token, which for `Aachen`
+    or `Aalen` would mean `achen`/`alen` outnumbering them as words.
+
+    SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = 0 disables this entirely, restoring
+    the plain-attestation veto.
+    """
+    if SHORT_GARBAGE_LEXICON_GEMINATE_RATIO <= 0:
+        return False
+    if len(token) < 4 or token[0] != token[1]:
+        return False
+    df_token = lex.get(token, 0)
+    if df_token <= 0:
+        return False
+    # Both sides are necessarily present in the table when this fires: the
+    # geminate is attested by the caller's own membership test, and the source
+    # word is by definition more frequent still, so restricting the table to
+    # >= min_df cannot hide it.
+    return lex.get(token[1:], 0) >= SHORT_GARBAGE_LEXICON_GEMINATE_RATIO * df_token
 
 
 # The clause names, in report order. Canonical here rather than in the reporting

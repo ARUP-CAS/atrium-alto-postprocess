@@ -213,7 +213,7 @@ def test_raising_the_vowel_run_is_a_measured_trade_in_both_directions():
 def test_lexicon_is_inert_when_no_table_is_configured():
     """The shipped state. With no table the predicate is the shape-only predicate."""
     assert tu.SHORT_GARBAGE_LEXICON_PATH == ""
-    assert tu.token_lexicon() == frozenset()
+    assert not tu.token_lexicon()
     assert tu.SHORT_GARBAGE_LEXICON_CONVICT is False
     for text in MUST_STILL_CONVICT:
         assert _has_shape_garbage_evidence(text) is True
@@ -298,7 +298,7 @@ def test_unattested_conviction_cannot_fire_without_a_table(tmp_path):
     does, because the failure mode is the entire corpus routing to Trash.
     """
     with tu.override_constants({"SHORT_GARBAGE_LEXICON_CONVICT": True}):
-        assert tu.token_lexicon() == frozenset()
+        assert not tu.token_lexicon()
         for text in ["malakofauna", "Equus caballus", "vrstva", "Poaceae"]:
             assert _has_shape_garbage_evidence(text) is False
 
@@ -315,7 +315,7 @@ def test_a_corrupt_table_degrades_to_no_signal_rather_than_raising(tmp_path):
     with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(bad)}):
         assert _has_shape_garbage_evidence("oueussd") is True
     with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(tmp_path / "does_not_exist.tsv")}):
-        assert tu.token_lexicon() == frozenset()
+        assert not tu.token_lexicon()
         assert _has_shape_garbage_evidence("oueussd") is True
 
 
@@ -406,7 +406,7 @@ def test_header_lines_are_still_skipped(tmp_path):
         encoding="utf-8",
     )
     with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
-        assert tu.token_lexicon() == frozenset({"ordinary"})
+        assert dict(tu.token_lexicon()) == {"ordinary": 5}
 
 
 # ---------------------------------------------------------------------------
@@ -419,10 +419,17 @@ def test_the_witness_without_a_lexicon_is_reported_as_a_known_bad_configuration(
 
     Over 1,480,119 in-scope lines the shape witness alone confirms 5,107 existing
     `Trash` verdicts and newly convicts **15,217** lines the pipeline currently
-    calls `Clear` or `Noisy` — 1 : 3 against. With the vocabulary veto at
-    `min_df` 3 the same witness scores 3,905 against 2,306, i.e. 1.7 : 1 in
-    favour. The veto is not a refinement of the witness; it is the difference
-    between arming it and not.
+    calls `Clear` or `Noisy`. With the vocabulary veto at `min_df` 3 the same
+    witness scores 3,905 against 2,306.
+
+    That gap READ as 1:3-against becoming 1.7:1-in-favour, and it was quoted here
+    as the reason the two settings are one decision. It is not: 90.5% of the
+    difference is the single token `ppole`, a scanning artefact the witness was
+    right about (see the de-gemination guard below), and both figures are counted
+    against `categ` — the pipeline's own answer — so neither can tell a wrong
+    witness from a wrong pipeline. The COUPLING still holds, because a veto that
+    misfires on 12.9k lines either way is not something to arm blind. The
+    arithmetic no longer argues for it.
 
     Advisory rather than a gate: stage 5a of the runbook deliberately measures the
     shape-only configuration, and refusing it would make that measurement
@@ -438,3 +445,154 @@ def test_the_witness_without_a_lexicon_is_reported_as_a_known_bad_configuration(
 
 def test_the_shipped_configuration_raises_no_advisory():
     assert tu.uncoupled_witness_warning() is None
+
+
+# ---------------------------------------------------------------------------
+# The de-gemination guard (#30, 2026-09-17)
+# ---------------------------------------------------------------------------
+#
+# `_has_vocabulary_support` rests on "OCR noise is idiosyncratic to the scan that
+# produced it". A pre-printed form scanned across the collection breaks that: the
+# same misread recurs once per document and accrues document frequency like a
+# word. On the 822-document table `ppole` -- OCR of Czech `pole`, in the form
+# label `KULTURA: ppole` -- reached df 35 and was 57% of the whole witnessed
+# population, so the veto suppressed ~11.7k convictions that `initial_geminate`
+# had made correctly.
+#
+# Every frequency below is from that real table (issue30_out/03_lookup.log and
+# the 347,097-row token_df.tsv), not invented for the fixture.
+
+#: Templated OCR artefacts: attested, but their own source word is far commoner.
+GEMINATE_ARTEFACTS = {
+    "ppole": (35, "pole", 163),
+    "oobjekt": (3, "objekt", 378),
+    "jjámy": (5, "jámy", 356),
+    "ssuti": (8, "suti", 42),
+    "ssutí": (5, "sutí", 42),
+    "vvkop": (5, "vkop", 31),
+    "ssutě": (4, "sutě", 23),
+}
+
+#: Roman numerals and character runs — the natural false positive of a
+#: doubled-initial test, and the regression that matters. `xxiii` is not a
+#: doubling of `xiii`; they are different numerals that happen to share a suffix.
+GEMINATE_LOOKALIKES = {
+    "xxiii": (54, "xiii", 87),
+    "xxviii": (41, "xviii", 76),
+    "xxvii": (42, "xvii", 59),
+    "xxxiv": (34, "xxiv", 56),
+    "xxxxx": (8, "xxxx", 18),
+    "iiiii": (6, "iiii", 9),
+}
+
+
+def _geminate_table(tmp_path: Path) -> str:
+    rows: dict[str, int] = {}
+    for tok, (df_tok, source, df_source) in {**GEMINATE_ARTEFACTS, **GEMINATE_LOOKALIKES}.items():
+        rows[tok] = df_tok
+        rows[source] = df_source
+    # Real vocabulary that must keep its exemption, at its measured frequency.
+    rows.update({"triticum": 39, "monococcum": 20, "lepus": 38, "europaeus": 31, "poaceae": 23, "kaaden": 6})
+    return _table(tmp_path, rows)
+
+
+@pytest.mark.parametrize("token", sorted(GEMINATE_ARTEFACTS))
+def test_templated_geminate_artefacts_lose_their_veto(tmp_path, token):
+    """Attestation must not protect a scanning artefact from `initial_geminate`.
+
+    This is the corpus finding: the clause was right about all 11,690 `ppole`
+    lines and the veto in front of it was what let them through.
+    """
+    with tu.override_constants(
+        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+    ):
+        assert token in tu.token_lexicon(), "fixture error: the token should be attested"
+        assert tu._has_vocabulary_support(token) is False, (
+            f"{token!r} is attested only because its scanning error repeats across documents"
+        )
+
+
+@pytest.mark.parametrize("token", sorted(GEMINATE_LOOKALIKES))
+def test_roman_numerals_and_runs_keep_their_veto(tmp_path, token):
+    """The guard must not fire on tokens whose de-geminated form is a DIFFERENT token.
+
+    `xxiii`/`xiii` sit at 1.6x and the artefacts at 4.7-126x, so a ratio
+    separates them without a character-class rule -- which would have been the
+    more obvious defence and would have missed `xxxxx` and `iiiii` anyway.
+    """
+    with tu.override_constants(
+        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+    ):
+        assert tu._has_vocabulary_support(token) is True, f"{token!r} lost an exemption it should keep"
+
+
+@pytest.mark.parametrize("token", ["triticum", "monococcum", "lepus", "europaeus", "poaceae", "kaaden"])
+def test_the_guard_leaves_real_vocabulary_alone(tmp_path, token):
+    """The veto's actual work is untouched.
+
+    `Triticum monococcum` (121 lines) and `Lepus europaeus` (86) are real `Clear`
+    taxonomy that the shape clauses convict and attestation rescues. Whatever the
+    guard does, it must not reach them.
+    """
+    with tu.override_constants(
+        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+    ):
+        assert tu._has_vocabulary_support(token) is True
+
+
+def test_the_guard_is_a_no_op_without_a_table(tmp_path):
+    """No table, no guard: the shipped configuration is byte-identical.
+
+    Both flags ship false and the path ships empty, so this is the state
+    production runs in. The guard reads the lexicon and nothing else, so with no
+    lexicon it cannot have an opinion.
+    """
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": ""}):
+        assert not tu.token_lexicon()
+        for token in list(GEMINATE_ARTEFACTS) + list(GEMINATE_LOOKALIKES):
+            assert tu._has_vocabulary_support(token) is False
+            assert tu._is_geminate_artefact(token, tu.token_lexicon()) is False
+
+
+def test_the_ratio_can_be_disabled(tmp_path):
+    """0 restores the plain-attestation veto, so the change is reversible in config."""
+    table = _geminate_table(tmp_path)
+    with tu.override_constants(
+        {
+            "SHORT_GARBAGE_LEXICON_PATH": table,
+            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
+            "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": 0,
+        }
+    ):
+        assert tu._has_vocabulary_support("ppole") is True
+
+
+def test_the_guard_never_adds_a_conviction_on_its_own(tmp_path):
+    """Veto-only semantics survive: the guard withdraws exemptions, it cannot convict.
+
+    Stripping `ppole`'s attestation lets `initial_geminate` -- which had already
+    matched -- stand. It must not manufacture a clause for a line no clause
+    reached. `pole` is the control: a clean word, attested, never witnessed.
+    """
+    with tu.override_constants(
+        {
+            "SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path),
+            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
+            "SHORT_GARBAGE_WITNESS_ENABLE": True,
+        }
+    ):
+        assert shape_garbage_clauses("ppole") == ["initial_geminate"]
+        assert shape_garbage_clauses("pole") == []
+        assert _has_shape_garbage_evidence("pole") is False
+
+    # The counterfactual, without which the assertions above would also pass on
+    # the unfixed code: with the ratio disabled the veto swallows the clause.
+    with tu.override_constants(
+        {
+            "SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path),
+            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
+            "SHORT_GARBAGE_WITNESS_ENABLE": True,
+            "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": 0,
+        }
+    ):
+        assert shape_garbage_clauses("ppole") == []
