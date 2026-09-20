@@ -486,15 +486,17 @@ SHORT_GARBAGE_LEXICON_CONVICT = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_CO
 
 
 def _warn_uncoupled_witness() -> None:
-    """Emit the advisory once at import. Defined here, evaluated after the keys exist.
+    """Emit the configuration advisories once at import.
 
-    Same house idiom as the atrium_vocab check at the top of this module: a NOTE
-    on stderr, never fatal, and silence on the happy path -- which includes the
-    shipped configuration, where the witness flag is false.
+    Defined here, evaluated after the keys exist. Same house idiom as the
+    atrium_vocab check at the top of this module: a NOTE on stderr, never fatal,
+    and silence on the happy path -- which includes the shipped configuration,
+    where the witness flag is false and no lexicon is configured.
     """
-    message = uncoupled_witness_warning()
-    if message:
-        print(f"[text_util] NOTE - {message}", file=sys.stderr)
+    for warning in (uncoupled_witness_warning, geminate_cap_scale_warning):
+        message = warning()
+        if message:
+            print(f"[text_util] NOTE - {message}", file=sys.stderr)
 
 
 SYM_LET_DIG_NONTEXT = _get_str("TEXT_UTILS", "SYM_LET_DIG_NONTEXT", "true").strip().lower() in (
@@ -2087,6 +2089,87 @@ def uncoupled_witness_warning(
     )
 
 
+#: The corpus size ``SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF``'s shipped value was
+#: read off. See the table in ``_is_geminate_artefact``.
+GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS: int = 822
+
+#: How far the configured table may be from that basis before the cap stops
+#: meaning what it was set to mean. 4x is generous: the measured separation the
+#: cap sits in is itself only 4.4x wide.
+_GEMINATE_SCALE_TOLERANCE: float = 4.0
+
+
+def lexicon_document_count(path: str | None = None) -> int | None:
+    """How many documents the configured token table was built over, or None.
+
+    Read from the ``# documents: N  lines: M`` provenance line
+    ``tools/build_token_lexicon.py`` writes. Cheap: it stops at the first
+    non-comment row rather than parsing the table.
+    """
+    if path is None:
+        path = SHORT_GARBAGE_LEXICON_PATH
+    path = (path or "").strip()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith("#"):
+                    break
+                m = re.search(r"#\s*documents:\s*([\d,]+)", line)
+                if m:
+                    return int(m.group(1).replace(",", ""))
+    except OSError:
+        return None
+    return None
+
+
+def geminate_cap_scale_warning(
+    lexicon_path: str | None = None,
+    max_df: int | None = None,
+) -> str | None:
+    """``SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF`` is an absolute document count.
+
+    Returns the advisory text, or ``None`` when the configuration is fine.
+
+    (#30, 2026-09-20.) The ratio guard ``SHORT_GARBAGE_LEXICON_GEMINATE_RATIO``
+    is scale-free -- it compares two counts from the same table -- but this cap
+    is not. It was read off a 4.4x gap on an 822-document table (`ppole` 35, every
+    confirmed artefact at 8 or below) and it is compared against a raw document
+    count, so pointing ``SHORT_GARBAGE_LEXICON_PATH`` at a bigger table silently
+    changes what it means. Stage 07a measured what that costs: over 113,100
+    documents the same eight tokens run 229 / 195 / 142 / 64 / 55 / 30 / 10, the
+    gap is 1.17x, and at the shipped 10 the guard is right on 2 of 7 instead of
+    7 of 7.
+
+    ADVISORY, NOT A GATE, for the same reason as ``uncoupled_witness_warning()``:
+    measuring the cap against a large table is exactly how the next threshold
+    decision gets made, and a refusal would prevent it. What must not happen is
+    someone inheriting a 137x rescale without being told.
+    """
+    if lexicon_path is None:
+        lexicon_path = SHORT_GARBAGE_LEXICON_PATH
+    if max_df is None:
+        max_df = SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF
+    if not (lexicon_path or "").strip() or max_df <= 0:
+        return None
+    documents = lexicon_document_count(lexicon_path)
+    if documents is None or documents <= 0:
+        return None
+    factor = documents / GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS
+    if factor <= _GEMINATE_SCALE_TOLERANCE:
+        return None
+    return (
+        f"SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF={max_df} was calibrated on a "
+        f"{GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS}-document table; the configured one holds "
+        f"{documents:,} documents ({factor:.0f}x). The cap is an ABSOLUTE document count, so "
+        "it does not rescale with the table. Measured over 113,100 documents (#30 stage 07a) "
+        "the confirmed artefacts reach df 195 and the cap is right on 2 of 7 tokens instead "
+        "of 7 of 7. Re-measure the cap against this table before relying on the de-gemination "
+        "guard, or set SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF=0 to fall back to the ratio alone."
+    )
+
+
 def _has_vocabulary_support(token: str) -> bool:
     """Is this token attested as vocabulary elsewhere in the collection?
 
@@ -2175,11 +2258,47 @@ def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
     # cannot tell a convention from a scan error, and on the measured data it
     # does not try to: `ppole` sits at ratio 4.7 and `ssuti` at 5.2.
     #
-    # Absolute frequency does separate them, with a wide margin. A scanning error
-    # appears in a handful of documents; an abbreviation appears in many. On the
-    # 822-document table `ppole` is df 35 while every confirmed artefact --
-    # `oobjekt` 3, `ssutě` 4, `jjámy` 5, `ssutí` 5, `vvkop` 5, `ssuti` 8 -- sits
-    # at or below 8. This cap is the whole of the fix for the ppole error.
+    # Absolute frequency separated them on the 822-document table, with a wide
+    # margin: `ppole` df 35 against every confirmed artefact at 8 or below
+    # (`oobjekt` 3, `ssutě` 4, `jjámy` 5, `ssutí` 5, `vvkop` 5, `ssuti` 8). A gap
+    # of 4.4x, and 10 sits inside it. That is what this cap was fitted to.
+    #
+    # (#30, 2026-09-20.) IT DOES NOT SURVIVE THE FULL-COLLECTION TABLE, and the
+    # run that was supposed to confirm it is the run that refutes it. Stage 07a
+    # looked the same eight tokens up over 113,100 documents / 2,764,632 tokens:
+    #
+    #     token     own df   base df    ratio
+    #     ppole        229      8,600    37.6   <- the ABBREVIATION
+    #     ssuti        195      1,667     8.5
+    #     ssutí        142      1,617    11.4
+    #     ssutě         64        900    14.1
+    #     llocm         55        417     7.6
+    #     vvkop         30      1,400    46.7
+    #     jjámy         10     14,799  1,479.9
+    #     oobjekt        -          -       -   (no longer directly attested)
+    #
+    # Neither axis separates any more. By RATIO `ppole` is fifth of seven, with
+    # four confirmed artefacts BELOW it -- so no ratio threshold works, which is
+    # what this cap already assumed. By OWN DF the 4.4x gap has collapsed to
+    # 1.17x (229 against `ssuti`'s 195): a threshold fitted between them is
+    # fitted to one true positive, not read off a gap.
+    #
+    # The consequence is live rather than theoretical. This constant is an
+    # ABSOLUTE document count, so it is only meaningful against the table it was
+    # calibrated on. At the shipped 10, on the 822-document table, the guard is
+    # right on 7 of 7; on the full-collection table it is right on 2 of 7 --
+    # every artefact except `jjámy` clears 10 and keeps a vocabulary exemption it
+    # should not have. `lexicon_scale_warning()` says so at the point where a
+    # table is configured, because the number cannot say it itself.
+    #
+    # NOT RETUNED HERE, deliberately. Eight tokens, seven of them labelled by one
+    # reading, is not a population to fit a production threshold to, and picking
+    # ~200 off this table would be the fourth time in this issue that a number
+    # was set from the data that was supposed to test it. The separating signal
+    # is per-collection concentration, not a global count -- an artefact belongs
+    # to the scanning run that produced it, an abbreviation does not -- and
+    # `build_token_lexicon.py` already emits per-collection columns to measure
+    # it with. That is an experiment, not an edit.
     if SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF > 0 and df_token > SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF:
         return False
     # Both sides are necessarily present in the table when this fires: the
@@ -3069,14 +3188,60 @@ _DERIVED_FROM_FLAG: dict[str, str] = {
 }
 
 
+#: (#30 D26/D27, 2026-09-20) The SECOND form of the same bug, and the reason
+#: `_DERIVED_FROM_FLAG` above was a fix for one instance rather than for the
+#: class. A module-level constant built once at import is not the only way a
+#: flag's value gets frozen: a ZERO-ARGUMENT `functools.lru_cache` function
+#: freezes it too, on its first call, for the life of the process.
+#:
+#: `quality_word_set()` is exactly that. It reads `QUALITY_VOCABULARY_ENABLE`,
+#: takes no arguments, and is cached at `maxsize=1`. `tools/ab_constant_eval.py`
+#: runs both arms of an A/B IN ONE PROCESS, reference value first, so the
+#: `False` arm caches `None` and the `True` arm is handed the same `None` back.
+#: That is how stage 07b measured `QUALITY_VOCABULARY_ENABLE` true vs false as
+#: bit-identical on all 2,064 gold rows with 0 discordant rows -- the identical
+#: signature 07c produced, from the identical cause, written up at the time as a
+#: population-coverage result rather than as an unarmed flag.
+#:
+#: Registering the flag against the caches it feeds lets `override_constants()`
+#: clear them on the way in AND on the way out, so neither arm inherits the
+#: other's answer. `_read_token_lexicon` and `_compile_vowel_run` need no entry
+#: here: both are keyed on their arguments, so a changed threshold is a changed
+#: cache key and they were never able to go stale.
+#:
+#: Pinned by `test_no_unregistered_zero_arg_cache_reads_a_flag`, which fails if a
+#: new zero-argument cache appears in this module without an entry below.
+_CACHES_FROM_FLAG: dict[str, tuple[str, ...]] = {
+    "QUALITY_VOCABULARY_ENABLE": ("quality_word_set",),
+    # `quality_word_set()` resolves through `token_lexicon()`, so the two keys
+    # that decide WHICH table it gets have to clear it as well -- otherwise an
+    # A/B over the lexicon path or its threshold reads the first arm's table.
+    "SHORT_GARBAGE_LEXICON_PATH": ("quality_word_set",),
+    "SHORT_GARBAGE_LEXICON_MIN_DF": ("quality_word_set",),
+}
+
+
+def _clear_flag_caches(mod, name: str) -> None:
+    """Drop any cached value that was computed from ``name``'s previous value."""
+    for fn_name in _CACHES_FROM_FLAG.get(name, ()):
+        fn = getattr(mod, fn_name, None)
+        clear = getattr(fn, "cache_clear", None)
+        if clear is not None:
+            clear()
+
+
 @contextmanager
 def override_constants(values, modules=None):
     if modules is None:
         modules = (sys.modules[__name__],)
     saved: list[tuple[object, str, object]] = []
+    touched_caches: list[tuple[object, str]] = []
     try:
         for mod in modules:
             for name, value in values.items():
+                if name in _CACHES_FROM_FLAG:
+                    _clear_flag_caches(mod, name)
+                    touched_caches.append((mod, name))
                 if hasattr(mod, name):
                     saved.append((mod, name, getattr(mod, name)))
                     setattr(mod, name, value)
@@ -3096,6 +3261,13 @@ def override_constants(values, modules=None):
     finally:
         for mod, name, old in reversed(saved):
             setattr(mod, name, old)
+        # Clear again on the way out. Anything computed while the override was
+        # active was computed from the overridden value, and the caller is now
+        # back on the shipped one -- leaving it cached would leak the arm's
+        # answer into whatever runs next, which is the same defect one step
+        # later.
+        for mod, name in touched_caches:
+            _clear_flag_caches(mod, name)
 
 
 def compute_quality_score(

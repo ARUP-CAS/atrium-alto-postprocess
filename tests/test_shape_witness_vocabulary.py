@@ -747,3 +747,213 @@ def test_symbol_glyph_stripping_actually_arms_under_override(tmp_path):
     with tu.override_constants({"STRIP_SYMBOL_GLYPHS": False}):
         assert "\u2666" not in tu._STRIP_CHARS
     assert "\u2666" not in tu._STRIP_CHARS
+
+
+# ---------------------------------------------------------------------------
+# The same bug as D27, one step further in (#30, 2026-09-20)
+#
+# `_DERIVED_FROM_FLAG` fixed one way a flag's value gets frozen: a module-level
+# constant built from it at import. There is a second way, and stage 07b walked
+# into it with the identical symptom -- a zero-argument `functools.lru_cache`
+# that reads the flag on its first call and answers from the cache forever
+# after. `ab_constant_eval.py` runs both arms in ONE process, reference first,
+# so the True arm was handed the False arm's cached answer.
+# ---------------------------------------------------------------------------
+
+
+def test_quality_vocabulary_flag_actually_arms_under_override(tmp_path):
+    """The D26 counterpart of `test_symbol_glyph_stripping_actually_arms_under_override`.
+
+    `quality_word_set()` is `lru_cache(maxsize=1)` over a zero-argument function
+    that reads `QUALITY_VOCABULARY_ENABLE`. Without a cache clear the two arms of
+    an in-process A/B cannot differ, which is exactly what stage 07b reported:
+    bit-identical on all 2,064 gold rows, 0 discordant. That was written up as a
+    coverage result. It was an unarmed flag.
+    """
+    path = _table(tmp_path, {"vrstva": 429, "kontext": 216, "malakofauna": 63})
+
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": path}):
+        # Arm 1 is always the reference value, and it populates the cache.
+        with tu.override_constants({"QUALITY_VOCABULARY_ENABLE": False}):
+            off = tu.quality_word_set()
+        # Arm 2 must not inherit it.
+        with tu.override_constants({"QUALITY_VOCABULARY_ENABLE": True}):
+            on = tu.quality_word_set()
+
+        assert off is None, "flag off must yield no word set — that is the shipped behaviour"
+        assert on is not None, "flag on must yield a word set; None here is the 07b bug"
+        assert "malakofauna" in on
+
+    # And the signal it is wired to actually moves, which is the whole point of
+    # D26: shape alone calls pure garbage a perfect line of valid words.
+    garbage = "oueussd edelite sektlll"
+    assert tu.compute_valid_ratio(garbage, None) == 1.00
+    assert tu.compute_valid_ratio(garbage, frozenset({"vrstva", "kontext", "malakofauna"})) == 0.00
+
+
+def test_the_cache_is_cleared_on_the_way_out_too(tmp_path):
+    """Leaving an arm's answer cached is the same defect one step later."""
+    path = _table(tmp_path, {"vrstva": 429})
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": path, "QUALITY_VOCABULARY_ENABLE": True}):
+        assert tu.quality_word_set() is not None
+    # Back on the shipped configuration, and not reading the override's table.
+    assert tu.quality_word_set() is None
+
+
+def test_lexicon_path_and_min_df_also_clear_the_quality_cache(tmp_path):
+    """`quality_word_set()` resolves through `token_lexicon()`.
+
+    So the keys that decide WHICH table it gets have to clear it as well —
+    otherwise an A/B over the path or the threshold reads the first arm's table
+    under the second arm's name.
+    """
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    thin = _table(tmp_path / "a", {"vrstva": 429})
+    thick = _table(tmp_path / "b", {"vrstva": 429, "malakofauna": 63})
+
+    with tu.override_constants({"QUALITY_VOCABULARY_ENABLE": True}):
+        with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": thin}):
+            first = tu.quality_word_set()
+        with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": thick}):
+            second = tu.quality_word_set()
+
+    assert first is not None and second is not None
+    assert "malakofauna" not in first
+    assert "malakofauna" in second, "the second arm read the first arm's table"
+
+
+def test_no_unregistered_zero_arg_cache_reads_a_flag():
+    """A source-level guard, in the same spirit as the five-caller gold test.
+
+    Every `functools.lru_cache` in this module is either keyed on its arguments
+    -- in which case a changed constant is a changed cache key and it cannot go
+    stale -- or takes none, in which case it freezes whatever module state it
+    read first and `override_constants()` has to be told about it. A new
+    zero-argument cache that nobody registers is a new 07b, and it would arrive
+    looking like a clean null result.
+    """
+    import ast
+    import inspect
+
+    source = inspect.getsource(tu)
+    tree = ast.parse(source)
+    registered = {name for names in tu._CACHES_FROM_FLAG.values() for name in names}
+
+    zero_arg_caches = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        cached = any(
+            "lru_cache" in ast.unparse(dec) or "cache" == ast.unparse(dec).split(".")[-1] for dec in node.decorator_list
+        )
+        if not cached:
+            continue
+        takes_no_arguments = not (node.args.args or node.args.posonlyargs or node.args.kwonlyargs)
+        if takes_no_arguments:
+            zero_arg_caches.append(node.name)
+
+    unregistered = sorted(set(zero_arg_caches) - registered)
+    assert not unregistered, (
+        "zero-argument lru_cache(s) not registered in _CACHES_FROM_FLAG: "
+        f"{unregistered}. Either key the cache on the constants it reads, or add it "
+        "to _CACHES_FROM_FLAG so override_constants() can clear it between A/B arms. "
+        "See the 07b write-up in agent_dev_logs/digests/30.digest.md."
+    )
+
+
+# ---------------------------------------------------------------------------
+# The de-gemination cap does not rescale with the table (#30, 2026-09-20)
+# ---------------------------------------------------------------------------
+
+
+#: Stage 07a, 2026-09-19, over 113,100 documents / 2,764,632 tokens. `ppole` is
+#: the one ABBREVIATION (@david-spacil); the other seven are confirmed scanning
+#: artefacts on the same reading.
+FULL_COLLECTION_GEMINATES = {
+    "ppole": (229, 8600),
+    "ssuti": (195, 1667),
+    "ssutí": (142, 1617),
+    "ssutě": (64, 900),
+    "llocm": (55, 417),
+    "vvkop": (30, 1400),
+    "jjámy": (10, 14799),
+}
+ABBREVIATION = "ppole"
+
+
+def test_the_geminate_cap_separates_on_the_table_it_was_fitted_to():
+    """822 documents: `ppole` 35, every confirmed artefact at 8 or below."""
+    thin = {"ppole": 35, "ssuti": 8, "ssutí": 5, "vvkop": 5, "jjámy": 5, "ssutě": 4, "oobjekt": 3}
+    artefacts = {t: df for t, df in thin.items() if t != ABBREVIATION}
+    assert min(thin[ABBREVIATION] for _ in (0,)) > max(artefacts.values())
+    assert max(artefacts.values()) < tu.SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF < thin[ABBREVIATION]
+
+
+def test_the_geminate_cap_does_not_separate_on_the_full_collection_table():
+    """And the run that was meant to confirm it is the run that refutes it.
+
+    Pinned as data rather than prose because the digest stated the opposite for
+    two days -- "`ppole` still sits at the lowest ratio of the eight" -- in the
+    same sentence that listed a range starting below it.
+    """
+    ratios = {t: base / own for t, (own, base) in FULL_COLLECTION_GEMINATES.items()}
+    artefact_ratios = {t: r for t, r in ratios.items() if t != ABBREVIATION}
+
+    # By RATIO the abbreviation is not an outlier: four artefacts sit below it.
+    below = [t for t, r in artefact_ratios.items() if r < ratios[ABBREVIATION]]
+    assert len(below) == 4, f"expected four artefacts below ppole's ratio, got {below}"
+
+    # By OWN DF the 4.4x gap of the thin table has collapsed to 1.17x.
+    own = {t: d for t, (d, _) in FULL_COLLECTION_GEMINATES.items()}
+    artefact_max = max(d for t, d in own.items() if t != ABBREVIATION)
+    assert own[ABBREVIATION] > artefact_max
+    assert own[ABBREVIATION] / artefact_max < 1.2, "a 1.17x margin is fitting, not separating"
+
+    # And the shipped cap, meant for the thin table, is right on 2 of 7 here.
+    def guard_is_correct(token: str, df: int) -> bool:
+        treated_as_artefact = df <= tu.SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF
+        should_be_artefact = token != ABBREVIATION
+        return treated_as_artefact == should_be_artefact
+
+    correct = sum(guard_is_correct(t, d) for t, d in own.items())
+    assert correct == 2, f"expected the shipped cap to be right on 2 of 7 at full scale, got {correct}"
+
+
+def test_geminate_cap_scale_warning_fires_only_when_it_should(tmp_path):
+    def table(documents: int | None) -> str:
+        path = tmp_path / f"lex_{documents}.tsv"
+        header = f"# documents: {documents}  lines: 1\n" if documents is not None else "# no provenance\n"
+        path.write_text(header + "ppole\t229\n", encoding="utf-8")
+        return str(path)
+
+    full = table(113100)
+    assert tu.geminate_cap_scale_warning(lexicon_path=full, max_df=10) is not None
+    assert "113,100" in tu.geminate_cap_scale_warning(lexicon_path=full, max_df=10)
+
+    # The basis itself, and anything within tolerance of it, is fine.
+    assert tu.geminate_cap_scale_warning(lexicon_path=table(822), max_df=10) is None
+    assert tu.geminate_cap_scale_warning(lexicon_path=table(3000), max_df=10) is None
+
+    # Silent when the cap is off, when no table is configured, and when the
+    # table carries no provenance line to read.
+    assert tu.geminate_cap_scale_warning(lexicon_path=full, max_df=0) is None
+    assert tu.geminate_cap_scale_warning(lexicon_path="", max_df=10) is None
+    assert tu.geminate_cap_scale_warning(lexicon_path=table(None), max_df=10) is None
+
+    # Silent on the shipped configuration, like every other advisory here.
+    assert tu.geminate_cap_scale_warning() is None
+
+
+def test_lexicon_document_count_reads_the_provenance_header(tmp_path):
+    path = tmp_path / "lex.tsv"
+    path.write_text(
+        "# token document-frequency table — tools/build_token_lexicon.py v1.0\n"
+        "# documents: 113,100  lines: 72,306,182\n"
+        "# columns: token<TAB>document_frequency\n"
+        "ppole\t229\n",
+        encoding="utf-8",
+    )
+    assert tu.lexicon_document_count(str(path)) == 113100
+    assert tu.lexicon_document_count("") is None
+    assert tu.lexicon_document_count(str(tmp_path / "missing.tsv")) is None

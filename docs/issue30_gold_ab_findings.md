@@ -90,13 +90,13 @@ post-processing, has had its say.
 
 ## 2. The witness works, and it is significant
 
-| arm | macro_f1 | Trash-recall | Clear-loss | verdict |
-|---|---:|---:|---:|---|
-| shipped (witness off) | 0.6173 | 22/180 = 12.2% | 40 | incumbent |
-| **5a — witness on, no lexicon** | **0.6366** | **36/180 = 20.0%** | 42 | best arm |
-| 5a-bis — witness on + vocabulary veto | 0.6338 | 34/180 = 18.9% | 42 | worse on every column |
-| 5b — vowel-run 4 instead of 3 | 0.6319 | 32/180 = 17.8% | 42 | strictly worse |
-| 5c — + unattested-token conviction | 0.6570 | 78/180 = 43.3% | **63** | best macro_f1, worst cost |
+| arm                                   |   macro_f1 |       Trash-recall | Clear-loss | verdict                   |
+|---------------------------------------|-----------:|-------------------:|-----------:|---------------------------|
+| shipped (witness off)                 |     0.6173 |     22/180 = 12.2% |         40 | incumbent                 |
+| **5a — witness on, no lexicon**       | **0.6366** | **36/180 = 20.0%** |         42 | best arm                  |
+| 5a-bis — witness on + vocabulary veto |     0.6338 |     34/180 = 18.9% |         42 | worse on every column     |
+| 5b — vowel-run 4 instead of 3         |     0.6319 |     32/180 = 17.8% |         42 | strictly worse            |
+| 5c — + unattested-token conviction    |     0.6570 |     78/180 = 43.3% |     **63** | best macro_f1, worst cost |
 
 Exact two-sided McNemar for 5a against the shipped labels:
 
@@ -139,10 +139,10 @@ It returns **zero** Clear lines: Clear-loss is 42 with the veto and 42 without.
 
 Set `ppole` aside and the shape witness needs no lexicon at all to look reasonable:
 
-| | lines | Trash confirms | new Clear/Noisy convictions | ratio |
-|---|---:|---:|---:|---|
-| all witnessed | 20,324 | 5,107 | 15,217 | 1:3 against |
-| minus the `ppole` family | 8,634 | 5,102 | 3,532 | **1.44:1 in favour** |
+|                          |  lines | Trash confirms | new Clear/Noisy convictions | ratio                |
+|--------------------------|-------:|---------------:|----------------------------:|----------------------|
+| all witnessed            | 20,324 |          5,107 |                      15,217 | 1:3 against          |
+| minus the `ppole` family |  8,634 |          5,102 |                       3,532 | **1.44:1 in favour** |
 
 The same string distorts the per-clause table. `initial_geminate` reads as a disaster —
 94.6% of its fires are currently Clear — and is 31.6% non-Trash once `ppole` is removed,
@@ -361,3 +361,158 @@ for seven strings and belongs behind its own parity re-score.
 5. **Do not rebuild the lexicon to fix the veto** (§3). Rebuild it if a wider table is
    wanted for other reasons, but `cuxoaid` at df 4 and `Naiade` at df 0 are not a sparsity
    problem and a bigger corpus moves them the wrong way.
+
+---
+
+# Addendum — stage 7 re-read against its own delivery (2026-09-20)
+
+*Sources: `7_logs.log` (07a–07f) and the thirteen CSVs attached to the issue thread on
+2026-09-19, recomputed directly rather than read from the summaries written when they were
+produced. `ufal/atrium-alto-postprocess` at `test` HEAD.*
+
+§0 of this document warned that *"re-running stage 5 on a current checkout is not a
+formality"*. The same warning applies one level up: **re-reading a delivery is not a
+formality either.** Five findings below; three of them overturn a conclusion written into
+the digest, the plan and this file's own §9 between 2026-09-17 and 2026-09-19. All three
+were refuted by evidence that was already inside the delivered logs.
+
+## A1. 07a refutes the de-gemination cap rather than confirming it
+
+The 2026-09-19 write-up says *"D25 holds at full scale"* and *"`ppole` still sits at the
+lowest ratio of the eight"* — in a sentence that then gives the artefact range as starting
+at 7.6×, below `ppole`'s 37.6×. Straight from `07a_geminate_lookup.log`, over 113,100
+documents:
+
+| token                 |  own df | base df |    ratio |
+|-----------------------|--------:|--------:|---------:|
+| **`ppole`** (abbrev.) | **229** |   8,600 | **37.6** |
+| `ssuti`               |     195 |   1,667 |      8.5 |
+| `ssutí`               |     142 |   1,617 |     11.4 |
+| `ssutě`               |      64 |     900 |     14.1 |
+| `llocm`               |      55 |     417 |      7.6 |
+| `vvkop`               |      30 |   1,400 |     46.7 |
+| `jjámy`               |      10 |  14,799 |  1,479.9 |
+
+By ratio `ppole` is fifth of seven. By own document frequency the gap that
+`SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF = 10` was fitted to — 35 against 8 on the
+822-document table, 4.4× — is **1.17×** here.
+
+The consequence is live. The constant is an **absolute document count**, so it does not
+rescale when the lexicon does, and stage 7 configured the bigger table. At `10` on it the
+guard is right on **2 of 7** tokens instead of 7 of 7: every artefact except `jjámy` clears
+the cap and keeps a vocabulary exemption it should not have.
+
+**Not retuned.** Eight tokens, seven labelled from one reading, is not a population to fit a
+production threshold to — and §3 of this document already argued the corresponding point
+about `min_df`. What landed instead: `text_util.geminate_cap_scale_warning()`, corrected
+figures in the code comment and `setup/config.txt`, and tests pinning both tables. The
+separating signal is **per-collection concentration**, for which `build_token_lexicon.py`
+already emits columns.
+
+## A2. 07b is void, and it is 07c's bug one indirection further in
+
+07b and 07c produce **byte-identical tables** — same 513 errors, same 40 Clear-loss, same
+0.2917 cost, same `KL` to five decimals, 0 discordant rows, for two unrelated constants.
+That is not two null results.
+
+`quality_word_set()` is `@functools.lru_cache(maxsize=1)` over a **zero-argument** function
+that reads `QUALITY_VOCABULARY_ENABLE` from module scope. `tools/ab_constant_eval.py` runs
+both arms in one process, reference value first, so the `False` arm caches `None` and the
+`True` arm is handed it back:
+
+```
+arm False -> None
+arm True  -> None          <- the 07b result
+with the cache cleared between arms:
+arm False -> None
+arm True  -> frozenset(...)
+compute_valid_ratio('oueussd edelite sektlll', None)       = 1.00
+compute_valid_ratio('oueussd edelite sektlll', <word set>) = 0.00
+```
+
+`_DERIVED_FROM_FLAG` fixed *one form* of "a flag's value gets frozen" — a module constant
+built at import. A zero-argument cache is the second form and it was already in the tree.
+**Fixed** by `_CACHES_FROM_FLAG` in `override_constants()`, clearing on entry and exit, plus
+a **source-level guard test** that fails if a new zero-argument `lru_cache` appears in
+`text_util` unregistered. `_read_token_lexicon` and `_compile_vowel_run` need no entry: both
+are keyed on their arguments.
+
+**D26 therefore has no measurement at all.** The coverage explanation offered at the time
+may still be true; it is untested.
+
+## A3. The 07f pack is a re-cut of the witness queue, not a second population
+
+All four tabs join back into `04_witness_distinct.csv` at 100%: **2,424 of the same 5,005
+strings, 17,635 of the same 20,078 lines**, re-partitioned by recoverability with tab D
+down-sampled. `07f_annotation_pack.log` says so itself — the 5,005 rows are written first,
+then cut into tabs.
+
+The recoverability cross-tab quoted in the digest has the same scope issue. Its numbers
+reproduce exactly from `07f_distinct_evidence.csv`, so they are correct — but they describe
+the **20,078-line candidate queue**, not the corpus. "743 strings / 1,791 lines currently
+`Trash` are fully recoverable" is a statement about lines the shape witness flags.
+
+Practical effect: the annotation ask was three overlapping requests. Measured, it is **293
+decisions** — 93 census rows reaching 94.8% of at-risk exposure, plus 200 sampled tail rows
+at ±6.9 points. `tools/build_annotation_sample.py` builds them with the frame.
+
+## A4. The de-duplication blast radius is 7 groups / 22 lines
+
+The digest argues that per-line precision does not bound Clear-loss, because the modal dedup
+can carry a correct occurrence down with a convicted one. True, and now sized. From
+`04_witness_candidates.csv`:
+
+| unit                                                |            count |
+|-----------------------------------------------------|-----------------:|
+| lines                                               |           20,078 |
+| (document, string) groups — the dedup's voting unit |            5,222 |
+| unanimous                                           |            5,200 |
+| contested                                           |   22 (755 lines) |
+| **bare plurality or tie**                           | **7 (22 lines)** |
+
+4,903 groups are a single line, and the witness is a pure function of the line's text, so
+within a group it convicts all or none — it cannot create a split.
+
+The delivered discordant files point the same way. Cascade **on** (05a): 14 fixes, **1**
+break. Cascade **off** (05f): 14 fixes, **3** breaks, and the baseline Clear-loss is 55
+rather than 40. **On this gold set the cascade is protective**, which is the opposite of how
+it has been read.
+
+## A5. 07d already reports the adoption gate passing
+
+```
+3.0: macro_f1=0.6344  errors=503  Clear-loss=40  cost=0.2829  -> ADOPT-CANDIDATE
+4.0: macro_f1=0.6324  errors=503  Clear-loss=40  cost=0.2829  -> ADOPT-CANDIDATE (NOT SIGNIFICANT: n=4, p=1)
+```
+
+Against shipped (513 / 40 / 0.2917): errors down 10, cost down, **Clear-loss unchanged**.
+The gate installed in §6 of this document — *"raises neither total errors, operational cost,
+nor Clear-loss"* — is satisfied, and every other account still reads the flag as rejected on
+Clear-loss +1.
+
+Two caveats, which is why this is a run to schedule rather than a result to quote: 07d's base
+configuration is not printed (witness-on with a lexicon is **inferred** from the Trash recall
+matching the veto arms), and both arms are witness-on, so there is no paired test against
+flag-off.
+
+It is also the third distinct figure for the same nominal configuration — 504/42, 502/41,
+503/40 — and that drift has never been root-caused. §9 item 1 predicted *"if Clear-loss comes
+back 40 at Trash-recall 36/180"*. It came back 40 at 34/180, from a different arm than the
+one that prediction was about.
+
+## What follows — stage 8, replacing §9 items 1 and 3
+
+| run    | what                                                                                                                                                          | settles                                                                            |
+|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| **8a** | `ab_constant_eval` over `SHORT_GARBAGE_WITNESS_ENABLE`, `--values false,true`, stage-7 tree, **one output directory**, plus a `--no-postprocessing` companion | A5 and the 42→41→40 drift, together                                                |
+| **8b** | re-run 07b                                                                                                                                                    | D26, which is currently unmeasured                                                 |
+| **8c** | re-run 07c; then per-collection concentration for the eight doubled-initial tokens                                                                            | D27, and whether the de-gemination guard has a portable signal (A1)                |
+| **8d** | `short_garbage_witness_report --by-group`                                                                                                                     | A corpus-wide denominator for the dedup decision, instead of the 22-line local one |
+
+§9 item 3's framing is superseded by A3: the ask is 293 decisions against one population, not
+1,674 against one plus 2,424 against another. §9 items 2, 4 and 5 stand as written.
+
+**One discipline note, because it is the actual finding.** Four of the six instrument-level
+errors this issue has logged, and three of the five above, were refuted by evidence sitting
+in a file that had already been delivered. The log was right every time; the summary of the
+log was not. Read the artefact.

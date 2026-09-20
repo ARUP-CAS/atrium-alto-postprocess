@@ -269,10 +269,25 @@ SHORT_GARBAGE_LEXICON_GEMINATE_RATIO    = 4.0
 # `ppole` came to be convicted. It is not a scanning error: it is the standard
 # Czech abbreviation for `popelnicová pole`, urnfield culture, `pp` doubled for
 # the plural exactly as in `pp.` for pages (@david-spacil, 2026-09-19).
-# Absolute frequency separates them where the ratio cannot: `ppole` is attested in
+# Absolute frequency separated them ON THE 822-DOCUMENT TABLE: `ppole` attested in
 # 35 documents, every confirmed artefact (`oobjekt` 3, `ssutě` 4, `jjámy` 5,
 # `ssutí` 5, `vvkop` 5, `ssuti` 8) in at most 8. A scan error appears in a handful
-# of documents; an abbreviation appears in many. 0 disables the cap.
+# of documents; an abbreviation appears in many. 10 sits in that 4.4x gap.
+#
+# THIS VALUE IS ONLY MEANINGFUL AGAINST THE TABLE IT WAS FITTED TO. It is an
+# absolute document count, so it does not rescale when SHORT_GARBAGE_LEXICON_PATH
+# points somewhere bigger. Stage 07a (2026-09-19) looked the same eight tokens up
+# over the full 113,100-document collection and the separation is gone: `ppole`
+# 229, `ssuti` 195, `ssutí` 142, `ssutě` 64, `llocm` 55, `vvkop` 30, `jjámy` 10.
+# The gap is 1.17x rather than 4.4x, and by RATIO `ppole` is fifth of seven with
+# four confirmed artefacts below it. At 10 on that table the guard is right on 2
+# of 7 tokens instead of 7 of 7.
+# text_util.geminate_cap_scale_warning() says so on stderr when the configured
+# table is more than 4x the calibration corpus. Left at 10 deliberately: eight
+# tokens is not a population to re-fit a production threshold to, and the
+# separating signal is per-collection concentration (which build_token_lexicon.py
+# already emits columns for), not a global count. 0 disables the cap and falls
+# back to the ratio alone.
 SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF   = 10
 # (#30 D26) Feed the corpus lexicon to compute_valid_ratio as its `word_set`.
 # That function has always taken one and production has never passed one, so it
@@ -282,8 +297,14 @@ SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF   = 10
 # SHIPS FALSE: arming it moves quality_score on every line in the corpus.
 # Known incomplete while off -- exact attestation only, so a damaged-but-readable
 # line like `1 fraament okraie` ("1 fragment okraje") scores 0 alongside real
-# garbage. Stage 07b measures whether that gap costs anything before a neighbour
-# index is built into production.
+# garbage. Stage 07b was supposed to measure whether that gap costs anything
+# before a neighbour index is built into production.
+# IT DID NOT, AND THE REPORTED FIGURE IS VOID. 07b came back bit-identical on all
+# 2,064 gold rows with 0 discordant rows -- the same signature 07c produced, from
+# the same cause. `quality_word_set()` is a ZERO-ARGUMENT lru_cache, so it froze
+# the flag's value on its first call and the A/B's second arm was handed the first
+# arm's answer. Fixed 2026-09-20 by `_CACHES_FROM_FLAG` in override_constants();
+# 07b needs re-running before this constant's effect is known either way.
 QUALITY_VOCABULARY_ENABLE               = false
 # (#30 D27) Strip bullet and marker glyphs (♦ ✓ ■ • …) alongside punctuation. The
 # built table ends in `♦zkoumaná`, `✓stopy`, `•nevelká`: a marker fused to a real
