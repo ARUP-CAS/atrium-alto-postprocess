@@ -411,7 +411,50 @@ mismatched tag, so the bump precedes the tag. #30's PR [#48](https://github.com/
 is **open as a draft** and unmerged: the shape witness therefore ships **inert**. Merging it flips the three
 new golden pins to `Clear`, which is why they were written to be able to see it.
 
+## 2026-09-20
+- **#30** — **Stage 7 re-read against its own delivery**, rather than against the summaries written when it ran.
+The thirteen CSVs and two logs attached to the thread on 2026-09-19 were pulled down and recomputed. Five findings
+(S1–S5 in `digests/30.digest.md`); three overturn a decision cell in `plans/30.plan.md`, and all three were
+refuted by evidence that was already inside the delivered logs.
+* **S1 — D25 fails at full scale, and 07a is the run that refutes it.** The de-gemination cap was fitted to a
+4.4× gap on the 822-document table (`ppole` df 35, every confirmed artefact ≤ 8). Over 113,100 documents the gap
+is **1.17×** (229 against `ssuti`'s 195), and by *ratio* `ppole` is **fifth of seven** with four artefacts below
+it. The constant is an ABSOLUTE document count, so it does not rescale with the lexicon: at the shipped `10` on
+the full table the guard is right on **2 of 7** tokens instead of 7 of 7. Value deliberately unchanged — eight
+tokens is not a population to fit a production threshold to. New `geminate_cap_scale_warning()` says so on
+stderr; both tables pinned by tests; the portable signal (per-collection concentration) is stage 8c.
+* **S2 — 07b is void, and it is the 07c bug one indirection in.** 07b and 07c produced *byte-identical* tables
+for two unrelated constants, `KL` to five decimals included. `quality_word_set()` is a zero-argument
+`functools.lru_cache`; `ab_constant_eval.py` runs both arms in one process; the `True` arm read the `False`
+arm's cached `None`. `_DERIVED_FROM_FLAG` had fixed one *form* of flag-freezing (a module constant built at
+import) and this was the other form, already in the tree. Fixed by `_CACHES_FROM_FLAG` in `override_constants()`
+plus a **source-level guard test** that fails when a new zero-argument cache appears unregistered. D26 therefore
+has no measurement at all — not a null one.
+* **S3 — the 07f annotation pack is a re-cut of the witness queue, not a second population.** All four tabs join
+back at 100%: 2,424 of the same 5,005 strings, 17,635 of the same 20,078 lines. H1/H2/H3 had been asking for the
+same work three times. New `tools/build_annotation_sample.py` sizes the real ask at **293 decisions** — 93
+census rows reaching 94.8% of at-risk exposure exactly, 200 sampled tail rows at ±6.9 points — with the sampling
+frame written beside them, because a sample without its frame is 200 anecdotes.
+* **S4 — the modal-dedup blast radius is 7 groups / 22 lines.** Of the 5,222 (document, string) votes behind the
+queue, 5,200 are unanimous and 4,903 are a single line; 22 are contested and only **7** rest on a bare plurality.
+And the cascade is *protective* here: cascade on, the witness breaks **1** line; cascade off, **3**, with the
+baseline `Clear`-loss 55 instead of 40. H8 option 2 is now a production-wide change motivated by 22 local lines.
+* **S5 — 07d already reports the adoption gate passing.** Both arms print `-> ADOPT-CANDIDATE` at 503 errors /
+`Clear`-loss **40** / cost 0.2829 against shipped 513 / 40 / 0.2917. Every other account still reads the flag as
+rejected on `Clear`-loss +1. It is also the third distinct figure for the same nominal config (42 → 41 → 40),
+never root-caused. **Stage 8a** — one A/B over `SHORT_GARBAGE_WITNESS_ENABLE` on the stage-7 tree from one
+output directory — settles both in one run, and needs no annotation, no GPU and neither collaborator.
+* **Collaborator-facing docs**, written at B2+ English for readers who have not followed the thread:
+`docs/issue30_annotation_guide.md` (@DanaKriv — the 293 decisions, how to read the evidence columns, and the two
+questions that are not in the files) and `docs/issue30_review_request.md` (@david-spacil — the 503/40
+sanity-check, the dedup decision costed on both sides, the 508 re-score, and the eight doubled-initial tokens at
+full scale, which only he can label).
+* **State**: no categorisation change. Every flag involved still ships `false`, and the flag-off re-score of the
+sample CSVs moves **0 categories**. Suite **1252 → 1273** passing, 0 failed, `ruff` clean. Stage 6 still running;
+stage 8 (a–d) specified and not started.
+
 ---
 _Timeline index refreshed 2026-09-09 against live `test`/`master` HEAD, the current release list, open-issue state
-via the GitHub API, and the refreshed `30.digest.md`/`37.digest.md`. Nothing removed from the issues themselves
+via the GitHub API, and the refreshed `30.digest.md`/`37.digest.md`; 2026-09-20 entry appended from the stage-7
+re-read (v1.5.0-beta is now the current tag). Nothing removed from the issues themselves
 (per hub #29); this file is a derived reading aid in `agent_dev_logs/`._
