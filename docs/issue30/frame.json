@@ -1,0 +1,26 @@
+[
+  {
+    "stratum": "at_risk/full",
+    "strings_in_stratum": 535,
+    "lines_in_stratum": 633,
+    "sampled": 71,
+    "sampling_weight": 7.5352,
+    "half_width_95pct_points": 11.6
+  },
+  {
+    "stratum": "at_risk/none",
+    "strings_in_stratum": 606,
+    "lines_in_stratum": 617,
+    "sampled": 81,
+    "sampling_weight": 7.4815,
+    "half_width_95pct_points": 10.9
+  },
+  {
+    "stratum": "at_risk/partial",
+    "strings_in_stratum": 365,
+    "lines_in_stratum": 403,
+    "sampled": 48,
+    "sampling_weight": 7.6042,
+    "half_width_95pct_points": 14.1
+  }
+]
