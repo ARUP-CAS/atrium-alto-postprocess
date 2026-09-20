@@ -714,3 +714,36 @@ def test_symbol_glyph_stripping_ships_off():
         assert glyph not in tu._STRIP_CHARS, "a symbol glyph reached the shipped strip set"
     # The constant exists and is non-empty, so arming it is a config change only.
     assert set("♦✓■•") <= set(tu._SYMBOL_GLYPHS)
+
+
+def test_symbol_glyph_stripping_actually_arms_under_override(tmp_path):
+    """`_STRIP_CHARS` is DERIVED from the flag, built once at import time, and
+    `override_constants()` only setattrs the names it is given -- so overriding
+    `STRIP_SYMBOL_GLYPHS` alone used to be a silent no-op: the flag moved, the
+    strip set it is supposed to feed never did, and `.strip(_STRIP_CHARS)` at
+    every call site never saw the difference.
+
+    This is exactly how `tools/ab_constant_eval.py` measured `STRIP_SYMBOL_GLYPHS`
+    true vs false as bit-identical on all 2,064 gold rows (issue #30 stage 07c) --
+    not because the flag is inert on this population, but because the harness
+    could not arm it at all. `_DERIVED_FROM_FLAG` closes that gap.
+    """
+    marker = "\u2666zkoumaná"  # ♦zkoumaná — the corpus's own case: a marker fused to a real word
+    assert marker.strip(tu._STRIP_CHARS) == marker, "premise: unarmed, the glyph is not stripped"
+
+    with tu.override_constants({"STRIP_SYMBOL_GLYPHS": True}):
+        assert tu.STRIP_SYMBOL_GLYPHS is True
+        assert "\u2666" in tu._STRIP_CHARS, "_STRIP_CHARS must pick up the glyph set once the flag is armed"
+        assert marker.strip(tu._STRIP_CHARS) == "zkoumaná"
+
+    # Restores cleanly, same as every other constant override_constants() touches.
+    assert tu.STRIP_SYMBOL_GLYPHS is False
+    assert "\u2666" not in tu._STRIP_CHARS
+    assert marker.strip(tu._STRIP_CHARS) == marker
+
+    # Round-trip the other direction: forcing False from a False baseline (a
+    # no-op arm, as ab_constant_eval.py's reference value always is) must not
+    # accidentally strip anything extra or corrupt the saved/restored value.
+    with tu.override_constants({"STRIP_SYMBOL_GLYPHS": False}):
+        assert "\u2666" not in tu._STRIP_CHARS
+    assert "\u2666" not in tu._STRIP_CHARS

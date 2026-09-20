@@ -3051,6 +3051,24 @@ def is_non_text(text: str) -> bool:
     return False
 
 
+#: (#30 D27, 2026-09-19) `STRIP_SYMBOL_GLYPHS` -> `_STRIP_CHARS` is a DERIVED
+#: constant: `_STRIP_CHARS` is built once at import time from the flag (see the
+#: `if STRIP_SYMBOL_GLYPHS:` line above `_STRIP_CHARS`'s declaration), the same
+#: way `ROT_GHOSTLIST` and `_LANG_DIACRITICS` are built once from their own
+#: sources -- but unlike those two, it was never added to the "not rebuilt by
+#: `override_constants()`" list, so overriding the flag alone was a silent
+#: no-op. This is exactly how `tools/ab_constant_eval.py` measured
+#: `STRIP_SYMBOL_GLYPHS` true vs false as bit-identical on every one of the
+#: 2,064 gold rows (issue #30 stage 07c): the flag moved, `_STRIP_CHARS` did
+#: not, and every `.strip(_STRIP_CHARS)` call site downstream never saw the
+#: difference. Mapping a flag name to the derived attribute it feeds lets
+#: `override_constants()` rebuild it in the same pass, restored the same way
+#: everything else here already is.
+_DERIVED_FROM_FLAG: dict[str, str] = {
+    "STRIP_SYMBOL_GLYPHS": "_STRIP_CHARS",
+}
+
+
 @contextmanager
 def override_constants(values, modules=None):
     if modules is None:
@@ -3062,6 +3080,18 @@ def override_constants(values, modules=None):
                 if hasattr(mod, name):
                     saved.append((mod, name, getattr(mod, name)))
                     setattr(mod, name, value)
+                derived_name = _DERIVED_FROM_FLAG.get(name)
+                if derived_name is None or not hasattr(mod, derived_name) or not hasattr(mod, "_SYMBOL_GLYPHS"):
+                    continue
+                base = getattr(mod, derived_name)
+                glyphs = mod._SYMBOL_GLYPHS
+                extended = base.endswith(glyphs) and glyphs != ""
+                if value and not extended:
+                    saved.append((mod, derived_name, base))
+                    setattr(mod, derived_name, base + glyphs)
+                elif not value and extended:
+                    saved.append((mod, derived_name, base))
+                    setattr(mod, derived_name, base[: -len(glyphs)])
         yield
     finally:
         for mod, name, old in reversed(saved):
