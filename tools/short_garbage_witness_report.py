@@ -69,6 +69,15 @@ USAGE
     # ad-hoc: one line per row of a plain text file (no CSV schema needed)
     python3 tools/short_garbage_witness_report.py --lines /tmp/probe.txt
 
+    # BOTH COLLECTIONS in one invocation (#30 stage 8). --input-dir repeats.
+    # There is no common parent holding only these two, and a staging directory
+    # of symlinks does NOT work: pathlib's `**` glob does not follow directory
+    # symlinks, so it would read zero rows and not fail.
+    python3 tools/short_garbage_witness_report.py \
+        --input-dir ../ARUP/DOC_LINE_CATEG_307 \
+        --input-dir ../ARUB/DOC_LINE_CATEG_307 \
+        --distinct queue.csv --by-group groups.csv
+
 Stdlib only (`csv`, not pandas), so it runs anywhere `text_util` imports.
 """
 
@@ -178,9 +187,23 @@ def _iter_plain_lines(path: Path):
             yield (path.stem, "", ""), text, None, "?"
 
 
-def _collect_csvs(path: Path) -> list[Path]:
+def _collect_csvs(path: Path, recursive: bool = False) -> list[Path]:
+    """Every document CSV under ``path``. ``recursive`` walks sub-directories.
+
+    (#30 stage 8.) The non-recursive default is the same gap
+    ``recategorize_from_csv.py --recursive`` was added to close, and it bites the
+    same way: a two-archive layout (``ARUP/`` and ``ARUB/`` under one parent) is
+    how "all of the collections" is spelled on the cluster, and a bare
+    ``*.csv`` glob over that parent matches nothing at all.
+
+    It does NOT report success on nothing -- ``main()`` refuses an empty match --
+    so the failure mode here is a refusal rather than a plausible zero. That is
+    the only reason this was survivable; it still meant the corpus-scale exposure
+    figures could not be produced in one invocation.
+    """
     if path.is_dir():
-        return sorted(p for p in path.glob("*.csv") if p.is_file())
+        pattern = "**/*.csv" if recursive else "*.csv"
+        return sorted(p for p in path.glob(pattern) if p.is_file())
     return [path]
 
 
@@ -266,6 +289,153 @@ def _write_distinct(path: Path, witnessed_rows: list) -> None:
     print(f"  queue with:  --from-distinct {path} --out <sidecar>.csv")
 
 
+#: Categories in the order `pandas.Series.mode()` sorts them. This is not a
+#: stylistic choice and it decides real lines: `apply_document_postprocessing()`
+#: resolves a document's repeated text with `x.mode()[0]`, and `mode()` returns
+#: its tied values SORTED, so `[0]` is the alphabetically first of them.
+#: `Clear` < `Empty` < `Noisy` < `Non-text` < `Trash`, so a TIE CAN NEVER LAND
+#: ON `Trash` -- an accident of the alphabet that happens to be the safe
+#: direction, and which nothing in the code says out loud.
+_MODE_TIE_ORDER = ("Clear", "Empty", "Noisy", "Non-text", "Trash")
+
+
+def _vote(counts: Counter) -> tuple[str, str]:
+    """(shape, winner) for one (document, string) group under the modal dedup.
+
+    ``shape`` is ``unanimous`` / ``strict majority`` / ``bare plurality`` /
+    ``tie``; ``winner`` is the category ``mode()[0]`` would actually pick.
+    """
+    if len(counts) == 1:
+        only = next(iter(counts))
+        return "unanimous", only
+    total = sum(counts.values())
+    top = max(counts.values())
+    tied = sorted((c for c, n in counts.items() if n == top), key=lambda c: (c not in _MODE_TIE_ORDER, c))
+    winner = tied[0]
+    if len(tied) > 1:
+        return "tie", winner
+    return ("strict majority" if top > total / 2 else "bare plurality"), winner
+
+
+def _write_by_group(path: Path | None, witnessed_rows: list) -> None:
+    """The modal dedup's blast radius, in the unit the dedup actually votes in.
+
+    (#30 stage 8, H6.) Issue #30 has argued for weeks that **per-line precision
+    does not bound Clear-loss**, because `apply_document_postprocessing()`
+    rewrites every occurrence of a repeated string in a document to that
+    string's modal category -- so convicting a few occurrences can flip the vote
+    and carry a correct one down with it. The mechanism is real. Its SIZE has
+    never been measured, and the decision it is supposed to inform (stop a bare
+    plurality demoting `Clear` -> `Trash`?) is a production-wide change.
+
+    This reports it. The unit is the **(document, string) group**, because that
+    is what `groupby("text")` inside one document's frame votes on, and the
+    witness is a pure function of the line's text -- so within a group it
+    convicts ALL or NONE. It cannot create a split; it can only move a group
+    that was already split, or move a unanimous group wholesale.
+
+    Two numbers matter and neither is the group count:
+
+      * **groups whose vote lands on `Trash` while some member is `Clear`** --
+        the lines the cascade destroys, and
+      * **groups whose vote lands off `Trash` while some member is `Trash`** --
+        the lines it rescues.
+
+    On the 822-document queue those were 5 groups / 17 Clear lines against 17
+    groups / 31 Trash lines: the cascade is NET PROTECTIVE on this population,
+    which is the opposite of how the mechanism has been read. Whether that
+    survives at collection scale is what this flag exists to answer.
+
+    ONE LIMIT, STATED HERE BECAUSE IT IS EASY TO FORGET. `categ` in a delivered
+    `DOC_LINE_CATEG` CSV is POST-cascade: the vote has already run. A group the
+    dedup unified reads as unanimous here, so the contested count is a LOWER
+    BOUND on how much the vote actually decided. For the pre-cascade picture,
+    re-score with `recategorize_from_csv.py --no-postprocessing --out DIR` and
+    point this flag at `DIR`.
+    """
+    groups: dict[tuple[str, str], Counter] = {}
+    for (file_id, _page, _line), verdict, categ in witnessed_rows:
+        groups.setdefault((file_id, verdict["text"]), Counter())[categ] += 1
+
+    shapes: Counter = Counter()
+    shape_lines: Counter = Counter()
+    sizes: Counter = Counter()
+    contested: list[tuple] = []
+    for (file_id, text), counts in groups.items():
+        n = sum(counts.values())
+        shape, winner = _vote(counts)
+        shapes[shape] += 1
+        shape_lines[shape] += n
+        sizes[_band(n)] += n
+        if shape != "unanimous":
+            mix = "|".join(f"{c}:{k}" for c, k in counts.most_common())
+            contested.append((file_id, text, n, shape, mix, winner, counts))
+
+    n_groups = len(groups)
+    n_lines = sum(sum(c.values()) for c in groups.values())
+    print("\n=== (document, string) groups — what the modal dedup votes on ===")
+    print(f"  lines                        {n_lines:8d}")
+    print(f"  (document, string) groups    {n_groups:8d}")
+    print(f"  {'shape':18} {'groups':>8} {'lines':>9}")
+    for shape in ("unanimous", "strict majority", "bare plurality", "tie"):
+        if shapes[shape]:
+            print(f"  {shape:18} {shapes[shape]:8d} {shape_lines[shape]:9d}")
+
+    print("\n=== group size — where the blast radius actually is ===")
+    print(f"  {'lines per group':18} {'lines':>9} {'share':>7}")
+    for band in _SIZE_BANDS:
+        if sizes[band]:
+            print(f"  {band:18} {sizes[band]:9d} {sizes[band] / n_lines if n_lines else 0:6.1%}")
+
+    destroys = [c for c in contested if c[5] == "Trash" and c[6].get("Clear", 0)]
+    rescues = [c for c in contested if c[5] != "Trash" and c[6].get("Trash", 0)]
+    clear_lost = sum(c[6].get("Clear", 0) for c in destroys)
+    trash_saved = sum(c[6].get("Trash", 0) for c in rescues)
+    bare = [c for c in destroys if c[3] == "bare plurality"]
+
+    print("\n=== what the vote does to contested groups ===")
+    print(f"  vote lands on Trash, carrying Clear down : {len(destroys):6d} group(s), {clear_lost:6d} Clear line(s)")
+    print(f"  vote lands off Trash, lifting Trash out  : {len(rescues):6d} group(s), {trash_saved:6d} Trash line(s)")
+    print(
+        f"  NET                                      : {trash_saved - clear_lost:+6d} line(s) in the cascade's favour"
+    )
+
+    print("\n=== H6 option 2: stop a BARE PLURALITY demoting Clear -> Trash ===")
+    print(f"  groups that change under that rule       : {len(bare):6d}")
+    print(f"  Clear lines it would save                : {sum(c[6].get('Clear', 0) for c in bare):6d}")
+    print("  A TIE is already safe and cannot be part of this: apply_document_postprocessing()")
+    print("  resolves with `x.mode()[0]`, mode() returns its tied values SORTED, and")
+    print("  'Clear' < 'Noisy' < 'Trash' — so a tie never lands on Trash. That is an")
+    print("  accident of the alphabet, not a design, and it is load-bearing.")
+    print("  Read this against the NET line above before changing production: on the")
+    print("  822-document queue the cascade rescued 31 Trash lines to destroy 17 Clear ones.")
+
+    if path is None:
+        return
+    if _refuses_gold_dir(path, "--by-group"):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["file", "text", "lines", "vote_shape", "categ_mix", "dedup_winner", "clear_at_risk"])
+        for file_id, text, n, shape, mix, winner, counts in sorted(contested, key=lambda r: (-r[2], r[0])):
+            writer.writerow([file_id, text, n, shape, mix, winner, counts.get("Clear", 0) if winner == "Trash" else 0])
+    print(f"\nwrote {len(contested)} contested group(s) to {path}")
+    print("  Carries line text — keep it on the cluster, like the annotation queues.")
+
+
+#: Size bands for the blast-radius table. Open-ended at the top because one
+#: string (`ppole`) held 11,562 lines of the 822-document queue on its own.
+_SIZE_BANDS = ("1", "2", "3-4", "5-9", "10-19", "20-49", "50-99", "100+")
+
+
+def _band(n: int) -> str:
+    for edge, label in ((1, "1"), (2, "2"), (4, "3-4"), (9, "5-9"), (19, "10-19"), (49, "20-49"), (99, "50-99")):
+        if n <= edge:
+            return label
+    return "100+"
+
+
 def _read_filled_distinct(path: Path) -> dict[str, str]:
     """Read a filled --distinct file into {text: gold_categ}, skipping blanks."""
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
@@ -292,7 +462,18 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     parser.add_argument("path", nargs="?", help="DOC_LINE_CATEG CSV file or directory of them")
-    parser.add_argument("--input-dir", help="Alias for the positional path (a directory).")
+    parser.add_argument(
+        "--input-dir",
+        action="append",
+        metavar="DIR",
+        help=(
+            "A directory of DOC_LINE_CATEG CSVs. REPEATABLE: give it once per archive to read "
+            "both collections in one invocation. That is the only safe way to say 'all of the "
+            "documents' -- the two archives have no common parent that holds nothing else, and "
+            "a staging directory of symlinks does NOT work, because pathlib's `**` glob does not "
+            "follow directory symlinks and would return zero rows without failing."
+        ),
+    )
     parser.add_argument("--lines", help="Plain text file, one candidate line per row (no CSV schema).")
     parser.add_argument("--out", help="Write the witnessed candidate lines to this CSV, for annotation.")
     parser.add_argument(
@@ -314,6 +495,28 @@ def main(argv: list[str] | None = None) -> int:
             "that turns string-level decisions back into (file, page_num, line_num) rows."
         ),
     )
+    parser.add_argument(
+        "--by-group",
+        metavar="PATH",
+        nargs="?",
+        const="",
+        help=(
+            "Report the modal dedup's blast radius in (document, string) groups -- the unit "
+            "apply_document_postprocessing() actually votes in -- and write the contested groups "
+            "to PATH. Give the flag with no PATH for the summary only. This is the corpus-wide "
+            "denominator issue #30's dedup decision (H6) has never had: the mechanism is argued "
+            "from, the size is not measured."
+        ),
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Recurse into sub-directories. The default `*.csv` glob matches nothing at all over a "
+            "two-archive parent (ARUP/ and ARUB/), which is how 'all of the collections' is spelled "
+            "on the cluster -- the same gap recategorize_from_csv.py --recursive exists to close."
+        ),
+    )
     parser.add_argument("--examples", type=int, default=0, metavar="N", help="Print up to N examples per clause.")
     parser.add_argument(
         "--all-lengths",
@@ -322,15 +525,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.by_group is not None and args.lines:
+        parser.error("--by-group needs document locators; it cannot run on --lines input")
+
     if args.lines:
         source = _iter_plain_lines(Path(args.lines))
     else:
-        target = args.input_dir or args.path
-        if not target:
+        targets = list(args.input_dir or ([args.path] if args.path else []))
+        if not targets:
             parser.error("give a CSV path, --input-dir, or --lines")
-        csvs = _collect_csvs(Path(target))
-        if not csvs:
-            parser.error(f"no CSV files found under {target}")
+        csvs = []
+        for target in targets:
+            found = _collect_csvs(Path(target), recursive=args.recursive)
+            # Per-root, so a typo in ONE of two archives is a named failure and
+            # not a halved corpus reported as a result. Every corpus-scale figure
+            # this tool produces is only as complete as this list.
+            print(f"  corpus: {target} -> {len(found)} document CSV(s)", file=sys.stderr)
+            if not found:
+                hint = "" if args.recursive else " (a nested layout needs --recursive)"
+                parser.error(f"no CSV files found under {target}{hint}")
+            csvs.extend(found)
+        if len({p.resolve() for p in csvs}) != len(csvs):
+            parser.error("the same document CSV was reached through more than one --input-dir")
         source = _iter_csv_rows(csvs)
 
     total = 0
@@ -425,6 +641,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  [{clause}]")
                 for text in examples[clause]:
                     print(f"    {text!r}")
+
+    if args.by_group is not None:
+        _write_by_group(Path(args.by_group) if args.by_group else None, witnessed_rows)
 
     if args.distinct:
         distinct_path = Path(args.distinct)

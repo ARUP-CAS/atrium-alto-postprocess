@@ -449,9 +449,35 @@ output directory — settles both in one run, and needs no annotation, no GPU an
 questions that are not in the files) and `docs/issue30_review_request.md` (@david-spacil — the 503/40
 sanity-check, the dedup decision costed on both sides, the 508 re-score, and the eight doubled-initial tokens at
 full scale, which only he can label).
+* **Stage 8 written and dry-run green**, as `issue30_stage8_job.sh` (cluster-side, like the stage-6 and stage-7
+jobs — not a repo file). Eight stages: 08a the gold join plus the geminates' per-collection split (D30's
+experiment, seconds, and it reads columns already in the table); **08b the decisive witness-flag A/B** that S5
+says may already pass the adoption gate; 08c the same with the cascade off; 08d/08e the two void re-runs;
+**08f the only stage that genuinely needs every document** — witness exposure, the annotation queue and the
+dedup groups over BOTH archives; 08g the 293-decision ask built from that real queue; 08h opt-in, the
+pre-cascade frame. The gold-scored A/Bs deliberately run on the 822-document gold corpus: `--gold-column`
+scores only the annotated rows and `recategorize_dataframe` is per-document, so the collections would give the
+same numbers 5.7x slower. Validated against a synthetic two-archive layout: seven stages OK, every stage SKIPs
+on re-submit, `FORCE=<stage>` re-runs exactly one, a wrong archive path exits 2 before anything runs, and
+deleting `_CACHES_FROM_FLAG` from the tree makes it refuse to start.
+* **Three CLI gaps closed so stage 8 could exist at all (D31).** `--input-dir` on the witness report now
+REPEATS, because "all of the collection documents" was not sayable: there is no common parent holding only
+ARUP and ARUB, and a staging directory of symlinks **silently reads zero** —
+`pathlib.Path.glob("**/*.csv")` does not follow directory symlinks before Python 3.13 and does not fail.
+Verified on the venv's 3.11 and pinned by a test that will fail if a future Python fixes it. Also `--recursive`,
+`--by-group` (the dedup's blast radius in the unit it votes in), and `--no-postprocessing` on the re-scorer so
+the pre-cascade frame can be written rather than only scored.
+* **S4 corrected by reading the implementation rather than the mechanism.** The modal dedup resolves with
+`x.mode()[0]`, and `mode()` returns its tied values **sorted** — so a tie takes the alphabetically first
+category and `Clear` < `Noisy` < `Trash`. **A tie can never demote to `Trash`.** Recomputed: of 5,222
+(document, string) votes, 5,200 unanimous, 15 strict majority, 7 tie, and **0 bare plurality**. The vote
+destroys **17 `Clear`** lines and rescues **31 `Trash`** ones, net **+14** in the cascade's favour. So H6/H8
+option 2 — "stop a bare plurality demoting `Clear` → `Trash`" — is a **no-op**: the case it removes does not
+occur. The earlier S4 figure ("7 groups / 22 lines") conflated ties with bare pluralities and did not check
+where a tie lands.
 * **State**: no categorisation change. Every flag involved still ships `false`, and the flag-off re-score of the
-sample CSVs moves **0 categories**. Suite **1252 → 1273** passing, 0 failed, `ruff` clean. Stage 6 still running;
-stage 8 (a–d) specified and not started.
+sample CSVs moves **0 categories**. Suite **1252 → 1288** passing, 0 failed, `ruff` clean. Stage 6 still
+running; stage 8 written, validated and not yet submitted.
 
 ---
 _Timeline index refreshed 2026-09-09 against live `test`/`master` HEAD, the current release list, open-issue state

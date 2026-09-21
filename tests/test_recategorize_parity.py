@@ -408,3 +408,96 @@ def test_report_document_aware_parity_violations(corpus):
             print(f"  L{line_num}: {row['stored_category']} -> {row['predicted_category']} | {text[:300]}")
 
     print("\n==========================================")
+
+
+# ── --no-postprocessing: producing the PRE-cascade frame (#30 stage 8) ──────
+#
+# `recategorize_dataframe` has always taken `apply_postprocessing`, and
+# `ab_constant_eval.py` has exposed it since stage 5f — but only to SCORE with.
+# The re-scorer itself never exposed it, so the pre-cascade frame could not be
+# WRITTEN. That matters because a delivered DOC_LINE_CATEG carries post-cascade
+# labels: every group-level reading of the modal dedup made against one sees
+# only what the vote left behind, and reads a group the dedup unified as
+# unanimous.
+
+
+def _one_document_csv(tmp_path, rows):
+    """A document where the modal dedup has something to do: repeated text."""
+    import csv as _csv
+
+    path = tmp_path / "CTX000000009.csv"
+    header = [
+        "file",
+        "page_num",
+        "line_num",
+        "text",
+        "word_count",
+        "categ",
+        "quality_score",
+        "perplex",
+        "lang_score",
+        "orig_lang_score",
+        "original_lang",
+        "rot_ratio",
+        "word_weird",
+        "garbage_density",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = _csv.writer(fh)
+        w.writerow(header)
+        for i, (text, categ, qs) in enumerate(rows, start=1):
+            w.writerow(
+                [
+                    "CTX000000009",
+                    "1",
+                    str(i),
+                    text,
+                    str(len(text.split())),
+                    categ,
+                    qs,
+                    "500.0",
+                    "0.9",
+                    "0.9",
+                    "ces_Latn",
+                    "0.0",
+                    "0.0",
+                    "0.0",
+                ]
+            )
+    return path
+
+
+def test_rescore_csv_can_skip_the_cascade(tmp_path):
+    """The same document, scored both ways, must differ only by the smoothing."""
+    src = _one_document_csv(
+        tmp_path,
+        [("vrstva 3", "Clear", "0.85"), ("vrstva 3", "Trash", "0.20"), ("vrstva 3", "Clear", "0.85")],
+    )
+    _, with_cascade = R.rescore_csv(src, None, apply_postprocessing=True)
+    _, without = R.rescore_csv(src, None, apply_postprocessing=False)
+
+    assert len(with_cascade) == len(without) == 3
+    # The dedup harmonises identical text to its modal category, so the
+    # with-cascade frame must be uniform on that text and the pre-cascade one
+    # need not be. That difference IS the cascade.
+    assert with_cascade["categ"].nunique() == 1, "the modal dedup must unify identical text"
+    assert "pp_dedup" in with_cascade.columns
+
+
+def test_no_postprocessing_defaults_to_on_so_the_shipped_path_is_unchanged(tmp_path):
+    src = _one_document_csv(tmp_path, [("vrstva 3", "Clear", "0.85"), ("vrstva 3", "Trash", "0.20")])
+    _, default = R.rescore_csv(src, None)
+    _, explicit = R.rescore_csv(src, None, apply_postprocessing=True)
+    assert list(default["categ"]) == list(explicit["categ"]), "the default must remain the production path"
+
+
+def test_the_cli_exposes_the_flag():
+    """A source-level check, in the same spirit as the five-caller gold test.
+
+    The flag existing on `recategorize_dataframe` while the CLI hides it is how
+    stage 8 came to need a code change to ask a question the library could
+    already answer.
+    """
+    body = Path(R.__file__).read_text(encoding="utf-8")
+    assert '"--no-postprocessing"' in body
+    assert "apply_postprocessing=not args.no_postprocessing" in body

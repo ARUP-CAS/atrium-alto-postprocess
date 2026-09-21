@@ -233,3 +233,188 @@ def test_every_clause_name_is_still_reachable(text, clause):
     have made one unreachable. This is the check that it did not.
     """
     assert clause in R.clauses_for_line(text)
+
+
+# ---------------------------------------------------------------------------
+# --recursive: the two-archive layout (#30 stage 8)
+#
+# "All of the collections" is spelled ARUP/ and ARUB/ under one parent on the
+# cluster. A bare `*.csv` glob over that parent matches nothing, which is the
+# same gap `recategorize_from_csv.py --recursive` exists to close. The refusal
+# below is what made it survivable — it is a refusal, not a plausible zero —
+# but the corpus-scale figures still could not be produced in one invocation.
+# ---------------------------------------------------------------------------
+
+
+def _archive(root: Path, name: str, doc: str, rows: list[tuple[str, str, str]]) -> Path:
+    d = root / name
+    d.mkdir(parents=True, exist_ok=True)
+    with (d / f"{doc}.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["file", "page_num", "line_num", "categ", "text", "word_count"])
+        for i, (categ, text, wc) in enumerate(rows, start=1):
+            writer.writerow([doc, "1", str(i), categ, text, wc])
+    return d
+
+
+def test_a_two_archive_parent_needs_recursive(tmp_path):
+    _archive(tmp_path, "ARUP", "CTX000000001", [("Trash", "oueussd", "1")])
+    _archive(tmp_path, "ARUB", "MTX000000002", [("Clear", "sektlll", "1")])
+
+    # Without --recursive the parent matches nothing, and the tool REFUSES
+    # rather than reporting an empty corpus as a result.
+    with pytest.raises(SystemExit):
+        R.main(["--input-dir", str(tmp_path)])
+
+    out = tmp_path / "candidates.csv"
+    assert R.main(["--input-dir", str(tmp_path), "--recursive", "--out", str(out)]) == 0
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert {r["text"] for r in rows} == {"oueussd", "sektlll"}, "both archives must be read"
+
+
+def test_the_refusal_names_recursive_as_the_fix(tmp_path, capsys):
+    (tmp_path / "ARUP").mkdir()
+    with pytest.raises(SystemExit):
+        R.main(["--input-dir", str(tmp_path)])
+    assert "--recursive" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# --by-group: the modal dedup's blast radius (#30 stage 8, H6)
+# ---------------------------------------------------------------------------
+
+
+def test_the_tie_break_is_alphabetical_and_never_lands_on_trash():
+    """`apply_document_postprocessing()` resolves with `x.mode()[0]`.
+
+    `pandas.Series.mode()` returns its tied values SORTED, so `[0]` is the
+    alphabetically first — and 'Clear' < 'Noisy' < 'Trash'. A tie therefore
+    never demotes to Trash. That is an accident of the alphabet rather than a
+    design, it is load-bearing for H6 (it makes a whole class of the feared
+    case impossible), and nothing in production says it out loud.
+    """
+    from collections import Counter
+
+    assert R._vote(Counter({"Trash": 3, "Clear": 3})) == ("tie", "Clear")
+    assert R._vote(Counter({"Trash": 3, "Noisy": 3})) == ("tie", "Noisy")
+    assert R._vote(Counter({"Trash": 2, "Noisy": 2, "Clear": 2})) == ("tie", "Clear")
+    # And the ordering the claim rests on, asserted rather than assumed.
+    assert sorted(["Trash", "Clear", "Noisy"]) == ["Clear", "Noisy", "Trash"]
+
+
+def test_vote_shapes_are_distinguished():
+    from collections import Counter
+
+    assert R._vote(Counter({"Clear": 7})) == ("unanimous", "Clear")
+    assert R._vote(Counter({"Trash": 39, "Clear": 11})) == ("strict majority", "Trash")
+    # 4 of 9 is a plurality, not a majority — the case H6 option 2 targets.
+    assert R._vote(Counter({"Trash": 4, "Clear": 3, "Noisy": 2})) == ("bare plurality", "Trash")
+
+
+def test_by_group_counts_destroyed_and_rescued_lines(tmp_path, capsys):
+    """The two numbers H6 needs, and they point in opposite directions."""
+    doc_a = [("Trash", "cuxoaid", "1")] * 3 + [("Clear", "cuxoaid", "1")] * 1  # Trash wins, 1 Clear destroyed
+    doc_b = [("Clear", "sektlll", "1")] * 5 + [("Trash", "sektlll", "1")] * 2  # Clear wins, 2 Trash rescued
+    _archive(tmp_path, "ARUP", "CTX000000001", doc_a)
+    _archive(tmp_path, "ARUB", "MTX000000002", doc_b)
+
+    dump = tmp_path / "groups.csv"
+    assert R.main(["--input-dir", str(tmp_path), "--recursive", "--by-group", str(dump)]) == 0
+    out = capsys.readouterr().out
+
+    assert "(document, string) groups" in out
+    assert "carrying Clear down :      1 group(s),      1 Clear line(s)" in out
+    assert "lifting Trash out  :      1 group(s),      2 Trash line(s)" in out
+    assert "NET                                      :     +1" in out
+
+    rows = list(csv.DictReader(dump.open(encoding="utf-8")))
+    assert len(rows) == 2, "both contested groups belong in the dump"
+    by_text = {r["text"]: r for r in rows}
+    assert by_text["cuxoaid"]["dedup_winner"] == "Trash"
+    assert by_text["cuxoaid"]["clear_at_risk"] == "1"
+    assert by_text["sektlll"]["dedup_winner"] == "Clear"
+    assert by_text["sektlll"]["clear_at_risk"] == "0", "a rescued group puts no Clear line at risk"
+
+
+def test_by_group_summary_needs_no_path(tmp_path, capsys):
+    _archive(tmp_path, "ARUP", "CTX000000001", [("Clear", "oueussd", "1")] * 2)
+    assert R.main(["--input-dir", str(tmp_path), "--recursive", "--by-group"]) == 0
+    assert "(document, string) groups" in capsys.readouterr().out
+    assert not list(tmp_path.glob("*.csv")), "no dump requested, none written"
+
+
+def test_by_group_refuses_plain_lines_input(tmp_path):
+    probe = tmp_path / "probe.txt"
+    probe.write_text("oueussd\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        R.main(["--lines", str(probe), "--by-group"])
+
+
+def test_a_group_is_all_or_nothing_for_the_witness(tmp_path):
+    """The property the whole group analysis rests on.
+
+    The witness is a pure function of the line's text, so within a
+    (document, string) group it convicts every member or none. It therefore
+    cannot CREATE a split — only move a group that was already split, or move a
+    unanimous one wholesale. If that ever stops being true, the blast-radius
+    figures stop meaning what they say.
+    """
+    for text in ("oueussd", "sektlll", "malakofauna", "vrstva"):
+        verdicts = {R.classify_line(text, 1)["witness"] for _ in range(3)}
+        assert len(verdicts) == 1, f"{text!r} must classify identically every time"
+
+
+def test_input_dir_repeats_to_read_both_archives(tmp_path):
+    """The only safe way to say "all of the documents" (#30 stage 8).
+
+    The two archives have no common parent holding nothing else, and a staging
+    directory of symlinks does NOT work: `pathlib.Path.glob("**/*.csv")` does
+    not follow directory symlinks, so it returns an empty list WITHOUT failing.
+    That is the shape of error this whole issue is about, so the supported way
+    has to be explicit.
+    """
+    arup = _archive(tmp_path, "ARUP", "CTX000000001", [("Trash", "oueussd", "1")])
+    arub = _archive(tmp_path, "ARUB", "MTX000000002", [("Clear", "sektlll", "1")])
+
+    out = tmp_path / "candidates.csv"
+    assert R.main(["--input-dir", str(arup), "--input-dir", str(arub), "--out", str(out)]) == 0
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert {r["text"] for r in rows} == {"oueussd", "sektlll"}
+    assert {r["file"] for r in rows} == {"CTX000000001", "MTX000000002"}
+
+
+def test_a_symlinked_staging_directory_would_read_nothing(tmp_path):
+    """Pinned as a fact about the platform, because it is the trap this avoids.
+
+    If a future Python (3.13+ has `recurse_symlinks`) changes this, the staging
+    approach becomes viable and this test says so by failing — which is the
+    right way to find out.
+    """
+    real = _archive(tmp_path / "real", "ARUP", "CTX000000001", [("Trash", "oueussd", "1")])
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "ARUP").symlink_to(real, target_is_directory=True)
+
+    assert list(stage.glob("**/*.csv")) == [], (
+        "pathlib's ** stopped ignoring directory symlinks — a symlink staging "
+        "directory is now viable, and the job's per-archive --input-dir can be simplified"
+    )
+    with pytest.raises(SystemExit):
+        R.main(["--input-dir", str(stage), "--recursive"])
+
+
+def test_the_same_corpus_reached_twice_is_refused(tmp_path):
+    """Double-counting every line would inflate every exposure figure silently."""
+    arup = _archive(tmp_path, "ARUP", "CTX000000001", [("Trash", "oueussd", "1")])
+    with pytest.raises(SystemExit):
+        R.main(["--input-dir", str(arup), "--input-dir", str(arup)])
+
+
+def test_per_archive_document_counts_are_printed(tmp_path, capsys):
+    """So "did it see all the documents" is answered in the log, not assumed."""
+    arup = _archive(tmp_path, "ARUP", "CTX000000001", [("Trash", "oueussd", "1")])
+    arub = _archive(tmp_path, "ARUB", "MTX000000002", [("Clear", "sektlll", "1")])
+    R.main(["--input-dir", str(arup), "--input-dir", str(arub)])
+    err = capsys.readouterr().err
+    assert "ARUP" in err and "ARUB" in err
+    assert err.count("document CSV(s)") == 2

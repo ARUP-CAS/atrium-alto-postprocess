@@ -306,8 +306,20 @@ def recategorize_dataframe(
     return result.reindex(work.index)
 
 
-def rescore_csv(in_path: Path, constants: Mapping[str, Any] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (old_df, new_df) for one per-document CSV (diff-report helper)."""
+def rescore_csv(
+    in_path: Path,
+    constants: Mapping[str, Any] | None = None,
+    apply_postprocessing: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (old_df, new_df) for one per-document CSV (diff-report helper).
+
+    ``apply_postprocessing=False`` stops after the per-line decision, so the
+    written frame is the PRE-cascade one. ``recategorize_dataframe`` has always
+    taken this and the CLI never exposed it (#30 stage 8): the only way to get a
+    pre-cascade corpus was to not write one, which is why every group-level
+    reading of the modal dedup has had to be made against labels the dedup had
+    already rewritten.
+    """
     old = pd.read_csv(in_path, dtype=str, keep_default_na=False)
 
     # --- Normalize legacy schema to current CSV_HEADER ---
@@ -323,7 +335,7 @@ def rescore_csv(in_path: Path, constants: Mapping[str, Any] | None = None) -> tu
 
     old = _coerce_locators(old)
 
-    new = recategorize_dataframe(old, constants)
+    new = recategorize_dataframe(old, constants, apply_postprocessing=apply_postprocessing)
     if not new.empty:
         cols = [c for c in CSV_HEADER if c in new.columns]
         cols += [c for c in new.columns if c not in cols]
@@ -1515,6 +1527,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--report-only", action="store_true", help="Print the diff report but do not write CSVs.")
     ap.add_argument(
+        "--no-postprocessing",
+        action="store_true",
+        help=(
+            "Stop after the per-line decision: skip apply_document_postprocessing() (modal dedup, "
+            "surrounded-Trash, page sweeps). NOT a production configuration -- the smoothing is where "
+            "roughly a quarter of the short-line population lands. It exists so a PRE-cascade corpus "
+            "can be written and read: a delivered DOC_LINE_CATEG carries post-cascade labels, so any "
+            "group-level reading of the dedup made against it sees only what the vote left behind. "
+            "`ab_constant_eval.py` has had this flag since stage 5f; this is the same switch on the "
+            "re-scorer, so the frame itself can be produced and not just scored."
+        ),
+    )
+    ap.add_argument(
         "--gold-preflight",
         dest="gold_preflight",
         action="store_true",
@@ -1625,7 +1650,7 @@ def main(argv=None):
             print(f"[{position}/{len(csvs)}] {csv_path}", flush=True)
 
         try:
-            old, new = rescore_csv(csv_path, constants)
+            old, new = rescore_csv(csv_path, constants, apply_postprocessing=not args.no_postprocessing)
             total_changed += _report(csv_path, old, new)
 
             if args.gold_column:
