@@ -484,3 +484,81 @@ _Timeline index refreshed 2026-09-09 against live `test`/`master` HEAD, the curr
 via the GitHub API, and the refreshed `30.digest.md`/`37.digest.md`; 2026-09-20 entry appended from the stage-7
 re-read (v1.5.0-beta is now the current tag). Nothing removed from the issues themselves
 (per hub #29); this file is a derived reading aid in `agent_dev_logs/`._
+
+## 2026-09-21
+- **#30** — **Stage 8 delivered and read against its own delivery.** Eleven CSVs and `logs8.log` pulled
+down from the thread and recomputed rather than read from the summaries written when they ran. Fifteen
+findings (T1–T15 in `digests/30.digest.md`); four questions settled, one defect found in the delivery, and
+two findings made earlier in the same read corrected by re-measuring them properly.
+* **The A/Bs settle four things.** **08b** — the run stage 8a was written for — is the paired A/B over
+`SHORT_GARBAGE_WITNESS_ENABLE` itself: errors 513 → 503, `Clear`-loss **40 → 40**, cost 0.2917 → 0.2829,
+fixes 12 / breaks 2, exact McNemar **p = 0.01294**. **The adoption gate passes**, and the 42 → 41 → 40
+drift that has never been root-caused resolves to 40 in *both* arms of one run — it was between trees, not
+within a measurement. **08c** (cascade off) rejects on `Clear`-loss 55 → 56, so `apply_document_postprocessing()`
+is what makes the witness adoptable. **08d** kills D26: `QUALITY_VOCABULARY_ENABLE` is 212 fixes against
+**540 breaks**, `Clear`-loss 40 → **180**, p ≈ 7.8e-34 — it buys 78.3% `Trash`-recall by destroying 13.8% of
+all gold `Clear`. **08e** closes D27 as a genuine null (5 fixes / 5 breaks, p = 1) rather than void.
+* **08a inverts D30 rather than merely failing it.** The per-collection concentration experiment — an
+artefact belongs to the scanner that made it, an abbreviation is a convention and should appear in both —
+returns `ppole` at **3 ARUP / 226 ARUB**, the *most* collection-concentrated of the eight tokens, with every
+confirmed artefact less concentrated. The abbreviation looks more like an artefact than the artefacts do,
+because it is a convention of one institution's 2010s forms. Neither ratio, nor absolute document frequency,
+nor per-collection concentration separates the classes; the de-gemination guard has no portable signal left
+and the remaining choice (keep it fitted to one table, or set it to `0`) is @david-spacil's.
+* **08f retires H6 option 2 on a corpus-wide denominator.** 61,682 (document, string) groups over both
+archives: 61,359 unanimous, 143 strict majority, 180 tie. The cascade rescues **305** `Trash` lines and
+destroys **24** `Clear` — net **+281 in its favour**, a wider margin than the 31-against-17 S4 measured on
+the small queue. Groups option 2 would change: **0**. The `mode()[0]` tie-break stays alphabetical and
+load-bearing — `Clear` < `Noisy` < `Trash`, so none of the 180 ties can land on `Trash`.
+* **T1 — the defect, and the reason stage 9 exists.** **08f and 08g were run with the lexicon off.**
+`setup/config.txt:199` says the witness and the table are one decision and the witness never ships shape-only.
+The proof is in the queue rather than a missing log line: `ppole` is document frequency 229 at full scale,
+above the geminate cap of 10, so `_has_vocabulary_support()` already exempts it and a lexicon-on queue
+**cannot contain it** — yet it is the largest row in the delivered one at 15,466 lines. Estimated from 08g's
+own `token_status`, **73.1% of the at-risk exposure (26,868 of 36,744 lines) is exempt** once a table is
+configured, leaving 9,876 lines / 7,433 strings. The 592-row census then settles **30.7%** of the real
+population rather than the advertised 82.8%, because the survivors run 1.33 lines per string and are 93.7%
+singletons — there is no head left to take a census of. **The delivered ask should not go to @DanaKriv until
+it is re-cut.** 08b–08e are unaffected: they are gold-scored against the 2,064-line sidecar and their logs
+carry the geminate-scale warning, so the table was configured for them.
+* **T4 is the most direct measurement of this issue's actual title anyone has made in it.** 65.9% of at-risk
+exposure sits in 2010-or-later documents and the 2010s carry the highest at-risk rate of any decade (49.1%),
+while the clause mix inverts across that boundary: pre-2010 is `vowel_run` 76%, 2010+ is **`initial_geminate`
+66%** — and **96.1% of those 2010+ geminate lines are `ppole`**. The modern half of the archive is a different
+document genre (structured excavation forms with short field values), and the rule that fires hardest on it
+fires almost entirely on one legitimate abbreviation. MTX is ARUB and CTX is ARUP (`ppole` 15,662 MTX / 11 CTX),
+and `ppole` has a date: 2 lines in the 1990s, 45 in the 2000s, 13,144 in the 2010s.
+* **T9 — `Trash` is answering two questions.** 76.9% of witnessed `Trash` lines carry no repeated-character
+run and no unusual glyph; `http://www.arub.cz` is stored `Trash` on 5,309 lines while being correctly
+transcribed and perfectly legible. Under the definitions in use (`Trash` = nobody can read this) that is a
+mislabel — legibility and usefulness are different axes, `Non-text` already exists for the second, and it is
+not being used for it. Stated before annotation starts, because an annotator applying the definitions as
+written will call that URL `Clear` and nobody will know whether the metric moved because of the annotator or
+the definition.
+* **D32/D33/D34 — three predicate questions, one defect, and two of them were this read's own mistake.**
+`Lepus europaeus`, `Mammalia indet.` and `Triticum monococcum` all convict on the shipped predicate — **with
+no lexicon configured**, which is T1's mistake applied to my own findings. Re-measured with a table armed at
+the real full-collection frequencies, every one is already exempt through `_has_vocabulary_support()` (D14),
+so **D32 is not a predicate gap and nothing was changed**; a generic "capitalised genus + lowercase epithet"
+exemption was drafted, measured against the corpus, and **rejected** because it also matches `Chenopoaium
+hycnaum`, `Loua (oxkuku` and `Laaid. bazic 64999/`. **D33 is real and is fixed**: boilerplate URLs are attested
+by repetition, but a citation quoted once can never be attested by a document-frequency table — 144 such lines
+survive a configured lexicon, and `is_domain_notation()` now recognises the shape with **0 misses on the 144 and
+0 false positives against the other 7,289 at-risk survivors**. **D34 is measured and left alone**: `Kaukasus`,
+`Hallstatthaus` and `Schuhleistenkeilbruchstueck` are real, unattested and convicted by `low_variety`, and no
+length, ratio or case-shape cut separates them from garbage of the same shape (`vodovod`/`PSSPPOP` are both 7
+letters at ratio 0.43; `VODOVOD`/`PSSPPOP` are both ALLCAPS). Retuning from two named words is what D25/D30 did
+with the geminate cap and what 07a then refuted at scale, so it is named, pinned debt instead.
+* **Stage 9 specified** in `plans/30.plan.md`: **9a** re-runs 08b/08c on the post-D33 tree with the base
+configuration *printed* (T1 cost a delivery because a configuration had to be inferred from which warnings
+appeared); **9b** is the exposure pass 08f should have been, with `SHORT_GARBAGE_LEXICON_PATH` set; **9c**
+re-cuts the ask from the 9b queue at `--strong-df 113` rather than 10 (90% of the delivered recoverability
+evidence is `edit1`, at a threshold 08g's own log calls too permissive); **9d** re-measures the dedup groups
+on that queue. None needs a collaborator, a GPU or a new label.
+* **Collaborator-facing docs updated**, plus a new shared one: `docs/issue30/issue30_corpus_profile.md` —
+what the full-collection pass says about the archive itself (the telegraphic register the vocabulary veto
+destroys, the two collections, the 2010s form genre, Latin taxonomy, the excavator's own name, footer URLs)
+and what follows for quality categorisation. `issue30_annotation_guide.md` and `issue30_review_request.md`
+rewritten around the stage-8 answers; `annotation_ask_README.md` and the delivered `census.csv` / `sample.csv` /
+`frame.json` replaced with the stage-8 set, carrying the T1/T2 caveat on their own sizing.
+* Suite 1,288 → 1,290 passing, 0 failed, `ruff` clean.

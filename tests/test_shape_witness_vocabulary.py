@@ -224,6 +224,113 @@ def test_lexicon_is_inert_when_no_table_is_configured():
         )
 
 
+#: (#30 stage 8, D32.) Zooarchaeological and archaeobotanical binomials measured
+#: against the shipped predicate WITHOUT a lexicon: every one still fires,
+#: `Lepus europaeus` on vowel_run, the rest on low_variety in the epithet
+#: (`monococcum`, `terrestris`, `usitatissimum`) or the genus itself
+#: (`Mammalia`). That is not the taxonomy exemption failing -- there never was
+#: one for binomials, only for the `-aceae` family suffix above. It is the
+#: reason this list exists: measured WITH the full-collection lexicon armed
+#: (values below from the stage-8 delivery's `08g_distinct_evidence.csv`),
+#: every one of these is already `attested` and exempt through
+#: `_has_vocabulary_support()`, the same D14 mechanism that exempts `ppole`.
+#: No predicate change closes this class; arming the lexicon already does.
+STAGE8_BINOMIALS_WITHOUT_LEXICON = [
+    "Mammalia indet.",
+    "Mammalia",
+    "Triticum monococcum",
+    "Lepus europaeus",
+    "Arvicola terrestris",
+    "Linum usitatissimum",
+]
+
+#: The df values `08g_distinct_evidence.csv` measured them at, full collection
+#: (113,100 documents). Comfortably above SHORT_GARBAGE_LEXICON_MIN_DF (3).
+STAGE8_BINOMIAL_LEXICON = {
+    "mammalia": 342 + 819,
+    "indet": 819,
+    "triticum": 188,
+    "monococcum": 188,
+    "lepus": 951,
+    "europaeus": 951,
+    "arvicola": 83,
+    "terrestris": 83,
+    "linum": 85,
+    "usitatissimum": 85,
+}
+
+
+def test_stage8_binomials_convict_without_a_lexicon():
+    """The measurement this class needed, made explicit: no lexicon, no exemption.
+
+    Pinned separately from `test_lexicon_is_inert_when_no_table_is_configured`
+    because this is the specific class the stage-8 delivery's own witness
+    queue was read against a lexicon-off run (T1) -- the false-positive class
+    it appeared to show was itself measured in the wrong configuration.
+    """
+    assert not tu.token_lexicon()
+    for text in STAGE8_BINOMIALS_WITHOUT_LEXICON:
+        assert _has_shape_garbage_evidence(text) is True, (
+            f"{text!r} is not witnessed with no lexicon configured: {shape_garbage_clauses(text)}"
+        )
+
+
+def test_stage8_binomials_are_exempt_once_the_lexicon_is_armed(tmp_path):
+    """The corrected finding: arming the lexicon (D14) already reaches this class.
+
+    Measured against the real full-collection document frequencies, not
+    synthetic round numbers, so this pins the actual delivered table's shape
+    rather than a convenient fixture.
+    """
+    path = _table(tmp_path, STAGE8_BINOMIAL_LEXICON)
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": path, "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
+        for text in STAGE8_BINOMIALS_WITHOUT_LEXICON:
+            assert _has_shape_garbage_evidence(text) is False, (
+                f"{text!r} is still witnessed with the lexicon armed: {shape_garbage_clauses(text)}"
+            )
+
+
+#: (#30 stage 8, D34.) The residual `low_variety` false positives that survive
+#: even a lexicon armed with everything above: real words, too rare across
+#: documents to be attested (`Kaukasus` occurs 5 times in the stage-8 delivery,
+#: all in few documents), that are not name-shaped loans either so D14 cannot
+#: reach them. `issue30_annotation_guide.md` already names both as the
+#: canonical "recoverability zero, still a real word" example.
+#:
+#: NOT fixed here, deliberately, and measured before that decision rather than
+#: assumed: a length cap (mirroring `SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA`)
+#: cannot separate them from real `low_variety` garbage at the same length --
+#: `PSSPPOP` (garbage) and `vodovod` (real, but attested once the lexicon is
+#: armed, so not this class) are both 7 letters at ratio 0.43; `Kaukasus` (real,
+#: unattested) and `RARRRPRIR` (garbage) are both effectively 8-9 letters at
+#: ratio ~0.44-0.50. Case shape does not separate them either: `VODOVOD`
+#: (real) and `PSSPPOP` (garbage) are both ALLCAPS at the same ratio. Retuning
+#: `SHORT_GARBAGE_WITNESS_VARIETY_MAX`/`_MIN_ALPHA` from two named examples
+#: would be the same mistake D25/D30 already named in this issue -- fitting a
+#: production threshold to a population too small to fit one to. Accepted,
+#: named debt, same shape as the geminate cap's remaining gap.
+STAGE8_RARE_WORDS_UNRESOLVED = [
+    "Kaukasus",
+    "Hallstatthaus",
+    "Schuhleistenkeilbruchstueck",
+]
+
+
+def test_stage8_rare_words_remain_unresolved_even_with_a_lexicon(tmp_path):
+    """D34, pinned rather than silently accepted.
+
+    A lexicon armed with unrelated vocabulary must not accidentally rescue
+    these -- they are absent from this table on purpose, matching them being
+    absent from the real one at full scale.
+    """
+    path = _table(tmp_path, STAGE8_BINOMIAL_LEXICON)
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": path, "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
+        for text in STAGE8_RARE_WORDS_UNRESOLVED:
+            assert _has_shape_garbage_evidence(text) is True, (
+                f"{text!r} became exempt from an unrelated lexicon table: {shape_garbage_clauses(text)}"
+            )
+
+
 def test_attested_vocabulary_vetoes_the_unsuffixed_loans(tmp_path):
     """The half the suffix rule deliberately leaves alone.
 

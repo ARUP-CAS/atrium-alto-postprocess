@@ -7,6 +7,29 @@
 
 ---
 
+> ## ⏸️ Please wait before starting — 2026-09-21
+>
+> **The files currently attached are sized against the wrong population, and we would be wasting
+> your time.** We measured the risk with one of the program's own safeguards switched off by
+> mistake. With it switched on — which is how the program actually runs — **about three quarters
+> of what we were going to ask you about cannot be affected at all**, including the single
+> biggest item (`ppole`, 15,466 lines) and most of the rest of the first page.
+>
+> We are re-cutting the request now. It will be **smaller**, and it will be mostly a random
+> sample rather than a list of the most common text, because once the safe items are removed
+> there is no "most common" left — 94% of what remains occurs exactly once.
+>
+> Nothing you may already have done is wasted: the answers still join back. But please do not
+> start a fresh session on these files. **Section 7.2 below is a question you can answer right
+> now, without the files, and it is currently the most useful thing in this document.**
+>
+> The full reasoning is in `agent_dev_logs/digests/30.digest.md` § T1 and T2. We are telling you
+> in this much detail because this is the third time in this issue that a summary of a run
+> turned out not to survive reading the run itself, and you are entitled to know when that
+> affects a request we made of you.
+
+---
+
 ## 1. The short version
 
 We have a program that reads the scanned text of the archive line by line and sorts every line
@@ -34,37 +57,46 @@ text and say what each line is.
 This is worth one paragraph, because it explains why the request is small and why it is the
 only thing that can help.
 
-The new rule can affect **20,078 lines**. Of those lines, **23** currently have a human
-opinion attached — about one line in a thousand. Every decision we have made so far therefore
-rests on **15 lines** where switching the rule on changes the answer. Fifteen lines is not
-enough to decide anything about an archive of 113,100 documents, and no amount of extra
-programming changes that number. Only a person looking at text changes it.
+The new rule can affect **100,824 lines** across the whole archive. Of those lines, a few dozen
+currently have a human opinion attached — far less than one line in a thousand. Every decision we
+have made so far therefore rests on about **fifteen lines** where switching the rule on changes
+the answer. Fifteen lines is not enough to decide anything about an archive of 113,100 documents,
+and no amount of extra programming changes that number. Only a person looking at text changes it.
+
+What programming *did* change, in the last few days, is **how many of those 100,824 lines are
+genuinely at stake**. The program keeps a dictionary built from the archive's own words, and
+anything appearing across enough documents is left alone by the new rule. We had measured the
+risk without that dictionary loaded. With it loaded, the number of lines that are both kept today
+and threatened by the rule drops from **37,555 to about 9,900**. That is the re-cut described in
+the notice above.
 
 ---
 
 ## 3. What is in the two files
 
-The 20,078 lines are not 20,078 different pieces of text. The archive repeats itself: the same
-word appears on printed forms in hundreds of documents. In total there are **4,807 different
-pieces of text**, and one of them, `ppole`, appears **11,671 times** on its own.
+The 100,824 lines are not 100,824 different pieces of text. The archive repeats itself: the same
+word appears on printed forms in hundreds of documents. In total there are **50,042 different
+pieces of text**, and one of them, `ppole`, appears **15,466 times** on its own.
 
 So we are not asking you to look at lines. We are asking you to look at **each different piece
 of text once**. One decision settles every line that contains it.
 
-We have also removed everything where your answer could not change the outcome. Two thirds of
-the queue is text the program **already** throws away; the new rule would simply agree with it,
-so a label there changes nothing. What is left is **1,584 pieces of text that the program keeps
-today and the new rule would start throwing away** — exactly the risk we need measured.
+We have also removed everything where your answer could not change the outcome. Most of the
+queue is text the program **already** throws away; the new rule would simply agree with it, so a
+label there changes nothing.
 
-| file          | rows    | what it is                                                                                                                      |
-|---------------|--------:|---------------------------------------------------------------------------------------------------------------------------------|
-| `census.csv`  | **93**  | The 60 most common of those, plus every piece of text the program currently answers in two different ways. **Start here.**       |
-| `sample.csv`  | **200** | A random selection from the long tail of rare text. These are chosen by computer so that we can calculate a result from them.    |
-| `frame.json`  | —       | A small technical file. **Please send it back with the others.** Without it the 200 rows cannot be turned into a number.         |
+| file         |    rows | what it is                                                                                                                    |
+|--------------|--------:|-------------------------------------------------------------------------------------------------------------------------------|
+| `census.csv` | **592** | The most common at-risk text, plus every piece of text the program currently answers in two different ways.                   |
+| `sample.csv` | **200** | A random selection from the long tail of rare text. These are chosen by computer so that we can calculate a result from them. |
+| `frame.json` |       — | A small technical file. **Please send it back with the others.** Without it the 200 rows cannot be turned into a number.      |
 
-**`census.csv` alone settles 94.8% of the problem.** If you only have time for one file, that
-is the one. The 200 rows in `sample.csv` are what let us say something reliable about the rest,
-with a stated margin of error, instead of guessing.
+As delivered, `census.csv` claims to settle 82.8% of the problem in 592 decisions. **That is the
+figure the notice at the top of this document retracts.** Against the population that is really
+at risk it settles about 31%, because the items that made the census efficient — `ppole`, the
+`ARCHAIA` company name, `Lepus europaeus`, `vodovod` — are exactly the ones the dictionary
+already protects. The re-cut request will be smaller and will lean on `sample.csv`'s method
+rather than on a list of the most common text.
 
 ---
 
@@ -74,13 +106,13 @@ with a stated margin of error, instead of guessing.
 
 Write one of these five words:
 
-| write        | when                                                                                                                                  |
-|--------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `Clear`      | This is correct, readable text. A researcher could use it as it stands.                                                                  |
-| `Noisy`      | This is damaged, but a person can still tell what it says and it is worth keeping. Use this for text you would not want deleted.         |
-| `Trash`      | This is scanning rubbish. Nothing is lost by deleting it.                                                                                |
-| `Non-text`   | This is not language at all — a line of a table border, a page decoration, a ruler mark.                                                 |
-| `Empty`      | There is nothing here.                                                                                                                   |
+| write      | when                                                                                                                             |
+|------------|----------------------------------------------------------------------------------------------------------------------------------|
+| `Clear`    | This is correct, readable text. A researcher could use it as it stands.                                                          |
+| `Noisy`    | This is damaged, but a person can still tell what it says and it is worth keeping. Use this for text you would not want deleted. |
+| `Trash`    | This is scanning rubbish. Nothing is lost by deleting it.                                                                        |
+| `Non-text` | This is not language at all — a line of a table border, a page decoration, a ruler mark.                                         |
+| `Empty`    | There is nothing here.                                                                                                           |
 
 **If you are not sure, leave the cell empty.** This is not laziness and it costs us nothing. An
 empty cell is skipped completely. A guess is worse than no answer, because we cannot tell the
@@ -133,7 +165,11 @@ direction in particular:
   *not* evidence of rubbish. `Kaukasus` and `Schuhleistenkeilbruchstueck` both score zero and
   both are perfectly good German archaeological words.
 * `edit1` in `nearest_attested` means "one letter different". **This is often a coincidence.**
-  `Linum` and `ilium` are one letter apart and both are real Latin words.
+  `Linum` and `ilium` are one letter apart and both are real Latin words. We can now put a number
+  on how much of the evidence this affects: **90% of all the suggestions in these files are
+  `edit1`** (12,511 of 13,972), and they were generated with a setting that our own tooling warns
+  is too permissive on an archive this size. The re-cut request will use a stricter setting. Until
+  then, treat `nearest_attested` as a prompt to look, never as a reason to agree.
 
 And "recoverable" does not mean "damaged". `ppole` can be reconstructed as `pole`, but David has
 told us it is an **abbreviation** for *popelnicová pole*, not a scanning error at all. That
@@ -144,30 +180,37 @@ you rather than measuring harder.
 
 ## 6. Where to start, and some real rows
 
-Work down `census.csv` from the top. It is sorted so that the most valuable decisions come
-first. The first row alone settles 11,671 lines.
+`census.csv` is sorted so that the largest decisions come first — the first row alone covers
+15,676 lines. Please read § 7.2 before working down it, and see the notice at the top of this
+document about why the re-cut version is worth waiting for.
 
 Some rows you will meet early:
 
-| text                    |  lines | the program says            | our question                                                              |
-|-------------------------|-------:|-----------------------------|---------------------------------------------------------------------------|
-| `ppole`                 | 11,671 | `Clear`                     | David says this is an abbreviation. Should it stay `Clear`?               |
-| `sektlll`               |    543 | `Clear:539` **`\|Trash:4`** | The program gives the same text two answers. Which is right?              |
-| `Triticum monococcum`   |    148 | `Clear`                     | A plant name. We think keeping it is right — please confirm.              |
-| `Lepus europaeus`       |     97 | `Clear`                     | An animal name, same question.                                            |
-| `f. okraie`             |     76 | `Noisy`                     | Damaged, but is it still useful?                                          |
-| `cuxoaid ,`             |     33 | `Clear`                     | We believe this is rubbish being kept. Please confirm.                    |
-| `Papaver rhoeas/dubium` |     25 | `Clear`                     | A plant name with a slash. Does that form matter to you?                  |
-| `1 fraament okraie`     |    558 | `Trash` (mostly)            | Readable as *"1 fragment okraje"*. Is it worth keeping, or is it rubbish? |
+| text                  |  lines | the program says                     | our question                                                              |
+|-----------------------|-------:|--------------------------------------|---------------------------------------------------------------------------|
+| `ppole`               | 15,676 | `Clear:15,494` `Noisy:180` `Trash:2` | David says this is an abbreviation. Should it stay `Clear`?               |
+| `ARCHAIA`             |  1,176 | `Clear:1,008` `Trash:116` `Noisy:52` | Your own company name, answered three ways. Which is right?               |
+| `ARCHAIA Brno o.p.s.` |  1,121 | `Noisy:680` `Trash:441`              | The same name with the town — and a different answer.                     |
+| `Lepus europaeus`     |    976 | `Clear:955` `Noisy:16` `Trash:5`     | An animal name. We think keeping it is right — please confirm.            |
+| `Mammalia indet.`     |    910 | `Trash:472` `Noisy:438`              | Near coin-flip on identical text. Which is right?                         |
+| `vodovod`             |    619 | `Clear:331` `Trash:207` `Noisy:81`   | An ordinary Czech word the rule dislikes for its repeated letters.        |
+| `1 fraament okraie`   |    530 | `Trash` (mostly)                     | Readable as *"1 fragment okraje"*. Is it worth keeping, or is it rubbish? |
+| `Dauerleihe`          |    305 | `Clear:277` `Trash:19` `Noisy:9`     | A real German museum term the archive's dictionary does not know.         |
+| `sektlll`             |    543 | `Trash`                              | We believe this is genuine rubbish. Please confirm.                       |
 
-That last one is the question we are least sure about, and it is the mirror image of your
-original complaint. There are **690 pieces of text like it** — damaged but readable, currently
-being thrown away. Whether a damaged-but-readable line is worth keeping in the archive is a
-judgement about what the output is **for**, and it is yours to make, not ours.
+The `1 fraament okraie` row is the question we are least sure about, and it is the mirror image
+of your original complaint: damaged but readable, currently being thrown away. Whether a
+damaged-but-readable line is worth keeping in the archive is a judgement about what the output is
+**for**, and it is yours to make, not ours.
+
+Note that several rows above are on the list only because the dictionary was switched off when
+the files were built — `ppole`, `ARCHAIA`, `Lepus europaeus`, `vodovod` and `Dauerleihe` are all
+protected once it is on. They are still worth your opinion if you have one, but they are no longer
+the risk.
 
 ---
 
-## 7. Two questions that are not in the files
+## 7. Three questions that are not in the files
 
 ### 7.1 A policy question about repeated text
 
@@ -178,10 +221,12 @@ got.
 This means that if the new rule throws away three copies of a word and two copies were correct,
 those two correct copies are thrown away as well.
 
-We have measured how often this actually happens in this part of the archive. It is **7 cases,
-covering 22 lines**. We have also measured what happens if we turn the cleaning step off: the
-new rule makes **more** mistakes, not fewer, and the program loses 15 good lines it is currently
-saving.
+We have now measured how often this actually happens across **both collections in full**, rather
+than in one sample. Of 61,682 groups of repeated text, 61,359 are unanimous and only 323 are
+contested at all. The cleaning step pulls **24 good lines down** — and it **rescues 305 lines**
+that would otherwise have been thrown away. It is protecting roughly twelve lines for every one
+it costs. We have also measured what happens if we turn it off: the new rule makes **more**
+mistakes, not fewer.
 
 **Our question:** is losing a small number of correct copies acceptable, when the cleaning step
 is, on balance, protecting more than it costs? Or should a bare majority never be allowed to
@@ -190,7 +235,48 @@ throw away text that was marked as good?
 We are not asking you to decide how to implement it. We are asking which outcome the archive
 should prefer. Please answer in one or two sentences.
 
-### 7.2 A re-review we owe you
+### 7.2 The question we would most like answered, and it needs no files
+
+This one came out of the full-collection measurement and it may matter more than the labels.
+
+The definitions we work to are:
+
+* **`Clear`** — no mistakes in the words.
+* **`Noisy`** — a person can still tell what it says, through a minor mistake.
+* **`Trash`** — nobody can read this.
+
+By those definitions, these lines are not `Trash`. Anyone can read them:
+
+* `http://www.arub.cz` — 5,309 lines, scanned perfectly correctly;
+* `e-mail: mhauer@zip-ops.cz`;
+* `ARCHAIA Brno o.p.s.` — while `ARCHAIA` on its own is marked `Clear`.
+
+The program currently marks all three as `Trash`. And in fact **77% of everything the program
+throws away in this part of the archive has nothing wrong with it at all** — no garbled letters,
+no strange symbols. It is readable text that simply is not prose: web addresses, form labels,
+inventory codes, company names in page headers.
+
+We think one label is being asked two different questions:
+
+1. **Can a person read this?** — which is what the definitions describe; and
+2. **Is this running text worth keeping and searching?** — which is a different question, and the
+   one the program seems to be answering in practice.
+
+**Our question to you: which of the two do you actually want?**
+
+* If it is *readability*, then a correctly scanned web address is `Clear`, and we should fix the
+  program — it is currently discarding several thousand perfectly readable lines.
+* If it is *usefulness as text*, then the definitions need rewriting, and there is already a
+  category for the second question — **`Non-text`** — which is where footers, URLs and form
+  labels would belong.
+
+Either answer is workable and we will do whichever you prefer. What we cannot do is leave it
+unsaid: if you start labelling and mark `http://www.arub.cz` as `Clear` — which is the correct
+answer under the definitions as written — the measured accuracy of the new rule will change, and
+we will not be able to tell whether that happened because of the definition or because of the
+rule. **A couple of sentences on this would unblock more than the labels will.**
+
+### 7.3 A re-review we owe you
 
 In July you reviewed a batch of documents with rotated pages and found differences in 95
 documents from ARÚP and 10,258 from ARUB. That review compared against the batch we had sent

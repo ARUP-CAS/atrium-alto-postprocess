@@ -516,3 +516,43 @@ one that prediction was about.
 errors this issue has logged, and three of the five above, were refuted by evidence sitting
 in a file that had already been delivered. The log was right every time; the summary of the
 log was not. Read the artefact.
+
+---
+
+# Addendum — stage 8 ran (2026-09-21)
+
+All four runs this document specified happened, plus four more the job split out (`08a`–`08g`).
+The findings are not restated here; they are in
+[`agent_dev_logs/digests/30.digest.md`](../../agent_dev_logs/digests/30.digest.md)
+§ "Stage 8 read against its own delivery" as T1–T15, with the stage table and stage 9 in
+[`agent_dev_logs/plans/30.plan.md`](../../agent_dev_logs/plans/30.plan.md). What this document
+needs is only the disposition of its own §9 items and its own predictions.
+
+| this document said                               | stage 8                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|--------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **8a** settles A5 and the drift                  | ✅ Ran as **08b**. The gate passes — errors 513 → 503, `Clear`-loss **40 → 40**, cost 0.2829, fixes 12 / breaks 2, exact McNemar **p = 0.01294**. Both arms report `Clear`-loss 40, so the 504/42 → 502/41 → 503/40 drift was *between trees*, not within a measurement. Nothing left to root-cause. **08c** is the `--no-postprocessing` companion: `Clear`-loss 55 → 56, so the cascade is what makes the witness adoptable |
+| **8b** settles D26                               | ✅ Ran as **08d**. Not a null and not merely unmeasured — a **decisive reject**: 212 fixes against 540 breaks, `Clear`-loss 40 → **180**, cost +0.3324, p ≈ 7.8e-34                                                                                                                                                                                                                                                           |
+| **8c** settles D27 and the geminate signal       | ✅ Ran as **08e** and **08a**. D27 is a genuine **null** (5 fixes / 5 breaks, p = 1). The per-collection signal is **refuted and inverted**: `ppole` is 3 ARUP / 226 ARUB, the *most* concentrated of the eight, because it is a convention of one institution's 2010s forms. A1's remaining hypothesis is dead                                                                                                               |
+| **8d** gives the dedup a corpus-wide denominator | ✅ Ran as **08f**. 61,682 groups; the cascade rescues **305** `Trash` lines and destroys **24** `Clear`, net **+281** in its favour — a wider margin than the 31-against-17 this document measured locally. Groups H6/H8 option 2 would change: **0**. A4's "22 lines" was correct for the queue it was measured on and is superseded for the corpus                                                                          |
+
+**The prediction in §9 item 1 was right, and for the wrong reason.** It asked whether `Clear`-loss
+would come back 40. It did — in both arms of a paired A/B, which is a stronger result than the
+question anticipated, because it makes the drift a property of the trees rather than of the
+measurement.
+
+**And the discipline note at the end of §"What follows" applied to this document's own successor.**
+Stage 8 contains a defect of exactly the kind catalogued here: **08f and 08g were run with the
+vocabulary lexicon switched off**, which `setup/config.txt` says is a configuration that never
+ships. The exposure they report, and the 592-decision annotation ask built from it, describe a
+population roughly 3.7× larger than the shipped configuration puts at risk — about 73% of it is
+exempt by attestation the moment a table is configured. The proof is in the delivered file rather
+than in a log line: `ppole` is document frequency 229, above the geminate cap, so a lexicon-on
+queue cannot contain it, and it is the largest row in the delivered one.
+
+Two further findings were made **in the course of reading stage 8, written down as predicate
+defects, and then withdrawn** — the binomial-taxonomy class and, initially, the URL class — because
+they too had been measured with the lexicon off. Only the URL half survived re-measurement and is
+fixed as D33. That is the seventh instrument-level error of this family, the third that was caught
+before it shipped, and the first that was caught inside the same read that made it.
+
+Read the artefact — and then check which configuration the artefact was produced in.

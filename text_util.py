@@ -2199,6 +2199,20 @@ def _has_vocabulary_support(token: str) -> bool:
     `_is_geminate_artefact` below carves out the one shape where the corpus shows
     this happening. It is a carve-out, not a repair: any templated artefact that
     is not an initial geminate is still wrongly exempted here.
+
+    UPDATED (#30, 2026-09-21, full-collection table). `ppole` is df 229 and
+    42.7% of the stage-8 at-risk population, not 35 and 57% -- the 822-document
+    figures above are historical, kept for the record of how the guard was
+    first calibrated, not the current measurement. The full-collection numbers
+    do not change the shape of the argument, only its scale: see
+    `geminate_cap_scale_warning()` and D30 for what DOES change at this table
+    (the geminate cap's separating margin, which collapses). What this function
+    does at full scale, measured directly rather than inferred from this
+    docstring: `Mammalia`, `Triticum`, `Lepus`, `Linum`, `Arvicola` and their
+    common epithets are all attested and exempt through this path once a
+    lexicon is configured -- the taxonomic false-positive class this issue
+    spent time on (see the corpus profile) turned out to be mostly this
+    mechanism working as designed, not a predicate gap.
     """
     lex = token_lexicon()
     if not lex:
@@ -2806,6 +2820,7 @@ def is_domain_notation(text_source: str) -> bool:
         or _RE_NOTATION_COUNT.match(stripped)
         or _RE_NOTATION_ABBR.match(stripped)
         or _RE_NOTATION_ABBR_SP.match(stripped)
+        or _RE_NOTATION_URL.search(stripped)
     )
 
 
@@ -3019,6 +3034,35 @@ _RE_NOTATION_ABBR_SP = re.compile(
 )
 
 _RE_NOTATION_HAS_CODE_CHAR = re.compile(r"[A-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ0-9]")
+
+# (#30 D33) URL / e-mail. A citation or contact string is NOTATION pointing
+# outward, not vocabulary -- and a document-frequency table can never attest a
+# citation quoted once. Measured on the stage-8 delivery: with the vocabulary
+# lexicon armed, boilerplate URLs that repeat verbatim across many documents
+# (`http://www.arub.cz`, 5,309 lines, a page footer) are ALREADY exempt via
+# `_has_vocabulary_support()` -- attested by repetition, the same mechanism
+# that exempts `ppole`. What survives is the opposite case: a UNIQUE
+# bibliographic citation, quoted once or twice, that a document-frequency
+# table can never attest by construction. 144 such lines in the stage-8
+# at-risk population, none appearing more than 3 times, 0 false positives
+# against the other 7,289 at-risk survivors and 0 against the predicate's own
+# documented garbage fixtures.
+#
+# `.search()`, not `.match()` -- unlike the four patterns above. A citation
+# sits inside a sentence ("roku 1820 (http://www.hrady.cz/...)."; "3 Zdroj
+# https://www.obec-kolicin.cz/historie-obce/"), so anchoring the whole line
+# would miss the shape this exists to catch. That is safe specifically
+# because the trigger substrings -- a URL scheme, `www.`, an `@`-address, or
+# an explicit `e-mail:` label -- essentially never occur in ordinary
+# Czech/German archival prose by accident; nothing else in this predicate
+# needed that argument, and this is the only shape that relies on it.
+# `e-mail:` is matched on the LABEL alone, without requiring a clean address
+# after it, because OCR damage sometimes costs the `@` itself
+# (`e-mail: officeauappmost.cz`) while leaving the label intact.
+_RE_NOTATION_URL = re.compile(
+    r"https?://\S+|www\.[\w-]+\.\w{2,4}\S*|\be-?mail\b\s*:|[\w.+-]+@[\w-]+\.[\w.-]+",
+    re.IGNORECASE,
+)
 
 
 _DMG_SYMBOLS = frozenset("^»«■□¤§~<>#*@$")

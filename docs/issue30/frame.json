@@ -1,26 +1,26 @@
 [
   {
     "stratum": "at_risk/full",
-    "strings_in_stratum": 535,
-    "lines_in_stratum": 633,
-    "sampled": 71,
-    "sampling_weight": 7.5352,
-    "half_width_95pct_points": 11.6
+    "strings_in_stratum": 3252,
+    "lines_in_stratum": 4483,
+    "sampled": 80,
+    "sampling_weight": 40.65,
+    "half_width_95pct_points": 11.0
   },
   {
     "stratum": "at_risk/none",
-    "strings_in_stratum": 606,
-    "lines_in_stratum": 617,
-    "sampled": 81,
-    "sampling_weight": 7.4815,
-    "half_width_95pct_points": 10.9
+    "strings_in_stratum": 2798,
+    "lines_in_stratum": 3053,
+    "sampled": 69,
+    "sampling_weight": 40.5507,
+    "half_width_95pct_points": 11.8
   },
   {
     "stratum": "at_risk/partial",
-    "strings_in_stratum": 365,
-    "lines_in_stratum": 403,
-    "sampled": 48,
-    "sampling_weight": 7.6042,
-    "half_width_95pct_points": 14.1
+    "strings_in_stratum": 2090,
+    "lines_in_stratum": 2370,
+    "sampled": 51,
+    "sampling_weight": 40.9804,
+    "half_width_95pct_points": 13.7
   }
 ]

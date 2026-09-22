@@ -34,6 +34,7 @@ from text_util import (
     remap_lang,
     score_word,
     score_words_in_line,
+    shape_garbage_clauses,
 )
 
 
@@ -209,6 +210,40 @@ class TestIsDomainNotation:
         pattern accepts only multi-character unit words (`ks`)."""
         assert is_domain_notation("3 m") is False
         assert is_domain_notation("1 ks") is True
+
+    # (#30 stage 8, D33.) Bibliographic and contact citations: the shape a
+    # document-frequency table can never attest, because it is quoted once.
+    # `_has_vocabulary_support()` already exempts the BOILERPLATE case --
+    # `http://www.arub.cz` repeats verbatim across 5,309 lines and is attested
+    # by that repetition -- so this class is specifically the unique citation,
+    # measured on the stage-8 at-risk population: 144 lines, none appearing
+    # more than 3 times, 0 false positives against the other 7,289 at-risk
+    # survivors of that same measurement.
+    URL_NOTATION = [
+        "http://www.arub.cz",
+        "www.archaiabrno.cz",
+        "e-mail: mhauer@zip-ops.cz",
+        "http://www.terraverita.cz",
+        "roku 1820 (http://www.hrady.cz/index.php?OID=1291).",
+        "3 Zdroj: https://www.obec-kolicin.cz/historie-obce/",
+        "e-mail: officeauappmost.cz",  # OCR cost the `@`; the label survives
+        "E-MAIL: znojmuz@znojmuz.cz",
+        "brno@archaiabrno.cz",
+        "Web: www.archaiapraha.cz",
+    ]
+
+    @pytest.mark.parametrize("text", URL_NOTATION)
+    def test_url_and_email_citations_are_recognised(self, text):
+        assert is_domain_notation(text) is True
+
+    def test_url_veto_does_not_reopen_on_ordinary_prose(self):
+        """The `.search()` scope this pattern alone uses, checked against the
+        thing that makes it safe: none of the existing NEGATIVES gained a
+        match, and ordinary sentences that merely discuss an e-mail without
+        giving one stay out."""
+        for text in self.NEGATIVES:
+            assert is_domain_notation(text) is False, f"{text!r} newly matched the URL/e-mail pattern"
+        assert is_domain_notation("Bez e-mailu se to neobejde.") is False
 
 
 class TestNotationIsNotExemptFromHardSweep:
@@ -648,6 +683,14 @@ class TestShapeGarbageWitness:
     @pytest.mark.parametrize("text", VOCABULARY)
     def test_real_vocabulary_is_not_witnessed(self, text):
         assert _has_shape_garbage_evidence(text) is False
+
+    @pytest.mark.parametrize("text", TestIsDomainNotation.URL_NOTATION)
+    def test_url_and_email_citations_are_not_witnessed(self, text):
+        """The D33 veto reaches the witness too: `is_domain_notation()` is
+        checked before the clause loop even starts (`shape_garbage_clauses()`),
+        so every shape it now recognises is out of the witness's reach as well,
+        not only `rule_short_garbage`'s."""
+        assert _has_shape_garbage_evidence(text) is False, f"{text!r}: {shape_garbage_clauses(text)}"
 
     @pytest.mark.parametrize(
         "text",
