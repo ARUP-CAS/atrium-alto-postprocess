@@ -841,3 +841,38 @@ Vietnamese, Estonian, Xhosa and Uzbek — the detector failing, which `remap_lan
 split acts only on `deu` + `fra`.
 * `issue30_stage11_job.sh` written for the cluster in the stage 6–10 contract; not tracked, like
 its predecessors. Documentation only in-tree. Suite 1,418 passing, `ruff` clean.
+
+## 2026-09-22 (sixth entry)
+- **#30** — **Documentation sync after comment 61; no code, flag or word-list entry changed.** The
+tree was read against the thread's settled answers and against the collaborator documents, looking
+for decisions already made that the repository did not yet say. Digest § "After the tag" (AT1–AT3).
+* **AT1 — comment 61 overstated what `[allowed]` does.** It told @DanaKriv and @david-spacil that
+listing a word stops the program discarding it. `shape_garbage_clauses()` never consults the list:
+probed through `score_line()`, with `ssuti` listed and the witness on, `ssuti` alone stays `Clear`
+but `ssuti vfetennl` is `Trash` on `ssuti`'s `initial_geminate` alone. The file header and
+`tests/test_word_lists.py` both record the reach as "an open question for @DanaKriv and
+@david-spacil" — it had never been asked. Corrected in `docs/issue30/README.md` and
+`categorization_logic.md`; asked as Q5b.
+* **AT2 — the open questions, asked.** Q1–Q3 for @DanaKriv (agree with W4; dissent on the dedup
+trade; the 357 decisions), Q4–Q6 for both (what every recognised address should be under
+`DOMAIN_NOTATION_CATEG`; which `[allowed]` candidates to arm and how far they reach; what
+`rule_short_garbage` should answer on a short line that might be decipherable), Q7 for
+@david-spacil (tag or `master` for the 508 re-check, since D40 and D44 landed after
+`v1.5.1-beta`). Mirrored as plan rows H9–H13 and in `docs/issue30/README.md` § "Still open".
+* **AT3 — drift fixed, each correction marked in place.** `categorization_logic.md` named a
+`rule_domain_notation_clear` / `SHORT_LINE_URL_CLEAR_ENABLE` that does not exist — rewritten to the
+real `rule_domain_notation_categ`, which gains gate row 0b; row 5c gains D44, its exemptions and the
+gold-measured status; row 5b gains D33's URL shape; a note on what `[allowed]` does to the score.
+Review request: "1950s" → "1940s" plus the Krofta clause (the sidecar agrees: 24 of 45 `Non-text`
+rows in 1940s ARÚB documents), Y4's superseded prediction marked, § 3 warned that tag ≠ `master`,
+new § 9. Annotation guide: the worked example row was not in the 157-row census (now `eaual to:`),
+"94% `edit1` (9,649 of 10,246)" had no source (the two files give 102 of 113), one count fixed,
+three § 6 questions re-framed from usefulness to legibility to match its own § 4.
+`annotation_ask_README.md`: `Non-text` → leave blank, and "one notch too tight" replaced by the
+split. Root `README.md`: the gold set exists and the gate result is stated; a note on
+`setup/word_lists.txt` and `DOMAIN_NOTATION_CATEG`. `setup/config.txt`: the witness block's "15
+lines cannot validate it" comment replaced by the measured status (comment only).
+* Plan: H1–H3 / H5 carry real status, H6 names the right dropped option, H7's checklist item is
+ticked, 11e's "README weight table" item was already done (`9121c4c`), two broken links fixed.
+Issue log refreshed with comment 61.
+* Suite unchanged — 1,422 passed, 13 skipped, 2 xfailed — and `ruff` clean.

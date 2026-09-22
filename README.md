@@ -424,6 +424,18 @@ As the script processes, it assigns each line one of five categories 🪧:
 > See [`docs/issue30/issue30_review_request.md`](docs/issue30/issue30_review_request.md) § 6.
 
 > [!NOTE]
+> **Hand-editable word lists (issue #30).** The word lists the categoriser consults — units, reference
+> labels, section headings, short Czech function words, the rotation whitelists — live in
+> [`setup/word_lists.txt`](setup/word_lists.txt) (`WORD_LISTS_PATH`), one `[section]` each, with the
+> matching `setup/config.txt` keys kept empty as overrides. Its `[allowed]` section is for real words
+> the archive uses that the program keeps mistaking for damage; it **ships empty**, with the candidates
+> commented out, because switching one on changes stored categories. A listed word stops counting
+> against the quality score; it is not (yet) exempt from the shape witness — see
+> [`docs/categorization_logic.md`](docs/categorization_logic.md#composite-quality-score).
+> Separately, `DOMAIN_NOTATION_CATEG` in `[TEXT_UTILS]` names the category every recognised web or
+> e-mail address gets; it **ships empty = off**, pending the data providers' answer.
+
+> [!NOTE]
 > This script generates two primary output directories:
 > `DOC_LINE_LANG_CLASS/` and `DOC_LINE_STATS/`, while the
 > raw **text** 📝 files (primary input) are stored in `../PAGE_TXT/` generated from `../PAGE_ALTO/`.
@@ -618,8 +630,15 @@ passes — lives in **[docs/categorization_logic.md](docs/categorization_logic.m
 > label suggests.** Downstream consumers filtering on `categ == "Clear"` should be aware of it.
 >
 > The narrowing that pays this down (`_has_shape_garbage_evidence()`, a phonotactic second witness) is
-> implemented and wired, but ships **disabled** — enabling it requires measuring it against human gold
-> labels, which the repository does not yet have. See [`tools/gold/GOLD.md`](tools/gold/GOLD.md).
+> implemented and wired, but ships **disabled** (`SHORT_GARBAGE_WITNESS_ENABLE = false`). It has been
+> measured against the 2,067-line human gold set in
+> [`tools/gold/sidecars/issue30_gold_2067.csv`](tools/gold/sidecars/issue30_gold_2067.csv) (see
+> [`tools/gold/GOLD.md`](tools/gold/GOLD.md)): with the document-level smoothing it passes the adoption
+> gate — errors 513 → 503, readable lines lost 38 → 38, McNemar p = 0.013, and 503 → 502 / 38 → 37 with
+> the German/French vowel-run split — but it fails that gate per line, so the smoothing is a
+> precondition. It stays off until the data providers' annotation of the population it would newly
+> discard, and their agreement on what `Trash` means, are in. See
+> [`docs/issue30/README.md`](docs/issue30/README.md).
 
 | Section                                                                             | What it covers                                                                                 |
 |-------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|

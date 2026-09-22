@@ -2,19 +2,25 @@
 
 **For:** @david-spacil
 **Issue:** [ufal/atrium-alto-postprocess#30](https://github.com/ufal/atrium-alto-postprocess/issues/30)
-**Time needed:** none. **You answered this on 2026-09-22 and every question below is now closed or
+**Time needed:** none for the items below. **You answered this on 2026-09-22 and every question below is now closed or
 waiting on @DanaKriv.** Your answers are recorded in place, marked ✅.
+
+> ⏳ **Opened since, 2026-09-22 (evening).** Your answers, and the code that followed them, raised a
+> few questions we had written down as "for Dana and David" without ever asking. They are now asked
+> in the issue thread, after [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756),
+> and summarised in [§ 9](#9--opened-by-your-answers--open) below. One is for you alone (which
+> revision to re-check your 508 lines against, § 3); three are for you and @DanaKriv together.
 
 > ## ✅ Answered — 2026-09-22
 >
-> | item  | your answer                                                                                                                                                             | what it settles                              |
-> |-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-> | § 2   | Option 1; drop option 3                                                                                                                                                 | the de-duplication step stays as it is       |
-> | § 3   | after the tag                                                                                                                                                           | nothing blocked                              |
-> | § 4   | **`ssuti` / `ssutí` / `ssutě` are an old spelling of *suť* — they are `Clear`**; the other four stay errors; no objection to dropping the safeguard                     | a two-month assumption, corrected            |
-> | § 6   | **`Trash` = illegible.** Legible is `Clear`, easily decipherable is `Noisy`, *regardless of usefulness*. Re-process rather than delete. `Non-text` needs the page image | the definition the whole annotation rests on |
-> | § 7   | 3+ vowels is right for Czech and wrong for German and French — **split by language, or try 4+**; and two of our examples were mislabelled                               | the direction of the next change             |
-> | § 8.1 | close the raw-perplexity thread                                                                                                                                         | done                                         |
+> | item  | your answer                                                                                                                                                             | what it settles                                                                                                                   |
+> |-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+> | § 2   | Option 1; drop option 3                                                                                                                                                 | the de-duplication step stays as it is                                                                                            |
+> | § 3   | after the tag                                                                                                                                                           | nothing blocked                                                                                                                   |
+> | § 4   | **`ssuti` / `ssutí` / `ssutě` are an old spelling of *suť* — they are `Clear`**; the other four stay errors; no objection to dropping the safeguard                     | a two-month assumption, corrected                                                                                                 |
+> | § 6   | **`Trash` = illegible.** Legible is `Clear`, easily decipherable is `Noisy`, *regardless of usefulness*. Re-process rather than delete. `Non-text` needs the page image | the definition the whole annotation rests on                                                                                      |
+> | § 7   | 3+ vowels is right for Czech and wrong for German and French — **split by language, or try 4+**; and two of our examples were mislabelled                               | the direction of the next change — **built and measured since**: a global 4 is dead, the split gives 12 fixes / 1 break (see § 7) |
+> | § 8.1 | close the raw-perplexity thread                                                                                                                                         | done                                                                                                                              |
 >
 > **Two of them correct us rather than answer us**, and both corrections are carried through every
 > document in this folder rather than noted here and forgotten. They are marked 🛑 where they appear.
@@ -141,6 +147,15 @@ is enough.
 
 > ✅ **Answered 2026-09-22 — you will do this after the tag.** Recorded, not chased. Nothing else
 > in this issue waits on it.
+>
+> ⏳ **One thing to know before you start.** The tag is
+> [`v1.5.1-beta`](https://github.com/ufal/atrium-alto-postprocess/releases/tag/v1.5.1-beta)
+> (`09c9640`). Two changes to the rule landed on `master` *after* it: the doubled-letter safeguard
+> was removed (§ 4b — measured identical on your 2,064 lines), and the three-vowel test was split
+> by language (§ 7 — it changes one of the two lines the rule gets wrong). So the tag and `master`
+> will not give the same figure on your 508. Which one to check against is asked in the thread
+> (§ 9); our suggestion is `master`, which gives back the tag's single three-vowel threshold when
+> `SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS` is set empty.
 
 Your measurement was the deciding one, and it was right: 26 lines moved, 12 improved, 12 made
 worse, and every one of the 12 failures contained a Roman numeral.
@@ -344,8 +359,14 @@ The same question is § 7.2 of Dana's guide.
 > * **Delete versus re-OCR:** no strong opinion, and most of it is probably a handwriting-recognition
 >   candidate, so **re-process rather than delete**.
 > * **`Non-text`:** you cannot tell it from `Trash` without the source image. Apart from the first few
->   hundred lines of your original annotation (1950s ARÚB, complete documents), you labelled only
->   `Clear`/`Noisy`/`Trash`, and whatever the pre-filter marked `Non-text` was out of scope.
+>   hundred lines of your original annotation (1940s ARÚB, complete documents), you labelled only
+>   `Clear`/`Noisy`/`Trash` — *"with a few exceptions, most of them originate from Tomáš Krofta's
+>   annotations"* — and whatever the pre-filter marked `Non-text` was out of scope.
+>
+>   🛑 *Corrected 2026-09-22: this line first read "1950s"; your comment says 1940s, and the gold
+>   file agrees. Of its 45 `Non-text` rows, 24 are in 1940s ARÚB documents (`MTX194…`) and the
+>   other 21 sit in just seven later documents (18 in four ARÚP documents from the 1970s–2000s,
+>   3 in three ARÚB ones) — which would fit the exceptions you attribute to Tomáš Krofta.*
 >
 > **What follows, once @DanaKriv agrees.**
 >
@@ -499,6 +520,13 @@ we suspect it is not. You know this material and we do not.
 > uncontested; the only thing in dispute is the one test you identified, on the one kind of text
 > you identified.
 >
+> 🛑 **Superseded by the final runs — read the ✅ block above instead.** The three paragraphs below
+> were a prediction, made before anyone had looked at which language the program assigned to these
+> lines. That check has since been done: the rubbish line the prediction expected to lose was
+> detected as Afrikaans rather than German, so the split does not release it. The measured result
+> is **12 improved, 1 made worse**, total mistakes and readable lines lost both *down*, and the
+> acceptance test passes as written — nothing about it needs arguing. Kept for the record.
+>
 > **What the language split would do, worked out line by line.** We have now built it — three
 > vowels count as damage in Czech, four in German and French — and checked it against those same
 > 14 lines. It would spare the German sentence above, which is a clear win. It would also let
@@ -537,6 +565,14 @@ we suspect it is not. You know this material and we do not.
 >    almost nothing and four is the pragmatic choice after all. If it is 40%, the split is the whole
 >    answer. This costs nothing and is the next measurement.
 > 2. Whichever way that goes, check it against @DanaKriv's labels before changing anything.
+>
+> ✅ **Both steps done, 2026-09-22.** (1) The not-Czech share is 44.5% of labelled lines on the raw
+> label, but that number misleads — its tail is Vietnamese, Estonian, Xhosa and Uzbek, i.e. the
+> detector failing. The split acts only on German and French: **5.8%**. The split was built anyway,
+> because it is the right rule rather than a large one. (2) Checked against the 2,064 labelled lines
+> you and @DanaKriv produced: **12 improved, 1 made worse** (the ✅ block above). It ships inside the
+> new rule, which stays switched off; @DanaKriv's 357 new decisions are what it will be checked
+> against next.
 
 ## 8. Three smaller items
 
@@ -584,6 +620,30 @@ later.
   repository. That was our own reading of a frequency table, not anything you had told us. You
   corrected it, and all six now say *old spelling of suť*.
 
+
+## 9. ⏳ Opened by your answers — open
+
+Asked in the issue thread after
+[comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756),
+and numbered there as Q1–Q7. Q1–Q3 are for @DanaKriv alone and are in her guide; the four below
+involve you. One line each is enough, and "no opinion" is an answer.
+
+**A correction first, to comment 61.** It says that listing a word in `setup/word_lists.txt`
+`[allowed]` stops the program discarding it. Today that is only partly true. A listed word stops
+counting against the line's quality score, so a line made **only** of listed words can no longer be
+discarded by the short-line rule. But the new rule's shape tests still read a listed word: with
+`ssuti` listed and the rule switched on, `ssuti` alone stays `Clear` while `ssuti vfetennl` goes to
+`Trash` on `ssuti`'s doubled first letter (`vfetennl` trips no test). Q5 (b) asks whether that
+should change.
+
+| #       | for         | question                                                                                                                                                                                                                                                                                                          |
+|---------|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Q4**  | both of you | Once § 6 is agreed, what should **every** recognised web or e-mail address be — `Clear` or `Noisy`? `DOMAIN_NOTATION_CATEG` in `setup/config.txt` holds the answer and ships empty. The program cannot tell a damaged address (`e-mail: officeauappmost.cz`) from a correct one, so the category applies to both. |
+| **Q5a** | both of you | Which `[allowed]` entries should we switch on? The four you confirmed (`ppole`, `ssuti`, `ssutí`, `ssutě`), all the candidates in the file, a named subset, or none yet? Switching on changes stored categories, so we re-score and report before and after.                                                      |
+| **Q5b** | both of you | Should a listed word also be exempt from the new rule's shape tests, so that it can never be the reason a line is discarded?                                                                                                                                                                                      |
+| **Q6**  | both of you | The short-line rule can only answer `Trash`. Under § 6, a short damaged line a person can still work out is `Noisy`, but on 1–3 words the program cannot reliably tell. Which mistake is better — `Trash` (re-processed, nothing deleted) or `Noisy`? Or leave it until the 357 decisions are in.                 |
+| **Q7**  | you         | Which revision for your § 3 re-check — `master` (our suggestion) or the `v1.5.1-beta` tag? See the note under § 3.                                                                                                                                                                                                |
+
 ---
 
 **Thank you — all of it is answered.** Two of your answers corrected us rather than replying to us,
@@ -592,4 +652,5 @@ appears in 195 separate documents, and our own annotation guide already called `
 That is worth saying because it is the third time in this issue that reading our own output more
 carefully would have got there first.
 
-Nothing here now waits on you. What remains is @DanaKriv's agreement on § 6 and her 357 decisions.
+Nothing in §§ 1–8 waits on you. What remains there is @DanaKriv's agreement on § 6 and her 357
+decisions — plus the follow-up questions in § 9, which your answers made possible to ask.

@@ -19,7 +19,11 @@
 
 ## What to do
 
-Fill in **`gold_categ`** only. Write one of: `Clear`, `Noisy`, `Trash`, `Non-text`, `Empty`.
+Fill in **`gold_categ`** only. Write one of: `Clear`, `Noisy`, `Trash`, `Empty`. The fifth
+category, `Non-text`, is best left blank: it cannot be told apart from `Trash` without the page
+image, which you do not have. That follows @david-spacil's answer of 2026-09-22 and is explained in
+[`issue30_annotation_guide.md`](issue30_annotation_guide.md) § 4 — if you disagree with it, say so
+(guide § 7.2) rather than working around it.
 
 **If you are not sure, leave it blank.** A blank cell is skipped. It is never treated as a guess.
 
@@ -105,9 +109,14 @@ never seen the word.
 
 `FEUILLETON.` is the same story. So, in a different way, is `Dated=Dated (relatively)`.
 
-This is not a trick, and there is no right answer we are hoping for. If your answer is that these
-are `Clear`, that tells us the rule is set one notch too tight, which is a single number we can
-change. Please judge what you see.
+This is not a trick, and there is no right answer we are hoping for. If your answer is that
+`Dauerleihe` and `FEUILLETON.` are `Clear`, that confirms what @david-spacil told us: a run of three
+vowels is evidence of damage in Czech and not in German or French. That change is already built —
+the three-vowel test now asks for four vowels on lines detected as German or French — and it ships
+inside the new rule, which stays switched off. (Simply requiring four vowels everywhere was measured
+and rejected: it lets real scanning errors such as `J. Vysoean` through.) `Dated=Dated (relatively)`
+is caught by a different test — too few different letters — which that change does not touch, so
+your answer on it is evidence of its own. Please judge what you see.
 
 ---
 

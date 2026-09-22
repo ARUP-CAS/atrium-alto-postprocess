@@ -26,6 +26,13 @@
 > of how useful the line is** — and § 4 gives you the definitions that follow from it. What is
 > left is whether you agree; a sentence either way settles it, and it does not block the labelling.
 > § 7.1 is now answered too and is kept only in case you want to dissent.
+>
+> ⏳ **Three more short questions for you are in the issue thread** (Q1–Q3, asked after
+> [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756)):
+> the § 7.2 agreement, the § 7.1 dissent, and roughly when a first batch of answers might come. Three
+> more (Q4–Q6) are for you and @david-spacil together — what a web address should be, which words
+> the new `[allowed]` list should protect, and what the short-line rule should answer when it cannot
+> tell. [`README.md`](README.md) lists them all under "Still open".
 
 ---
 
@@ -82,9 +89,10 @@ times**, and 96% of the text at risk appears exactly once.
 So we are not asking you to look at lines. We are asking you to look at **each different piece
 of text once**. One decision settles every line that contains it.
 
-We have also removed everything where your answer could not change the outcome. Most of the
-queue is text the program **already** throws away; the new rule would simply agree with it, so a
-label there changes nothing.
+We have also removed everything where your answer could not change the outcome, apart from **39
+deliberate checks** in `census.csv`. Most of the queue is text the program **already** throws away;
+the new rule would simply agree with it, so a label there changes nothing — the 39 are there only so
+we can see whether it agrees for the right reasons.
 
 | file         |    rows | what it is                                                                                                                    |
 |--------------|--------:|-------------------------------------------------------------------------------------------------------------------------------|
@@ -146,15 +154,15 @@ to the archive using the text in the first column.
 
 ## 5. The columns, and how to read them
 
-Here is a real row from `census.csv`:
+Here is a real row from `census.csv` (row 7):
 
 | column             | value                                          | what it means                                                     |
 |--------------------|------------------------------------------------|-------------------------------------------------------------------|
-| `text`             | `1 fraament okraie`                            | The text to judge.                                                |
-| `variants`         | `1 fraament okraie \| 1 .fraament okraie \| …` | Other spellings of the same thing, covered by the same decision.  |
-| `lines_settled`    | `558`                                          | Your one answer settles 558 lines of the archive.                 |
-| `categ_current`    | `Trash:554\|Clear:3\|Noisy:1`                  | What the program says **today**. Here it disagrees with itself.   |
-| `nearest_attested` | `fraament -> fragment (6375, edit1)`           | The closest real word found elsewhere in the archive.             |
+| `text`             | `eaual to:`                                    | The text to judge.                                                |
+| `variants`         | `eaual to: \| eaual to: 1106 \| …`             | Other spellings of the same thing, covered by the same decision.  |
+| `lines_settled`    | `21`                                           | Your one answer settles 21 lines of the archive.                  |
+| `categ_current`    | `Clear:14\|Noisy:7`                            | What the program says **today**. Here it disagrees with itself.   |
+| `nearest_attested` | `eaual -> equal (15, edit1)`                   | The closest real word found elsewhere in the archive.             |
 | `recoverability`   | `1.00`                                         | How much of the line the archive can reconstruct (0.00 to 1.00).  |
 | `clauses`          | `vowel_run`                                    | Which part of the new rule reacted. Technical; you can ignore it. |
 | `gold_categ`       | *(empty)*                                      | **Your answer goes here.**                                        |
@@ -176,14 +184,15 @@ several different documents. They are **hints, not conclusions**, and they are u
 direction in particular:
 
 * A **high** `recoverability` means the archive can reconstruct the words. That is good evidence
-  that the line is real text. `1 fraament okraie` is *"1 fragment okraje"*.
+  that the line is real text. `eaual to:` is *"equal to:"*.
 * A **zero** `recoverability` means only that **the archive has nothing to say about it**. It is
   *not* evidence of rubbish. `Kaukasus` and `Schuhleistenkeilbruchstueck` both score zero and
   both are perfectly good German archaeological words.
 * `edit1` in `nearest_attested` means "one letter different". **This is often a coincidence.**
   `Linum` and `ilium` are one letter apart and both are real Latin words. We can put a number on
-  how much of the evidence this affects: **94% of all the suggestions in these files are `edit1`**
-  (9,649 of 10,246), and they were generated with a setting that our own tooling warns is too
+  how much of the evidence this affects: **90% of the suggestions in these two files are `edit1`**
+  (102 of 113; the rest are 10 known scanner confusions and 1 restored accent), and they were
+  generated with a setting that our own tooling warns is too
   permissive on an archive this size. We meant to tighten that setting when the files were rebuilt
   and did not, so this has not improved. Please treat `nearest_attested` as a prompt to look,
   never as a reason to agree.
@@ -209,16 +218,16 @@ German word. A score of zero is not evidence against a line.
 own dictionary, so no answer about them can change anything. They have been removed from the
 request. What is left is a different kind of text:
 
-| text                       | lines | the program says                 | our question                                                            |
-|----------------------------|------:|----------------------------------|-------------------------------------------------------------------------|
-| `Dauerleihe`               |   305 | `Clear:277` `Trash:19` `Noisy:9` | German for *permanent loan*. Scanned correctly. Should it stay `Clear`? |
-| `J. Vysoean`               |   125 | `Noisy:125`                      | ✅ Confirmed damaged — *Vysočan*. Readable enough to keep?               |
-| `Dated=Dated (relatively)` |    47 | `Noisy:47`                       | A field label from a form, not prose. Is that text at all?              |
-| `lenaye`                   |    47 | `Clear:46` `Trash:1`             | Damaged, and we cannot tell from what. Rubbish, or worth keeping?       |
-| `Aa/III 116`               |    24 | `Trash:21` `Noisy:3`             | A find identifier, answered two ways. Which is right?                   |
-| `eaual to:`                |    21 | `Clear:14` `Noisy:7`             | Almost certainly *equal to:*. One letter wrong. `Clear` or `Noisy`?     |
-| `FEUILLETON.`              |    13 | `Noisy:13`                       | A real word — the feature section of a newspaper. Scanned correctly.    |
-| `B/ POSTKRANIAINY SKELET:` |    11 | `Noisy:10` `Trash:1`             | ✅ Confirmed damaged — *POSTKRANIÁLNÍ SKELET*, accents lost.             |
+| text                       | lines | the program says                 | our question                                                              |
+|----------------------------|------:|----------------------------------|---------------------------------------------------------------------------|
+| `Dauerleihe`               |   305 | `Clear:277` `Trash:19` `Noisy:9` | German for *permanent loan*. Scanned correctly. Should it stay `Clear`?   |
+| `J. Vysoean`               |   125 | `Noisy:125`                      | ✅ Confirmed damaged — *Vysočan*. Decipherable (`Noisy`) or not (`Trash`)? |
+| `Dated=Dated (relatively)` |    47 | `Noisy:47`                       | A form field label, not prose — under § 4, usefulness does not count.     |
+| `lenaye`                   |    47 | `Clear:46` `Trash:1`             | Damaged, and we cannot tell from what. Decipherable, or illegible?        |
+| `Aa/III 116`               |    24 | `Trash:21` `Noisy:3`             | A find identifier, answered two ways. Which is right?                     |
+| `eaual to:`                |    21 | `Clear:14` `Noisy:7`             | Almost certainly *equal to:*. One letter wrong. `Clear` or `Noisy`?       |
+| `FEUILLETON.`              |    13 | `Noisy:13`                       | A real word — the feature section of a newspaper. Scanned correctly.      |
+| `B/ POSTKRANIAINY SKELET:` |    11 | `Noisy:11`                       | ✅ Confirmed damaged — *POSTKRANIÁLNÍ SKELET*, accents lost.               |
 
 **Two of these are the heart of the request.** `Dauerleihe` and `FEUILLETON.` are ordinary words,
 read perfectly by the scanner. The rule flags them because they have three vowels in a row, which
@@ -235,8 +244,10 @@ naturally — which is why `Dauerleihe` and `FEUILLETON.` are on this list, and 
 on it for a completely different reason.
 
 `B/ POSTKRANIAINY SKELET:` is the mirror image of your original complaint — damaged but readable,
-and currently only just being kept. Whether a damaged-but-readable line is worth keeping in the
-archive is a judgement about what the output is **for**, and it is yours to make, not ours.
+and currently only just being kept. Under the definitions in § 4 the question is only whether you
+can still work out what it says — that makes it `Noisy`, however little the line is worth. If you
+think usefulness *should* count, that is a disagreement with § 7.2, and it is worth telling us
+before you label rather than expressing it row by row.
 
 ---
 
