@@ -1,5 +1,5 @@
 # 📓 atrium-alto-postprocess — agent_dev_logs/DEVLOG.md (timeline index)
-> _OCR/ALTO post-processing + line categorization. 7 open issues (#2, #3, #4, #23, #30, #31, #37); #5/#6 closed. `test` HEAD `4017a76` (2026-09-09), `master` `ebaec0a` (4 behind) · **v1.4.6-beta** released; next tag needs the version bump in `CITATION.cff` + `setup/para_config.txt`._
+> _OCR/ALTO post-processing + line categorization. 7 open issues (#2, #3, #4, #23, #30, #31, #37); #5/#6 closed. **v1.5.1-beta** released 2026-09-22 at `09c9640`; `test` and `master` are both at `0c30517`, carrying the post-tag #30 work as `5b27900` (docs, D40, the tie-break, D43, D44) and `0c30517` (the word lists). Next tag needs the version bump in `CITATION.cff` + `setup/para_config.txt`._
 > _Per-issue detail: `digests/{id}.digest.md` · `plans/{id}.plan.md` · `issues/` exports (source of truth). Cross-repo/hub history lives in `ufal/atrium-project/agent_dev_logs/DEVLOG.md` (deduplicated out of this file)._
 
 ## 2026-03-13
@@ -749,3 +749,95 @@ overlap with the delivered ask is how the mixture gets quantified.
 * Also fixed: § 8 of the review request still numbered its sub-items 7.1/7.2/7.3 after the section
 was renamed, which is why he had to write "§ 8 (item 7.1)".
 * Documentation only. Suite 1,335 passing, `ruff` clean.
+
+## 2026-09-22 (fourth entry)
+- **#30** — **Stages 10d and 10e landed, and the post-tag work went in after `v1.5.1-beta`** — first as ten commits on `claude/great-pasteur-65xjgw`, then onto `test`/`master` as `5b27900` and `0c30517`.
+Everything new ships OFF; re-scoring `data_samples/DOC_LINE_CATEG` changes 0 categories at every
+step. Suite 1,335 → 1,418 passing, `ruff` clean.
+
+**Measurement (digest X1–X6, Y1–Y4).**
+* **10e — the adoption gate passes on the post-D33 tree**, which is the run stage 9a was owed:
+errors 513 → 503, cost 0.2897 → 0.2810, `Clear`-loss 38 → 38, `Trash`-recall 12.2% → 18.9%,
+fixes 12 / breaks 2, exact McNemar **p = 0.01294**. Stage 9a closes.
+* **10d — a global `VOWEL_RUN_MIN` of 4 is dead.** The gate is indifferent (errors +0, cost +0,
+`Clear`-loss +0, fixes 2 / breaks 2, p = 1) and both secondary measures move the wrong way
+(macro_f1 −0.0020, `Trash`-recall 34/180 → 32/180). Written into the plan as "a regression guard
+rather than the decision"; it was the decision.
+* **`Clear`-loss is 38, not 40**, and 10e shows it is 38 in BOTH arms where 08b had 40 in both of
+its own — a flag-independent shift, which is the shape D33 predicts and not one the witness can
+produce. Corroboration, not proof; the cheap confirming check still stands.
+* **The witness's only two errors on gold are 10d's two fixes** — the same two lines from the two
+sides of the `vowel_run` clause. So everything it gets wrong is the one clause @david-spacil
+identified, on the one kind of text he identified, and nothing else it does is in dispute.
+* **The language split's effect is computed, not guessed (Y4).** Both breaks are `vowel_run`-only
+and so are exactly two of the twelve fixes; the other ten fire `triple`, `initial_geminate` or
+`low_variety`. Likely outcome **11 fixes / 1 break** — errors 503 → 504, `Clear`-loss 38 → 37. It
+trades a gold-`Clear` error for a gold-`Trash` one, improving the composition and not the count,
+**and the adoption gate as written rejects any +1 on errors.** The gate needs the argument, not
+the split.
+
+**Code, all shipping off.**
+* **D40 — the de-gemination guard removed**, owner-approved. Probed before and after on a
+full-collection table: it withdrew attestation from exactly two of the eight tokens, and neither
+can be convicted either way (`jjámy` carries a diacritic, `oobjekt` is a doubled vowel the
+consonant clause never matches). Live reach was nil, not small.
+* **D43 — `DOMAIN_NOTATION_CATEG`**, a category NAME in config rather than a switch, because this
+line has had three answers already. Every address the pattern catches gets it, and the rule runs
+first in the cascade. Ships empty.
+* **D44 — the vowel-run language split**: 3 vowels outside `deu,fra`, 4 anywhere. `lang` plumbed
+through `determine_category()` / `categorize_line()`; `classify_TEXT` passes the RAW
+`original_lang`, never the remapped `lang`, which `remap_lang()` rewrites to Czech.
+* **The dedup tie-break pinned on `apply_document_postprocessing()` itself.** It was only ever
+tested against the offline tool's copy of the vote.
+* **`setup/word_lists.txt` — the hand-maintained word lists.** Eight lists migrated in (three from
+`text_util.py`, five from `setup/config.txt`), plus **`[allowed]`**, the open-class layer that
+never existed: every list the code carried was closed-class, the open-class vocabulary lived only
+in `tests/`, and `SHORT_GARBAGE_LEXICON_PATH` ships empty with no frequency table anywhere in the
+repository. A listed token is not debuffed in the quality score; reach beyond that is deferred to
+@DanaKriv and @david-spacil. Ships empty, candidates commented.
+
+**Four things found by doing the work, each contradicting something written first.**
+1. **A test can fail by passing.** `test_the_ratio_can_be_disabled` stayed green after D40 because
+`override_constants()` gates on `hasattr` and silently ignores a deleted constant. Deleted, not
+kept — and it means re-running the `GEMINATE_RATIO 4.0-vs-0.0` A/B would "confirm" the removal
+with a vacuous null. D28's third instance.
+2. **The first URL route claimed a separation the code cannot make.** Its own test showed
+`detect_fused_words` fires on the address SHAPE, correct and damaged alike, and that
+`e-mail: officeauappmost.cz` already reads `Clear` without any new route.
+3. **Three of eleven word lists could not migrate** — `ACADEMIC_TITLES` is matched
+case-sensitively, `METADATA_MARKERS` carries load-bearing trailing spaces, `LDL_ALLOWED_FOLLOW` is
+punctuation. Documented in `config.txt` where an editor will look.
+4. **The migration nearly removed the override path**, caught by
+`test_tier1_key_roundtrip_from_alternate_config`. Precedence is now layered: config/env, then
+file, then in-code default.
+
+## 2026-09-22 (fifth entry)
+- **#30** — **Stages 10f and 11 finished, and with them the measurement programme this issue has
+run since July.** What remains is decisions, not runs. Stage 11 was three joins over the gold
+corpus — minutes, no re-score — and it answered every question stage 10 left open. Digest
+§ "Stage 10f + stage 11" (Z1–Z6).
+* **10f — per line, the witness FAILS its own gate.** `Clear`-loss 53 → 54 with the page cascade
+disabled, and the tool prints REJECT; with the cascade (10e) it is 38 → 38. That reproduces 08c,
+so it is confirmed twice: **the document-level dedup is a PRECONDITION for the witness**, not a
+refinement. @david-spacil's § 2 answer — keep the step — is load-bearing for the flag decision.
+* **11a — W6 closes.** Zero gold rows carry `ssuti`, `ssutí` or `ssutě`. `Clear`-loss 38 needs no
+correction.
+* **11c — X1 confirmed, and the 42 / 41 / 40 / 38 drift is accounted for at last.** Exactly two
+gold-`Clear` rows are stored `Trash` and URL-shaped — both `http://www.arub.cz` — and D33 moves
+exactly those two `Trash` → `Noisy`. **The stage printed the wrong verdict while confirming it**:
+its pass condition counted every URL-shaped row (3) instead of those stored `Trash` (2). The rows it
+printed were right; the summary written into it was not.
+* **11b — Y4 was wrong, in our favour.** The four labels are `deu` / **`afr`** / `fin` / `eng`, so
+only the German break is spared and every fix survives: **12 fixes / 1 break, errors 503 → 502,
+`Clear`-loss 38 → 37 — both down.** The adoption gate passes, and the "decide the gate first"
+recommendation is withdrawn. Y4's arithmetic was sound and its premise was not: a line that reads
+German was detected Afrikaans.
+* **And that is why it is fragile (Z5).** The fix survives only because of that mis-detection;
+`Frauenzimmerbad` is exempted on a `deu` label at 0.359; `http://www.arub.cz` is detected
+Cantonese. The label on a short damaged line is largely noise. **Open:** a confidence floor on
+`_vowel_run_min_for()`, which would put the German sentence back at risk.
+* **44.5% non-Czech is the wrong number to read; 5.8% is the right one (Z6).** The tail is
+Vietnamese, Estonian, Xhosa and Uzbek — the detector failing, which `remap_lang()` absorbs. The
+split acts only on `deu` + `fra`.
+* `issue30_stage11_job.sh` written for the cluster in the stage 6–10 contract; not tracked, like
+its predecessors. Documentation only in-tree. Suite 1,418 passing, `ruff` clean.

@@ -111,8 +111,17 @@ had written. They are real scanning errors, so the three-vowel test catches them
 * **The only two lines the rule gets wrong are both caught by the three-vowel test**, and one of
   them is a German sentence. The part he identified is the only part in dispute.
 
-The language split is now built and switched off. What it would do, worked out line by line: one
-fewer readable line destroyed, one more rubbish line kept. Details in
+**Settled on 2026-09-22, in the final runs.** The language split is built, switched off, and
+measured: **12 lines improved against 1 made worse**, total mistakes 503 → 502, readable lines
+wrongly discarded 38 → 37. Both numbers move the right way. The line it stops destroying is the
+German sentence `Frauenzimmerbad", sämtlic Gesellschastsbäder,`.
+
+Two cautions worth more than the result. **It works partly by luck** — the program guesses a
+language for every line, and on short damaged lines that guess is often wrong. It called
+`deutendes. Alhimiaal` *Afrikaans* (a person would read it as German), and that mistake is the only
+reason the rule still catches it correctly. And **44.5% of labelled lines are not recognised as
+Czech, which is misleading**: the list includes Vietnamese, Estonian, Xhosa and Uzbek, which do not
+appear in this archive. The share the split actually acts on is **5.8%**. Details in
 `issue30_review_request.md` § 7.
 
 ---

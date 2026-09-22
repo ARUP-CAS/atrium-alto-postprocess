@@ -429,6 +429,48 @@ scanning error in this archive?** In ordinary Czech it very nearly is. In an arc
 carries German museum terms, French section headings, Latin species names and foreign place names,
 we suspect it is not. You know this material and we do not.
 
+> ## ✅ And now it is settled — 2026-09-22, final runs
+>
+> The last runs finished. **Your answer was right, and the split works.** Measured
+> against your and Dana's 2,064 labelled lines, splitting by language gives:
+>
+> * **12 lines improved, 1 line made worse** — better than the current rule, which
+>   improves 12 and worsens 2.
+> * **Total mistakes fall from 503 to 502**, and the count of readable lines wrongly
+>   thrown away falls from 38 to 37.
+>
+> Both numbers move the right way, so nothing about our acceptance test needs
+> changing. The line it stops destroying is the German sentence:
+> `Frauenzimmerbad", sämtlic Gesellschastsbäder,`.
+>
+> **Two honest cautions, because they matter more than the result.**
+>
+> **First, it works partly by luck.** The program guesses a language for every
+> line, and on short damaged lines that guess is often wrong. It called
+> `deutendes. Alhimiaal` **Afrikaans** — a person would read it as German. That
+> mistake is the only reason the rule still catches it correctly. It also called
+> `http://www.arub.cz` **Cantonese**. And the German sentence above was recognised
+> as German with only 36% confidence, which is barely better than a guess.
+>
+> So the rule now depends on a signal that is unreliable on exactly the kind of
+> text it is meant to judge. It gives the right answer here; we cannot promise it
+> gives the right answer everywhere, and we would rather say that now.
+>
+> **Second, one number needs reading carefully.** 44.5% of the labelled lines are
+> not recognised as Czech — which sounds like the split matters enormously. It does
+> not mean that. The list includes Vietnamese, Estonian, Xhosa and Uzbek, which do
+> not appear in this archive; that is the guesser failing, not foreign text. The
+> share that the split actually acts on — German and French — is **5.8%**. That is
+> the number to remember.
+>
+> **Also settled:** the old spellings `ssuti`, `ssutí` and `ssutě` do not appear
+> anywhere in your labelled lines, so your correction does not change any of the
+> figures above. And we have finally explained something that has bothered us since
+> July: the count of readable lines wrongly discarded moved 42 → 41 → 40 → 38 over
+> several months without an explanation. The last step is now accounted for — it is
+> the two `http://www.arub.cz` lines, which stopped being thrown away when we taught
+> the program to recognise web addresses.
+
 > ## 📊 And we have now measured it — 2026-09-22
 >
 > Two runs finished after you answered. Both scored the program against the 2,064 lines you and

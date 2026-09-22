@@ -7,6 +7,59 @@ quoted from a log was recomputed from those artefacts against the committed pred
 
 ---
 
+## Stage 10f + stage 11 — the cascade is a precondition, and the split passes (2026-09-22)
+
+**10f — the same flag A/B with `apply_document_postprocessing()` disabled.**
+
+|               | errors |   cost | `Clear`-loss | `Trash`-recall |
+|---------------|-------:|-------:|-------------:|----------------|
+| per-line, off |    502 | 0.3055 |           53 | 42/180 = 23.3% |
+| per-line, on  |    492 | 0.2977 |       **54** | 54/180 = 30.0% |
+
+Same 12 fixes / 2 breaks, same p = 0.01294, and the verdict is
+`REJECT - macro_f1 rises but Clear-loss worsen`. Read against 10e (38 → 38 with
+the cascade), this reproduces 08c and confirms it twice: **the document-level
+dedup is a precondition for the witness, not a refinement of it.**
+
+**Stage 11 — three joins over the gold corpus, no re-score.**
+
+* **11a / W6 — zero.** No gold row contains `ssuti`, `ssutí` or `ssutě`. The
+  `Clear`-loss figure needs no correction.
+* **11c / X1 — confirmed.** Exactly two gold-`Clear` rows are stored `Trash` and
+  match `_RE_NOTATION_URL`, both `http://www.arub.cz`. D33 moves those two
+  `Trash` → `Noisy`, which is the 40 → 38 shift exactly, with `errors` unchanged
+  because both stay wrong. A third URL row was already `Noisy` and never
+  contributed. **The 42 / 41 / 40 / 38 drift is accounted for.**
+  *(The stage printed "3, not 2 — the direction is right and the size is not": its
+  pass condition counted every URL-shaped row rather than those stored `Trash`.
+  The artefact was right and the verdict written into it was wrong.)*
+* **11b / D44 — the split measures 12 fixes / 1 break.** errors 503 → **502**,
+  `Clear`-loss 38 → **37**. Both down, so the adoption gate passes unchanged.
+
+| watched row                                         | detected   | conf. | exempt? | outcome       |
+|-----------------------------------------------------|------------|------:|---------|---------------|
+| `Frauenzimmerbad", sämtlic …` (break, gold `Clear`) | `deu_Latn` | 0.359 | yes     | break removed |
+| `deutendes. Alhimiaal` (fix, gold `Trash`)          | `afr_Latn` | 0.738 | no      | fix kept      |
+| `Lokolieace: •VIII,` (break, gold `Noisy`)          | `fin_Latn` | 0.883 | no      | break stays   |
+| `MI*I\ EOOCO` (fix, gold `Trash`)                   | `eng_Latn` | 0.343 | no      | fix kept      |
+
+**Two cautions that outlast the result.**
+
+1. **It passes partly by accident.** `deutendes. Alhimiaal` reads German and was
+   detected Afrikaans; that is the only reason its conviction survives.
+   `Frauenzimmerbad` is exempted on a `deu` label at 0.359, and
+   `http://www.arub.cz` is detected `yue_Hant`. The detector's label on a short,
+   damaged, diacritic-free line is largely noise — the population the witness
+   exists for. **Open:** a confidence floor on `_vowel_run_min_for()`, which would
+   put `Frauenzimmerbad` back at risk. Its own measurement, not a default.
+2. **44.5% is the wrong number; 5.8% is the right one.** Raw non-Czech is 791 of
+   1,777 scored gold rows, but the tail is `vie` 5.0%, `est` 1.9%, `slv` 1.1%,
+   `fin` 1.0%, `nld`/`xho`/`uzn` 0.8% each — the detector failing, which is what
+   `remap_lang()` absorbs (the stored column reads `ces` 77.6% against a raw
+   55.5%). The split acts on `deu` + `fra` only: **5.8%**.
+
+---
+
 ## Stage 10 — the threshold closed, the gate confirmed (2026-09-22)
 
 Two gold-scored A/Bs over the same 2,064-row sidecar, both on the post-D33 tree.
