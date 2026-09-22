@@ -5,10 +5,21 @@ tools/rule_coverage_report.py
 Analyzes rule-fire coverage (Increment B5) to establish which structural rules
 and per-line penalties in the categorisation engine are:
 
-  DEAD            — fire_count == 0 across all supplied documents. The rule's
-                    action never executes; it is unreachable dead code and can
-                    be permanently deleted without a gold label set, because
-                    deletion provably changes nothing.
+  DEAD            — fire_count == 0 across all supplied documents AND the rule
+                    is not gated by a config flag that is currently off. The
+                    rule's action never executes; it is unreachable dead code
+                    and can be permanently deleted without a gold label set,
+                    because deletion provably changes nothing.
+
+  INERT           — fire_count == 0 because the rule's fire site is gated by a
+                    config flag that ships off (text_util.CONFIG_GATED_RULES).
+                    This says NOTHING about the rule's population and is not a
+                    retirement signal: no corpus can make it fire while the flag
+                    is false. (#30 D35, after the stage-6 sweep classified
+                    `rule_short_garbage_witness` DEAD and recommended retiring
+                    it, while stage 08f had measured the same predicate reaching
+                    100,824 lines and stage 08b had passed its adoption gate.)
+                    To measure one of these, re-run with the flag on.
 
   REDUNDANT-HERE  — fire_count > 0 but decisive_count == 0. The rule fires
                     but is currently masked by an overlapping rule that catches
@@ -32,18 +43,40 @@ Coverage columns
   clear_loss      LOO: lines that were Clear in the STORED categ but become
                   Trash or Non-text when the rule is removed — the most
                   operationally expensive failure mode. Always self-referential;
-                  read `gold_clear_loss` instead when it is present.
-  class           Derived classification: DEAD / REDUNDANT-HERE / LOAD-BEARING.
+                  read `gold_clear_loss` instead when it is present. Note the two
+                  are not on the same population: `clear_loss` is the whole
+                  frame, `gold_clear_loss` only the annotated rows.
+  class           Derived classification: DEAD / REDUNDANT-HERE / LOAD-BEARING
+                  / INERT (see the class definitions above).
   gate_marker     True when the rule's _fire() sits at the entry of a gate that
                   always returns, so its count reports how many lines entered
                   the gate, not how often it decided. See GATE_MARKER_RULES.
 
 With --split-cascade:
   decisive_line     LOO flips with document post-processing disabled.
-  decisive_cascade  decisive_count − decisive_line: the residual attributable to
-                    the page-level smoothing a rule's removal sets off.
+  decisive_cascade  decisive_count − decisive_line. A RESIDUAL BETWEEN TWO FLIP
+                    COUNTS, not a partition, and NOT "the cascade this rule's
+                    removal sets off" (#30 D37 — this docstring said that for a
+                    year and it is wrong). Both passes are scored against the
+                    same stored `categ`, which is itself post-smoothing, and
+                    there is no all-rules-on / smoothing-off baseline pass
+                    anywhere in this tool. `decisive_line` therefore carries the
+                    ENTIRE footprint of removing document smoothing, not this
+                    rule's share of it.
+                    Consequence: large negative values are the expected shape for
+                    essentially every rule and are not a signal. The floor is
+                    visible in any run — a rule with no effect at all reports
+                    decisive_line = decisive_cascade × −1 and nets to zero, and
+                    that common magnitude IS the smoothing footprint (165,482
+                    lines in the stage-6 corpus). To get the quantity this column
+                    was meant to be, a fourth pass would be needed.
 
 With --gold-column (and --gold-sidecar):
+  gold_clear_loss_baseline  The same Clear-loss count for the SHIPPED
+                       configuration, so `gold_clear_loss` (an absolute count in
+                       the rule-disabled arm) can be read as the delta it is
+                       meant to be. Free — the gold pass already computes it as
+                       `baseline_vs_gold` (#30 D36).
   gold_delta_macro_f1  macro-F1 against the HUMAN labels with the rule removed,
                        minus the shipped pipeline's macro-F1 against the same
                        labels. Negative = removing the rule costs correctness.
@@ -111,7 +144,12 @@ if str(_ROOT) not in sys.path:
 
 import pandas as pd  # noqa: E402
 
-from text_util import override_constants, rule_fire_capture  # noqa: E402
+from text_util import (  # noqa: E402
+    CONFIG_GATED_RULES,
+    override_constants,
+    rule_fire_capture,
+    rule_is_config_gated_off,
+)
 from tools.recategorize_from_csv import (  # noqa: E402
     _load_lang_config,
     add_gold_column_argument,
@@ -284,6 +322,7 @@ def _loo_metrics(
         "gold_delta_macro_f1": None,
         "gold_n": None,
         "gold_clear_loss": None,
+        "gold_clear_loss_baseline": None,
         "decisive_line": None,
         "decisive_cascade": None,
     }
@@ -318,6 +357,24 @@ def _loo_metrics(
             gold_clear_row = gold_metrics.get("confusion", {}).get("Clear", {})
             out["gold_clear_loss"] = int(gold_clear_row.get("Trash", 0)) + int(gold_clear_row.get("Non-text", 0))
 
+            # (#30 D36) `gold_clear_loss` above is an ABSOLUTE count in the arm
+            # where this rule is disabled, and it used to be printed next to
+            # `gold_delta_macro_f1`, which is a DELTA. Read together they invite
+            # the wrong arithmetic: a rule reporting 40 may be contributing none
+            # of those 40, and nothing in the output said which.
+            #
+            # The baseline it should be read against is already computed one
+            # frame up -- `evaluate_dataframe` builds `baseline_vs_gold` from the
+            # shipped stored labels against the same human labels -- and was
+            # discarded here for the same reason the confusion matrix above was.
+            # Taking it costs nothing; the pass has already run.
+            baseline = gold_metrics.get("baseline_vs_gold") or {}
+            baseline_clear_row = baseline.get("confusion", {}).get("Clear", {})
+            if baseline_clear_row:
+                out["gold_clear_loss_baseline"] = int(baseline_clear_row.get("Trash", 0)) + int(
+                    baseline_clear_row.get("Non-text", 0)
+                )
+
         if split_cascade:
             per_line = evaluate_dataframe(
                 df,
@@ -345,7 +402,18 @@ def _loo_metrics(
 # ---------------------------------------------------------------------------
 
 
-def _classify(fire_count: int, decisive_count: int) -> str:
+def _classify(fire_count: int, decisive_count: int, rule: str | None = None) -> str:
+    """Classify one rule from its counts, and from whether it could fire at all.
+
+    The `rule` argument is optional so the pure-counts contract this function
+    had before (#30 D35) still holds for callers that only have numbers: with
+    no name, the config gate cannot be consulted and the answer is the old one.
+    """
+    if rule is not None and rule_is_config_gated_off(rule) and fire_count == 0:
+        # Ordered deliberately: the gate is only consulted when the count is
+        # zero. A gated rule that somehow fired is a real finding and must not
+        # be hidden behind its own flag.
+        return "INERT"
     if fire_count == 0:
         return "DEAD"
     if decisive_count == 0:
@@ -597,7 +665,7 @@ def run_coverage(
         m = loo[rule]
         decisive = int(m["decisive_count"])
         closs = int(m["clear_loss"])
-        cls = _classify(fc, decisive)
+        cls = _classify(fc, decisive, rule)
         entry = {
             "fire_count": fc,
             "fire_rate": round(fr, 6),
@@ -607,7 +675,16 @@ def run_coverage(
             "class": cls,
             "gate_marker": rule in GATE_MARKER_RULES,
         }
-        for key in ("decisive_line", "decisive_cascade", "gold_delta_macro_f1", "gold_n", "gold_clear_loss"):
+        if cls == "INERT":
+            entry["gated_by"] = CONFIG_GATED_RULES[rule]
+        for key in (
+            "decisive_line",
+            "decisive_cascade",
+            "gold_delta_macro_f1",
+            "gold_n",
+            "gold_clear_loss",
+            "gold_clear_loss_baseline",
+        ):
             if m.get(key) is not None:
                 entry[key] = m[key]
         results[rule] = entry
@@ -681,6 +758,8 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
         for rule in section_rules:
             r = results[rule]
             flag = "  ← DEAD" if r["class"] == "DEAD" else ""
+            if r["class"] == "INERT":
+                flag = f"  ← INERT ({r.get('gated_by', 'flag')} is off — not a retirement signal)"
             if r.get("gate_marker"):
                 flag += "  ← gate marker (fire_count is a population size)"
             share = r.get("decisive_share")
@@ -696,8 +775,7 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
             )
             if r.get("decisive_line") is not None:
                 print(
-                    f"  {'':<{_W_NAME}} | per-line {r['decisive_line']:,}"
-                    f"  page-cascade residual {r['decisive_cascade']:,}"
+                    f"  {'':<{_W_NAME}} | per-line {r['decisive_line']:,}  smoothing residual {r['decisive_cascade']:,}"
                 )
             if r.get("gold_delta_macro_f1") is not None:
                 verdict = (
@@ -706,7 +784,16 @@ def _print_table(results: dict[str, dict], n_scored: int) -> None:
                     else ("better without it" if r["gold_delta_macro_f1"] > 0 else "no gold effect")
                 )
                 gold_loss = r.get("gold_clear_loss")
-                loss_txt = f"  gold clear_loss {gold_loss:,}" if gold_loss is not None else ""
+                gold_base = r.get("gold_clear_loss_baseline")
+                if gold_loss is None:
+                    loss_txt = ""
+                elif gold_base is None:
+                    loss_txt = f"  gold clear_loss {gold_loss:,}"
+                else:
+                    # Absolute, then the delta against the shipped configuration,
+                    # because the delta is the thing a reader wants and the
+                    # absolute is the thing the arm measures (#30 D36).
+                    loss_txt = f"  gold clear_loss {gold_loss:,} (baseline {gold_base:,}, {gold_loss - gold_base:+d})"
                 print(
                     f"  {'':<{_W_NAME}} | vs gold: ΔmacroF1 {r['gold_delta_macro_f1']:+.4f}"
                     f" on {r['gold_n']:,} row(s) — {verdict}{loss_txt}"
@@ -718,8 +805,22 @@ def _print_summary(results: dict[str, dict]) -> None:
     dead = [r for r, v in results.items() if v["class"] == "DEAD"]
     redund = [r for r, v in results.items() if v["class"] == "REDUNDANT-HERE"]
     bearing = [r for r, v in results.items() if v["class"] == "LOAD-BEARING"]
+    inert = [r for r, v in results.items() if v["class"] == "INERT"]
 
-    print(f"Summary: {len(bearing)} LOAD-BEARING  |  {len(redund)} REDUNDANT-HERE  |  {len(dead)} DEAD")
+    print(
+        f"Summary: {len(bearing)} LOAD-BEARING  |  {len(redund)} REDUNDANT-HERE  |  "
+        f"{len(dead)} DEAD  |  {len(inert)} INERT"
+    )
+
+    if inert:
+        print("\nINERT rules (fire_count == 0 because a config flag is off — NOT retirement candidates):")
+        for r in inert:
+            print(f"  - {r}  (gated by {results[r].get('gated_by', '?')})")
+        print(
+            "\n  These cannot fire on any corpus while their flag is false, so a zero here\n"
+            "     carries no information about the rule's population. To measure one, re-run\n"
+            "     with the flag on. See tools/RULE_COVERAGE.md for why this is separate from DEAD."
+        )
 
     if dead:
         print("\nDEAD rules (fire_count == 0 — safe to retire after full-corpus confirmation):")
@@ -749,7 +850,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="rule_coverage_report.py",
         description=(
             "Rule-fire coverage + LOO decisive-count report (B5). "
-            "Classifies each rule as DEAD / REDUNDANT-HERE / LOAD-BEARING."
+            "Classifies each rule as DEAD / REDUNDANT-HERE / LOAD-BEARING / INERT."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -830,6 +931,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    # INERT is deliberately not in this list (#30 D35): a rule that cannot fire
+    # because its flag ships off is not a finding, and making the tool exit
+    # non-zero for it would fail any pipeline driver that runs at the shipped
+    # configuration.
     dead_rules = [r for r, v in results.items() if v["class"] == "DEAD"]
     return 1 if dead_rules else 0
 

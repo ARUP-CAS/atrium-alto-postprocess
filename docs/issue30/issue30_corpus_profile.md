@@ -216,6 +216,49 @@ workable. What does not work is leaving it implicit: an annotator applying the w
 will mark `http://www.arub.cz` as `Clear`, the measured accuracy of the rule will change, and
 nobody will be able to tell whether that was the annotator or the definition.
 
+## 7b. Which rules actually protect the readable text, and which destroy it
+
+Added 2026-09-22, after a long measurement (87 hours) finished. It is the first
+time we can say what each individual rule does to text **a human called readable**,
+rather than what it does to the program's own earlier opinion.
+
+The program applies 23 rules. Switching each one off in turn and re-scoring
+against your 2,064 annotated lines gives this:
+
+| rule                       | what it does to lines a human called `Clear` |
+|----------------------------|----------------------------------------------|
+| the short-line rule        | **protects 31**                              |
+| the reference-floor rule   | protects 10                                  |
+| **the short-garbage rule** | **destroys 7**                               |
+| the hard-sweep rule        | destroys 2                                   |
+| two others                 | destroy 1 each                               |
+
+**The third row is the one worth knowing.** The short-garbage rule is the rule
+this whole issue has been about — the one your patch narrowed in July. It is
+itself responsible for **7 of the 40** readable lines the program currently
+loses. The figure of 40 has been the yardstick every decision in this issue is
+measured against, and it turns out part of it is produced by the very rule we
+have been trying to make safer, rather than being a fixed background cost.
+
+**One caution about the same measurement, because the table it comes from looks
+more decisive than it is.** Seven of the 23 rules score *better* when removed. It
+is tempting to read that as "delete seven rules". We do not think it is, for a
+plain reason: the measurement has no statistical test attached, and five of those
+seven move the score by less than a single annotated line out of 2,064. That is
+noise, not a finding. Only two move enough to be worth a proper test, and both of
+them **cost** readable lines when removed. Nothing here is a reason to remove
+anything; we are recording it so that nobody reads the raw table later and
+concludes otherwise.
+
+**And one thing the measurement got wrong about itself**, which is worth a
+sentence because it concerns the rule at the centre of this issue. The run
+reported the new shape-witness rule as *dead code, safe to delete*. It is not
+dead — it is switched off, so of course it never fired. The same rule had already
+been measured reaching **100,824 lines**. The tool has been fixed so it now says
+"switched off" instead of "dead", but it is a fair illustration of why we keep
+re-reading these runs rather than trusting their summaries: the instrument
+recommended deleting the feature the project has spent two months building.
+
 ## 8. What follows from all of this
 
 * **The risk of switching the new rule on is much smaller than the raw numbers suggest**, because
@@ -228,6 +271,10 @@ nobody will be able to tell whether that was the annotator or the definition.
 * **Two things cannot be settled by any amount of computation**: whether those eight doubled-letter
   tokens are conventions or errors at full scale (§4), and whether `Trash` means illegible or
   means not-prose (§7).
+* **The rule we have been narrowing is part of the cost, not just the fix.** The
+  short-garbage rule destroys 7 of the 40 readable lines the program loses; the
+  short-line rule saves 31. Both numbers are new, and neither was available
+  before the annotations were scored against the rules individually.
 * **Automatic quality tests built for prose will keep misfiring on this archive.** Its most
   characteristic text is short, abbreviated, coded and proper-noun-heavy. That is worth stating
   once, plainly, because it will come up again the next time a vocabulary or language-model signal
@@ -235,7 +282,7 @@ nobody will be able to tell whether that was the annotator or the definition.
 
 ---
 
-_Measured 2026-09-21 from the stage-8 delivery: 113,100 documents, 56,599,631 lines read,
+_Measured 2026-09-21 from the stage-8 delivery, with § 7b added 2026-09-22 from the stage-6 delivery (a 23-rule sweep scored against the 2,064 annotated lines): 113,100 documents, 56,599,631 lines read,
 7,493,429 in scope, 100,824 reached by the rule. Every figure here is recomputed from the CSVs
 attached to issue #30 and is reproducible from them; the technical write-up is
 `agent_dev_logs/digests/30.digest.md` § "Stage 8 read against its own delivery"._

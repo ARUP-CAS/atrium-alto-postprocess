@@ -562,3 +562,76 @@ and what follows for quality categorisation. `issue30_annotation_guide.md` and `
 rewritten around the stage-8 answers; `annotation_ask_README.md` and the delivered `census.csv` / `sample.csv` /
 `frame.json` replaced with the stage-8 set, carrying the T1/T2 caveat on their own sizing.
 * Suite 1,288 → 1,290 passing, 0 failed, `ruff` clean.
+
+## 2026-09-22
+- **#30** — **Stage 6 delivered (87h) and read against its own delivery. R3 is closed**, and the
+delivery contains three instrument defects, one of which nominated this issue's own feature for deletion.
+Eight findings (U0–U8 in `digests/30.digest.md`).
+* **R3 closed.** Every `DEAD` / `LOAD-BEARING` / `clear_loss` verdict this issue ever quoted was scored
+against the pipeline's own output; all 23 rules are now scored against the 2,064-row gold sidecar.
+**Baseline gold `Clear`-loss reads 40 — the same number 08b reports, from a separate job with a different
+tool.** First cross-run consistency check this issue has had, and it passes.
+* **U1 — the sweep nominated `rule_short_garbage_witness` for retirement.** `fire_count == 0`, so
+`_classify()` returned `DEAD`, whose docstring reads "unreachable dead code [that] can be permanently
+deleted ... because deletion provably changes nothing". It is not dead, it is **switched off**:
+`_fire()` sits behind `SHORT_GARBAGE_WITNESS_ENABLE`, which ships false, so the count is zero on any
+corpus. 08f had measured the same predicate at **100,824 lines** and 08b had flipped the flag and passed
+the adoption gate (p = 0.01294). `RULE_COVERAGE.md` called `fire_count == 0` the "config-**independent**"
+retirement criterion — the false word the whole criterion rested on — and the tool **exits 1** on any
+`DEAD` rule, so a flag that ships off makes the instrument fail a pipeline driver.
+  **It was known twice, in places the artefact does not carry.**
+  `tests/test_pipeline_parity.py::UNREACHABLE_RULES` had the taxonomy ("unreachable BY CONFIGURATION"
+  vs gate shadowing) in a test no tool can read; and `issue30_stage6_job.sh`'s own epilogue says it in
+  plain words — but prints to the SLURM `.out`, not into `06_coverage.log`, which is what `tee` captures
+  and what gets attached to the issue. The delivered artefact carries "safe to retire" unqualified.
+  **Fixed as D35**: `text_util.CONFIG_GATED_RULES` maps rule → gating flag beside the flag itself,
+  `_classify()` gains a fourth class `INERT` consulted *before* the zero branch, `INERT` is excluded
+  from the exit-1 set, and the criterion in `RULE_COVERAGE.md` gains the matching clause. The gate is
+  read only when the count is zero, so a gated rule that somehow fires is still reported — a flag must
+  not hide a real finding. Reproduced live on the smoke fixture both ways.
+* **U2 — neither `DEAD` rule is retirable.** `rule_mid_uppercase` is unreachable by gate shadowing
+(9d behind 7), already in `UNREACHABLE_RULES`. And the class is sample-sensitive in fact, not just in
+principle: the 2026-09-09 sweep (1,471 scored lines) called `rule_bigram_run` and `rule_vowelless` DEAD
+too; at 4,886,492 scored lines they fire **52** and **1,086**. Two of three verdicts were sample
+artefacts, exactly as `SWEEP_NOTES.md` warned. Recorded in the retirement criterion as a measurement.
+* **U3 — seven rules score better on gold when removed, and five of them are noise.** The report carries
+**no significance testing at all** — no McNemar, no effective-n; `evaluate_dataframe`'s
+`return_correctness` mask is left `False` by both `_loo_metrics` calls, and the repo's exact-McNemar in
+`ab_constant_eval.py` is never reached from here. Calibrating on the same 2,064 rows (08b: +0.0171 over
+10 net-corrected rows ≈ **0.0017 macro-F1 per gold row**), five of the seven move **less than one gold
+row**. Only `rule_short_line` (≈4) and `rule_trailing_fill_rescue` (≈1.3) clear the floor, and both
+*cost* `Clear` lines when removed. Nothing in that column is actionable as a retirement.
+* **U4 — `rule_short_garbage` destroys 7 of the 40 gold `Clear`-losses.** `rule_short_line` protects
+**31**, `rule_reference_floor` protects 10, `rule_hard_sweep` destroys 2. The 40 the flag decision has
+turned on for two months is partly the product of the rule the witness was built to narrow — a number
+nobody has had before.
+* **U5/D36 — `gold_clear_loss` is an absolute count printed beside a delta.** Twelve rules report
+exactly 40; that is the LOO arm's absolute figure, not twelve rules each destroying 40. The baseline was
+computed by the same pass (`baseline_vs_gold`) and discarded. Now emitted as `gold_clear_loss_baseline`
+in the JSON and the table, at zero extra cost.
+* **U6/D37 — `decisive_cascade` is not the cascade a rule's removal sets off.** There is no
+all-rules-on / smoothing-off baseline pass anywhere in the tool, so `decisive_line` carries the whole
+smoothing footprint. The two zero-firing rules expose the floor: both read `decisive_line = 165,482`,
+`decisive_cascade = −165,482`, netting zero — **165,482 is the smoothing footprint itself**, sitting
+under every other row. Corrected in the docstring, the table label (now `smoothing residual`) and
+`RULE_COVERAGE.md`; the missing fourth pass is recorded as an option, not proposed.
+* **U7 — one row is already stale, and the first attempt to size it was circular.** Stage 6 ran before
+`d4b9973` landed D33, so its `rule_domain_notation` row is pre-D33. Comparing the predicate before and
+after D33 over the stage-8 witness queue gives "0 before, 8,082 after" — **a tautology**: every line in
+that queue is there *because* pre-D33 `is_domain_notation()` returned False for it. Read the other way
+it does say something real — D33 removes 8,082 lines (808 distinct strings) from the witness-reachable
+population — but the corpus-wide effect is unmeasured. Caught before it was written down as a finding.
+* **T1 upgraded from inference to confirmed.** `issue30_stage8_job.sh` settles the stage-8 finding
+directly: `08b_witness_flag_ab` and `08c_witness_flag_perline` both set
+`ATRIUM_TEXT_UTILS_SHORT_GARBAGE_LEXICON_PATH="$LEXICON"`; `08f_exposure_full` sets no `ATRIUM_*` at all.
+**The gold-scored A/Bs arm the lexicon; the one stage that measures the population does not.** 08g then
+passes `--lexicon` for its evidence columns but inherits 08f's queue, so the ask carries the lexicon-off
+population regardless.
+* **Stage 9 updated** with **9e**, and 9b sharpened to a one-line change: add
+`ATRIUM_TEXT_UTILS_SHORT_GARBAGE_LEXICON_PATH="$LEXICON"` to the 08f stage command, delete
+`$OUT/08f_exposure_full.ok` and `$OUT/08g_annotation_ask.ok`, re-submit — the `stage()` marker contract
+re-runs exactly those two (~1h). 9e is **not** recommended as a full 87h re-run: it would refresh one
+stale row and a classification D35 already corrects, and `issue30_stage6_job.sh` is explicit that arming
+the witness flag must be a separate job (it refuses to start otherwise).
+* Suite 1,290 → 1,297 passing, 0 failed, `ruff` clean. An existing test caught the new class correctly
+(`test_run_coverage_smoke` enumerates the valid class set) and was updated rather than worked around.

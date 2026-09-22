@@ -416,6 +416,50 @@ SHORT_GARBAGE_WITNESS_ENABLE = _get_str("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_ENA
     "yes",
     "on",
 )
+
+# (#30 D35) Rules whose `_fire()` is gated by a CONFIG FLAG rather than by their
+# own predicate, and the flag that gates each. A rule listed here reports
+# `fire_count == 0` on every corpus while its flag is off -- not because it has
+# no population, but because the branch is unreachable by configuration.
+#
+# This exists because `tools/rule_coverage_report.py` could not tell the two
+# apart. Its `_classify()` reads `fire_count == 0` and returns DEAD, whose own
+# docstring says the rule "is unreachable dead code and can be permanently
+# deleted ... because deletion provably changes nothing". For
+# `rule_short_garbage_witness` that is false in the most expensive possible way:
+# the 2026-09-21 stage-6 sweep classified it DEAD and recommended retirement,
+# while stage 08f had measured the same predicate reaching 100,824 lines across
+# both collections and stage 08b had flipped the flag and passed the adoption
+# gate (McNemar p = 0.01294). `RULE_COVERAGE.md` called `fire_count == 0` the
+# "config-independent" retirement criterion; it is exactly not that.
+#
+# The taxonomy is not new -- `tests/test_pipeline_parity.py::UNREACHABLE_RULES`
+# already separates "unreachable BY CONFIGURATION" from gate shadowing
+# (`rule_mid_uppercase`, shadowed by gate 7). It lived only in a test, so no
+# tool could read it. This is that distinction, sited next to the flag it is
+# about, so a future flag-gated rule has one obvious place to declare itself.
+#
+# Values are the NAME of the module-level flag, resolved at read time rather
+# than captured, so `override_constants()` is visible to readers of this map.
+CONFIG_GATED_RULES: dict[str, str] = {
+    "rule_short_garbage_witness": "SHORT_GARBAGE_WITNESS_ENABLE",
+}
+
+
+def rule_is_config_gated_off(rule: str) -> bool:
+    """Is ``rule``'s fire site currently unreachable because its flag is off?
+
+    Veto only, and deliberately narrow: it answers "can this rule fire at all in
+    the configuration now in force", never "does this rule matter". A rule that
+    is not in ``CONFIG_GATED_RULES`` always returns False, so the default answer
+    is the honest one.
+    """
+    flag = CONFIG_GATED_RULES.get(rule)
+    if flag is None:
+        return False
+    return not bool(globals().get(flag, False))
+
+
 SHORT_GARBAGE_WITNESS_MIN_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_MIN_ALPHA", 4)
 SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA", 7)
 SHORT_GARBAGE_WITNESS_VARIETY_MAX = _get_float("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VARIETY_MAX", 0.50)

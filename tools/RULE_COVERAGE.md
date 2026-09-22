@@ -14,24 +14,40 @@ appears decisive, yet neither is dead.
 
 Coverage instrumentation cuts through this by recording raw execution at the
 action site (`_fire(name)` immediately before each `return` / penalty application
-in `determine_category` / `categorize_line`). A rule with `fire_count == 0` is
-**unreachable dead code** by definition — no entanglement can hide a rule that
-never runs. That is the only gold-free, config-independent retirement criterion.
+in `determine_category` / `categorize_line`). A rule with `fire_count == 0` that
+**can** fire is unreachable dead code — no entanglement can hide a rule that
+never runs. That is the only gold-free retirement criterion.
+
+> [!IMPORTANT]
+> **It is not config-independent, and this sentence used to say it was (#30 D35).**
+> A rule whose `_fire()` sits behind a config flag reports `fire_count == 0` on
+> every corpus while that flag is off, for reasons that have nothing to do with
+> its population. Those rules are listed in `text_util.CONFIG_GATED_RULES` and
+> are now classified **INERT**, not DEAD.
+>
+> The case that forced this: the 2026-09-21 stage-6 sweep classified
+> `rule_short_garbage_witness` DEAD and listed it as safe to retire, while stage
+> 08f had measured the same predicate reaching **100,824 lines** across both
+> collections and stage 08b had flipped its flag and passed the adoption gate
+> (McNemar p = 0.01294). Retiring on that verdict would have deleted the feature
+> issue #30 exists to build. `tests/test_pipeline_parity.py::UNREACHABLE_RULES`
+> had drawn the right distinction — "unreachable BY CONFIGURATION" versus gate
+> shadowing — for months; it simply lived in a test that no tool could read.
 
 ## Coverage columns
 
-| Column                | Source                                                  | Meaning                                                            |
-|-----------------------|---------------------------------------------------------|--------------------------------------------------------------------|
-| `fire_count`          | `rule_fire_capture()` over one recategorize pass        | raw execution count                                                |
-| `fire_rate`           | `fire_count / n_scored_lines`                           | fraction of scored lines that triggered this rule                  |
-| `decisive_count`      | LOO: `evaluate_dataframe` with `DISABLED_RULES={rule}`  | lines whose category changes vs. stored categ when rule is removed |
-| `decisive_share`      | `decisive_count / fire_count`                           | the column to read when `gate_marker` is true                      |
-| `clear_loss`          | confusion["Clear"]["Trash"] + ["Non-text"] in LOO run   | lines the pipeline currently calls Clear that would fall to Trash  |
-| `class`               | derived                                                 | DEAD / REDUNDANT-HERE / LOAD-BEARING                               |
-| `gate_marker`         | `GATE_MARKER_RULES`                                     | the rule's `_fire()` is at the entry of a gate that always returns |
-| `decisive_line`       | `--split-cascade`: LOO with smoothing disabled          | the rule's own per-line effect                                     |
-| `decisive_cascade`    | `--split-cascade`: `decisive_count − decisive_line`     | the page-level cascade its removal sets off                        |
-| `gold_delta_macro_f1` | `--gold-column`: LOO macro-F1 vs gold − shipped vs gold | negative = removing the rule costs correctness                     |
+| Column                | Source                                                  | Meaning                                                                               |
+|-----------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `fire_count`          | `rule_fire_capture()` over one recategorize pass        | raw execution count                                                                   |
+| `fire_rate`           | `fire_count / n_scored_lines`                           | fraction of scored lines that triggered this rule                                     |
+| `decisive_count`      | LOO: `evaluate_dataframe` with `DISABLED_RULES={rule}`  | lines whose category changes vs. stored categ when rule is removed                    |
+| `decisive_share`      | `decisive_count / fire_count`                           | the column to read when `gate_marker` is true                                         |
+| `clear_loss`          | confusion["Clear"]["Trash"] + ["Non-text"] in LOO run   | lines the pipeline currently calls Clear that would fall to Trash                     |
+| `class`               | derived                                                 | DEAD / REDUNDANT-HERE / LOAD-BEARING / INERT                                          |
+| `gate_marker`         | `GATE_MARKER_RULES`                                     | the rule's `_fire()` is at the entry of a gate that always returns                    |
+| `decisive_line`       | `--split-cascade`: LOO with smoothing disabled          | the rule's own per-line effect                                                        |
+| `decisive_cascade`    | `--split-cascade`: `decisive_count − decisive_line`     | a residual between two flip counts — **not** the cascade this rule sets off (#30 D37) |
+| `gold_delta_macro_f1` | `--gold-column`: LOO macro-F1 vs gold − shipped vs gold | negative = removing the rule costs correctness                                        |
 
 > [!WARNING]
 > **`decisive_count` and `clear_loss` are self-referential unless `--gold-column`
@@ -98,13 +114,35 @@ A rule may be permanently deleted **only when all of these hold**:
    71.8M lines) and does not satisfy this criterion on its own. It is, however,
    the directory that contains every gold-annotated row, so it is the right place
    to run the *gold-scored* pass from.
-2. The rule is **not** one of the cheap structural guards (`rule_inverted`,
+2. The rule is **not** classified `INERT` — that is, it is not listed in
+   `text_util.CONFIG_GATED_RULES` with its flag off. A flag-gated rule's
+   `fire_count == 0` is a fact about the configuration, not about the corpus, and
+   no amount of additional corpus can change it. To evaluate one of these, re-run
+   with its flag on; until then clause 1 is unsatisfiable for it in the only
+   sense that matters. (#30 D35 — the stage-6 sweep recommended retiring
+   `rule_short_garbage_witness` on exactly this mistake.)
+3. The rule is **not** one of the cheap structural guards (`rule_inverted`,
    `rule_allcaps`, `rule_garbage_density`) unless coverage-empty across a
    broad, explicitly approved collection set — these guards cost ~nothing and
    protect against failure modes absent from small samples.
-3. The deletion is reviewed and merged in a **separate commit** from the
+
+   Nor is it a rule that is unreachable by **gate shadowing** rather than by
+   absence of population — `rule_mid_uppercase` is shadowed by gate 7 and is
+   recorded in `tests/test_pipeline_parity.py::UNREACHABLE_RULES`. Such a rule
+   is a latent guard that becomes live if gate ordering changes, so a zero here
+   is also not a retirement signal on its own.
+4. The deletion is reviewed and merged in a **separate commit** from the
    instrumentation; the commit message cites the full-corpus `fire_count` and
    the run provenance (date, corpus version, cluster job ID).
+
+**Measured caution on clause 1.** The `DEAD` class is sample-sensitive in
+practice, not only in principle. The 2026-09-09 sweep (1,471 scored lines) called
+`rule_bigram_run`, `rule_mid_uppercase` and `rule_vowelless` DEAD. At 4.9M scored
+lines (stage 6, 2026-09-21) `rule_bigram_run` fires **52** times and
+`rule_vowelless` **1,086** — two of those three verdicts were artefacts of sample
+size, exactly as `SWEEP_NOTES.md` predicted when it called them "retirement
+candidates, not retirements". Only `rule_mid_uppercase` survived, and it survives
+for the structural reason in clause 3 rather than for want of a bigger corpus.
 
 ## Findings (Issue #5 Full Corpus Run)
 

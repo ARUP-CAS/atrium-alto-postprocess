@@ -556,3 +556,56 @@ fixed as D33. That is the seventh instrument-level error of this family, the thi
 before it shipped, and the first that was caught inside the same read that made it.
 
 Read the artefact — and then check which configuration the artefact was produced in.
+
+
+---
+
+# Addendum — stage 6 ran, and R3 is closed (2026-09-22)
+
+The 87-hour gold-scored rule sweep finished. §"What follows" above listed the
+regeneration of the rule figures as outstanding; it is done. Findings are in
+[`agent_dev_logs/digests/30.digest.md`](../../agent_dev_logs/digests/30.digest.md)
+§ "Stage 6 read against its own delivery" (U0–U8). What belongs here is the
+disposition of this document's own catalogue.
+
+**R3 is closed.** All 23 rules are scored against the 2,064-row sidecar. The
+baseline gold `Clear`-loss reads **40**, matching 08b from a separate job with a
+different tool — this document has counted instrument failures for two months
+and can now record the first cross-run agreement.
+
+**And this is the eighth instrument-level error of the family catalogued here,
+with a new shape.** The previous seven were a tool computing the wrong number.
+This one computes the right number and draws a false conclusion from it:
+`rule_short_garbage_witness` has `fire_count == 0` — true, and correct — and the
+classifier turned that into `DEAD`, defined in its own docstring as "unreachable
+dead code [that] can be permanently deleted ... because deletion provably changes
+nothing", and printed it under "safe to retire". The rule is switched off, not
+dead; 08f measured the same predicate at 100,824 lines and 08b passed its
+adoption gate. **The instrument recommended deleting the feature this issue
+exists to build.**
+
+The new part, and the reason it is worth a paragraph in a document about
+instrument failure: **it was known, twice, in places the artefact does not
+carry.** `tests/test_pipeline_parity.py::UNREACHABLE_RULES` had the right
+taxonomy — "unreachable BY CONFIGURATION" against gate shadowing — in a test file
+no tool can read. And `issue30_stage6_job.sh` says it outright in its own
+epilogue, before the run: *"rule_short_garbage_witness will read DEAD for as long
+as SHORT_GARBAGE_WITNESS_ENABLE ships false — that is the flag, not the rule."*
+That epilogue prints to the SLURM `.out` file. The file that gets attached to the
+issue is `06_coverage.log`, which is what `tee` captures, and it carries the
+verdict without the caveat.
+
+So the standing instruction needs its own addendum. "Read the artefact, not the
+report of the artefact" assumes the artefact carries what you need. Here it did
+not, and the correction sat in a sibling file nobody pastes. **A caveat that
+lives beside the output rather than in it is a caveat that does not travel.**
+D35 moves this one into the tool: a fourth class, `INERT`, and a matching clause
+in `RULE_COVERAGE.md`'s retirement criterion, which until now called
+`fire_count == 0` the "config-independent" test — the one word that made it
+unsafe.
+
+Two smaller ones from the same delivery: `gold_clear_loss` was printed as an
+absolute count beside a delta, with the baseline computed by the same pass and
+discarded (**D36**, now emitted); and `decisive_cascade` is not the page cascade
+three separate places said it was, because no smoothing-off baseline pass exists
+in the tool at all (**D37**, corrected in place).

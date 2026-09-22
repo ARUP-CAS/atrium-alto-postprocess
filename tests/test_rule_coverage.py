@@ -265,7 +265,7 @@ def test_run_coverage_smoke():
         assert "decisive_count" in data
         assert "clear_loss" in data
         assert "class" in data
-        assert data["class"] in {"DEAD", "REDUNDANT-HERE", "LOAD-BEARING"}
+        assert data["class"] in {"DEAD", "REDUNDANT-HERE", "LOAD-BEARING", "INERT"}
         assert isinstance(data["fire_count"], int)
         assert isinstance(data["fire_rate"], float)
         assert data["fire_rate"] >= 0.0
@@ -581,3 +581,161 @@ def test_gate_marker_rules_are_declared_and_real():
         "if it can now fall through, rule_short_line's fire_count is meaningful and "
         "it should leave GATE_MARKER_RULES."
     )
+
+
+# ---------------------------------------------------------------------------
+# (#30 D35) INERT — a rule that cannot fire because its flag is off
+# ---------------------------------------------------------------------------
+
+
+def test_config_gated_rules_are_registered_and_real():
+    """Every name in the registry must be a real rule gated by a real flag.
+
+    A typo here would silently re-open the hole this class exists to close: an
+    unmatched name means the rule keeps classifying DEAD.
+    """
+    import tools.rule_coverage_report as RC
+
+    assert set(tu.CONFIG_GATED_RULES) <= set(RC.RULES), "a gated name is not in the rule registry"
+    for rule, flag in tu.CONFIG_GATED_RULES.items():
+        assert hasattr(tu, flag), f"{rule} is declared gated by {flag}, which does not exist"
+        assert isinstance(getattr(tu, flag), bool), f"{flag} should be a boolean flag"
+
+
+def test_the_witness_is_inert_not_dead_at_the_shipped_configuration():
+    """The stage-6 finding, pinned.
+
+    `rule_short_garbage_witness` fires 0 times at the shipped config because
+    `SHORT_GARBAGE_WITNESS_ENABLE` is false, not because it has no population --
+    stage 08f measured the same predicate reaching 100,824 lines. Classifying it
+    DEAD told an operator it was "unreachable dead code" that could be
+    "permanently deleted"; the retirement criterion in RULE_COVERAGE.md called
+    fire_count == 0 "config-independent", which for this rule it is not.
+    """
+    import tools.rule_coverage_report as RC
+
+    assert tu.SHORT_GARBAGE_WITNESS_ENABLE is False, "fixture assumes the shipped default"
+    assert RC._classify(0, 0, "rule_short_garbage_witness") == "INERT"
+    # Without the name the old pure-counts contract is unchanged.
+    assert RC._classify(0, 0) == "DEAD"
+    # And an ungated rule at zero is still DEAD.
+    assert RC._classify(0, 0, "rule_mid_uppercase") == "DEAD"
+
+
+def test_flipping_the_flag_makes_the_witness_classifiable_again():
+    """With the flag on the rule is judged on its own counts, like any other."""
+    import tools.rule_coverage_report as RC
+
+    with tu.override_constants({"SHORT_GARBAGE_WITNESS_ENABLE": True}):
+        assert tu.rule_is_config_gated_off("rule_short_garbage_witness") is False
+        assert RC._classify(0, 0, "rule_short_garbage_witness") == "DEAD"
+        assert RC._classify(5, 0, "rule_short_garbage_witness") == "REDUNDANT-HERE"
+        assert RC._classify(5, 2, "rule_short_garbage_witness") == "LOAD-BEARING"
+
+
+def test_a_gated_rule_that_somehow_fires_is_not_hidden():
+    """The gate is consulted only when the count is zero.
+
+    If a rule declared flag-gated reports a non-zero fire count, that is a real
+    finding -- either the declaration is wrong or the flag was on -- and it must
+    not be masked by its own registry entry.
+    """
+    import tools.rule_coverage_report as RC
+
+    assert RC._classify(7, 3, "rule_short_garbage_witness") == "LOAD-BEARING"
+    assert RC._classify(7, 0, "rule_short_garbage_witness") == "REDUNDANT-HERE"
+
+
+def test_inert_rules_do_not_make_the_tool_exit_non_zero():
+    """A flag that ships off must not fail a pipeline driver.
+
+    `_print_summary`'s DEAD list and the exit code read the same class, so this
+    pins the contract at the level the driver actually sees.
+    """
+    import tools.rule_coverage_report as RC
+
+    results = {
+        "rule_short_garbage_witness": {
+            "class": "INERT",
+            "gated_by": "SHORT_GARBAGE_WITNESS_ENABLE",
+            "fire_count": 0,
+            "fire_rate": 0.0,
+            "decisive_count": 0,
+            "decisive_share": None,
+            "clear_loss": 0,
+        },
+        "rule_short_line": {
+            "class": "LOAD-BEARING",
+            "fire_count": 9,
+            "fire_rate": 0.1,
+            "decisive_count": 3,
+            "decisive_share": 0.33,
+            "clear_loss": 0,
+        },
+    }
+    # The exit code and the DEAD list read the same class, so drive the real
+    # summary rather than re-implementing the predicate here.
+    dead = [r for r, v in results.items() if v["class"] == "DEAD"]
+    assert dead == [], "an INERT rule leaked into the DEAD set that drives exit 1"
+
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        RC._print_summary(results)
+    printed = buf.getvalue()
+    assert "1 INERT" in printed
+    assert "rule_short_garbage_witness" in printed
+    assert "SHORT_GARBAGE_WITNESS_ENABLE" in printed, "the summary must name the flag to re-run with"
+    assert "DEAD rules (" not in printed, "an INERT rule must not be announced as retirable"
+
+
+def test_gold_clear_loss_baseline_is_emitted_with_the_gold_pass(tmp_path):
+    """(#30 D36) The baseline is computed by the gold pass; it must be reported.
+
+    `gold_clear_loss` is an ABSOLUTE count in the rule-disabled arm and was
+    printed next to `gold_delta_macro_f1`, a DELTA. Without the baseline a
+    reader cannot tell whether a rule reporting 40 contributes 40 of them or
+    none -- the stage-6 delivery has twelve rules all reporting exactly 40.
+    `evaluate_dataframe` already builds `baseline_vs_gold`; this pins that the
+    report stops discarding it.
+    """
+    import json
+
+    import pandas as pd
+    from rule_coverage_report import run_coverage
+
+    # A frame the report can score, with a gold column that DISAGREES with the
+    # stored labels -- if they agreed, every clear-loss figure would be 0 by
+    # construction and the test would pass without measuring anything.
+    src = pd.read_csv(sorted(_SAMPLE_DIR.glob("*.csv"))[0])
+    if "gold_categ" not in src.columns:
+        src["gold_categ"] = ""
+    src.loc[src.index[:3], "gold_categ"] = "Clear"
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    src.to_csv(corpus / "CTX000000001.csv", index=False)
+
+    out_file = tmp_path / "coverage.json"
+    gold_args = types.SimpleNamespace(gold_column="gold_categ", gold_sidecar=None)
+    # skip_loo must be False: the gold figures are produced by _loo_metrics, so
+    # a skipped LOO pass makes this test vacuous rather than passing.
+    run_coverage(
+        raw_path=str(corpus),
+        output_path=str(out_file),
+        skip_loo=False,
+        quiet=True,
+        gold_args=gold_args,
+    )
+    payload = json.loads(out_file.read_text())
+    rules = payload["rules"]
+    with_gold = [v for v in rules.values() if v.get("gold_clear_loss") is not None]
+    assert with_gold, (
+        "no rule reported a gold figure — the gold pass did not run, so this test would pass without measuring anything"
+    )
+    for v in with_gold:
+        assert "gold_clear_loss_baseline" in v, (
+            "gold_clear_loss is reported without the baseline it must be read against"
+        )
+        assert isinstance(v["gold_clear_loss_baseline"], int)

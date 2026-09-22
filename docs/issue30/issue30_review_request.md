@@ -5,11 +5,13 @@
 **Time needed:** items 1 and 2 are one short reply each; item 3 is a judgement call; item 4 is the
 one nobody else can answer.
 
-**Changed since the last version of this document (2026-09-21):** the run we asked you to
-sanity-check in the old item 1 has happened, and it passes — that item is now closed and reported
-rather than asked. The dedup decision in the old item 2 now has a corpus-wide denominator instead
-of a 822-document one, which changes the recommendation from "probably" to "clearly". Two new
-items are here because the full-collection pass raised them.
+**Changed since the last version of this document (2026-09-22):** stage 6, the 87-hour rule
+sweep, has finished — **it answers your standing objection that these figures were scored against
+the pipeline's own output**, and it produced one number that bears directly on item 2. See § 7.2.
+Previously (2026-09-21): the run we asked you to sanity-check in the old item 1 has happened, and
+it passes — that item is now closed and reported rather than asked. The dedup decision in the old
+item 2 now has a corpus-wide denominator instead of a 822-document one, which changes the
+recommendation from "probably" to "clearly".
 
 ---
 
@@ -212,12 +214,37 @@ nobody will be able to attribute the change. Either answer works — fix the pro
 definitions, or rewrite the definitions and route footers and form labels to `Non-text`. The same
 question is § 7.2 of @DanaKriv's guide.
 
-## 7. Two small items
+## 7. Three smaller items
 
 **7.1 Is the raw-perplexity thread finished?** The 367,208 lines arrived via filesender and we read
 them through `tools/issue30_perplex_report.py`. If nothing further was intended, we will close it.
 
-**7.2 Corrections to things we told you previously.**
+**7.2 Two things stage 6 settled, one of which you raised.**
+
+Stage 6 — the 87-hour rule sweep — finished on 2026-09-22.
+
+* **Your objection about self-scored figures is answered.** You were right that
+  every `DEAD` / `LOAD-BEARING` / `clear_loss` verdict this issue quoted had been
+  scored against the pipeline's own output, which cannot be wrong by
+  construction. All 23 rules are now scored against your 2,064 annotated lines.
+  A detail worth having: the run's baseline `Clear`-loss reads **40**, the same
+  number stage 08b reports from a completely separate job with a different tool.
+  That is the first time two runs in this issue have independently agreed on
+  anything.
+* **And it produced a number that bears on item 2.** Measured per rule against
+  gold, **`rule_short_garbage` destroys 7 of those 40 `Clear` lines** — the rule
+  your patch narrowed is itself part of the cost the witness is being judged
+  against. `rule_short_line` protects 31 and `rule_reference_floor` protects 10.
+  We are not proposing to act on any of it; it changes how the 40 should be read,
+  which is the number the flag decision has turned on since July.
+
+One caution if you look at the raw table: seven rules score *better* when
+removed. Five of them move the score by less than a single annotated line, the
+report has no significance test attached, and the two that clear that floor both
+cost `Clear` lines. It is not a list of rules to delete and we have written that
+into the digest so nobody reads it that way later.
+
+**7.3 Corrections to things we told you previously.**
 
 * We reported 07b as *"`QUALITY_VOCABULARY_ENABLE` has zero effect on the gold set"* and then as
   *"void, not zero"*. It is now measured: **a decisive reject.** 212 fixes against 540 breaks,
