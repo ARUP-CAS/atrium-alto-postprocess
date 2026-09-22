@@ -599,7 +599,15 @@ def test_config_gated_rules_are_registered_and_real():
     assert set(tu.CONFIG_GATED_RULES) <= set(RC.RULES), "a gated name is not in the rule registry"
     for rule, flag in tu.CONFIG_GATED_RULES.items():
         assert hasattr(tu, flag), f"{rule} is declared gated by {flag}, which does not exist"
-        assert isinstance(getattr(tu, flag), bool), f"{flag} should be a boolean flag"
+        # The gate is TRUTHINESS, not a bool. `rule_is_config_gated_off` reads
+        # `not bool(...)`, and a gate that names an answer rather than a switch is
+        # the more useful shape where the answer is itself the open question:
+        # DOMAIN_NOTATION_CATEG holds a category name and ships empty (#30 D43).
+        # What must hold is that the shipped value is falsy -- a gated rule whose
+        # flag ships ON is not gated, it is armed, and this registry would then be
+        # telling rule_coverage_report the opposite of the truth.
+        assert not getattr(tu, flag), f"{flag} gates {rule} but does not ship off"
+        assert tu.rule_is_config_gated_off(rule), f"{rule} should read as gated off at the shipped config"
 
 
 def test_the_witness_is_inert_not_dead_at_the_shipped_configuration():

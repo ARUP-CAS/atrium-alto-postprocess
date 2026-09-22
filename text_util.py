@@ -443,6 +443,7 @@ SHORT_GARBAGE_WITNESS_ENABLE = _get_str("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_ENA
 # than captured, so `override_constants()` is visible to readers of this map.
 CONFIG_GATED_RULES: dict[str, str] = {
     "rule_short_garbage_witness": "SHORT_GARBAGE_WITNESS_ENABLE",
+    "rule_domain_notation_categ": "DOMAIN_NOTATION_CATEG",
 }
 
 
@@ -472,24 +473,83 @@ SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_W
 # moving scores on every line in the corpus. See the vowel-run clause for the
 # measured trade at 3 vs 4.
 SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN", FUSED_VOWEL_RUN_MIN)
+# (#30 D44) The vowel-run clause is a fact about CZECH PHONOTACTICS, not about
+# scanning. Czech has no triphthongs, so three vowels in a row is good evidence of
+# damage -- in Czech. German and French have them natively, which is why the
+# clause reaches `Dauerleihe` (*aue*, permanent loan) and `FEUILLETON` (*eui*),
+# both scanned perfectly correctly, and why @david-spacil's answer on 2026-09-22
+# was to split by language rather than to blunt the threshold:
+#
+#   "For Czech, 3+ vowels in a row is a good rule -- Czech has no triphthongs.
+#    For German and French it does damage. So either split by language, or try 4+."
+#
+# Blunting it to 4 everywhere was measured and is the worse trade: it releases
+# `J. Vysoean` (*Vysočan*), `POSTKRANIAINY SKELET`, `lenaye` and `noienm k.`,
+# which are damage, to spare two German words -- 3.5 lines that currently agree
+# with `Trash` given up per at-risk line spared (stage 10b).
+#
+# So: 3 vowels convict in any language EXCEPT these, and 4 convict everywhere,
+# including these. Set EXEMPT_LANGS empty to get a single global threshold back.
+# The language is the RAW FastText label, not the stored `lang` column -- see the
+# note on `determine_category`'s `lang` parameter.
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS: frozenset = _get_csv_set(
+    "TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS", "deu,fra"
+)
+# The run length required in an exempt language. 4 rather than "never": a German
+# line can still be scanned into `oueussd`, and four vowels in a row is not a word
+# in any of these languages either.
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT", 4)
+# (#30 D43) What category a recognised web or e-mail address gets.
+#
+# @david-spacil, 2026-09-22, on what the five categories mean: "`Trash` =
+# illegible. Anything legible is `Clear`, easily decipherable is `Noisy` --
+# regardless of how useful the line is to us." `http://www.arub.cz` is scanned
+# perfectly correctly on 5,309 lines, so by that definition it is `Clear`. D33
+# moved it Trash -> Noisy, the right direction and one step short.
+#
+# This is a CATEGORY NAME rather than an on/off switch on purpose. The question
+# "what is a legible URL worth?" has had three different answers in this issue --
+# `Trash` (before D33), `Noisy` (D33), `Clear` (W4) -- and a fourth is arguable
+# (`Non-text`, since the README says that category "may be checked for
+# identifiers of finds/sites"). Which one the archive wants is @DanaKriv's and
+# @david-spacil's to settle, not a code change per answer. Set the key, re-score,
+# compare.
+#
+# SHIPS EMPTY = the route is off and behaviour is exactly as before: the address
+# falls through the cascade and lands wherever the ordinary rules put it.
+# Any of the five category names arms it.
+DOMAIN_NOTATION_CATEG = _get_str("TEXT_UTILS", "DOMAIN_NOTATION_CATEG", "").strip()
+#: The `reason` each category is reported under, so the three threshold columns in
+#: DOC_LINE_CATEG keep meaning what they say instead of all reading False on a
+#: novel reason string. `Non-text` and `Empty` have no threshold column, and their
+#: reasons are the ones the pre-filter already uses.
+_DOMAIN_NOTATION_REASON: dict[str, str] = {
+    CATEG_CLEAR: "clear_threshold",
+    CATEG_NOISY: "noisy_threshold",
+    CATEG_TRASH: "trash_threshold",
+    CATEG_NON_TEXT: "non_text",
+    CATEG_EMPTY: "empty",
+}
+if DOMAIN_NOTATION_CATEG and DOMAIN_NOTATION_CATEG not in _DOMAIN_NOTATION_REASON:
+    raise ValueError(
+        f"DOMAIN_NOTATION_CATEG={DOMAIN_NOTATION_CATEG!r} is not one of "
+        f"{sorted(_DOMAIN_NOTATION_REASON)}. Leave it empty to keep the shipped behaviour, in "
+        "which a recognised address is categorised by the ordinary cascade."
+    )
 # (#30 D14) The lexical signal for the residue. A path to a token/document-frequency
 # table built by tools/build_token_lexicon.py. EMPTY BY DEFAULT: with no table the
 # veto is inert and the predicate is byte-identical to the shape-only version, so
 # this key changes nothing until an operator points it at a built table.
 SHORT_GARBAGE_LEXICON_PATH = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_PATH", "").strip()
 SHORT_GARBAGE_LEXICON_MIN_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_MIN_DF", 3)
-# (#30) How much more frequent a de-geminated form must be for its doubled-initial
-# twin to be read as a scanning artefact rather than vocabulary -- `pole` 163 vs
-# `ppole` 35. Guards the veto only, so it can restore a conviction the shape
-# clauses already reached and can never create one. 0 disables the check. See
-# _is_geminate_artefact for why the threshold is a ratio and not a numeral test.
-SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = _get_float("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO", 4.0)
-# (#30, 2026-09-19) The ceiling the ratio above cannot supply. A doubled-initial
-# token attested in MORE than this many documents is a convention -- an
-# abbreviation like `ppole` (popelnicová pole) -- not a scanning error, whatever
-# its ratio. Measured: `ppole` df 35 against every confirmed artefact at df <= 8.
-# 0 disables the cap and restores the ratio-only behaviour that convicted `ppole`.
-SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF = _get_int("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF", 10)
+# (#30 D40, removed 2026-09-22) The de-gemination guard used to live here --
+# SHORT_GARBAGE_LEXICON_GEMINATE_RATIO and _MAX_DF, a pair that let the witness
+# convict a doubled-initial token ALTHOUGH the lexicon attested it. Removed on
+# @david-spacil's answer ("if the dictionary already covers all eight, it looks
+# redundant"), and because three of the eight tokens it was fitted to -- `ssuti`,
+# `ssutí`, `ssutě` -- turned out to be an old spelling of `suť`, so the gap the
+# ratio sat in had real language on BOTH sides of it. Zero of 42,853 rows in the
+# full-scale witness queue carried any of the eight.
 # (#30, 2026-09-19) Feed the corpus lexicon to `compute_valid_ratio` as its
 # `word_set`. SHIPS FALSE: `valid_word_ratio` feeds `compute_quality_score` and
 # every threshold under it, so this moves scores on every line in the corpus --
@@ -536,8 +596,12 @@ def _warn_uncoupled_witness() -> None:
     atrium_vocab check at the top of this module: a NOTE on stderr, never fatal,
     and silence on the happy path -- which includes the shipped configuration,
     where the witness flag is false and no lexicon is configured.
+
+    A tuple of one, deliberately: it held two until the de-gemination guard's
+    scale advisory went with the guard (#30 D40), and the next configuration
+    advisory belongs in it rather than in a second bespoke call site.
     """
-    for warning in (uncoupled_witness_warning, geminate_cap_scale_warning):
+    for warning in (uncoupled_witness_warning,):
         message = warning()
         if message:
             print(f"[text_util] NOTE - {message}", file=sys.stderr)
@@ -1392,7 +1456,17 @@ def determine_category(
     garbage_density: float = 0.0,
     is_upright_czech: bool = False,
     ghost_dominated: bool = False,
+    lang: str | None = None,
 ) -> tuple[str, str]:
+    """`lang` is the RAW detected language label, and only the vowel-run clause reads it.
+
+    (#30 D44.) Pass `original_lang` -- what FastText actually said -- and not the
+    stored `lang` column. That column has been through `remap_lang()`, which
+    rewrites any base outside EXPECTED_LANGS + TRUSTED_FOREIGN_LANGS to Czech, so
+    feeding it here would let a remap decide a phonotactic question. None is the
+    honest default for a caller that does not know, and it applies the general
+    threshold rather than an exemption.
+    """
     if word_count == 0 or not text_source.strip():
         return "Empty", "empty"
 
@@ -1418,6 +1492,47 @@ def determine_category(
     # all three let 65% escape to Noisy/Clear, while leaving hard sweep armed
     # trashed 600 of 600 and cost nothing on the pinned notation shapes.
     notation = "rule_domain_notation" not in DISABLED_RULES and is_domain_notation(text_source)
+
+    # ------------------------------------------------------------
+    # 0b. Web and e-mail addresses -- the category is chosen in config
+    # ------------------------------------------------------------
+    # (#30 D43) SHIPS EMPTY = this block is skipped and nothing changes.
+    #
+    # A recognised address gets whatever category `DOMAIN_NOTATION_CATEG` names,
+    # and EVERY address the pattern catches gets it -- not only the short ones.
+    # That is the point: `http://www.arub.cz` and
+    # `roku 1820 (http://www.hrady.cz/index.php?OID=1291).` are the same kind of
+    # thing to a reader, and today they land in different categories for reasons
+    # that are about token counts rather than about the address.
+    #
+    # WHY IT IS FIRST, above even the hard sweep. Every signal below this line
+    # measures how word-like a string is, and an address is not trying to be a
+    # word: `weird_ratio` is 1.00 on `http://www.arub.cz` because every character
+    # a URL needs past the letters is a symbol, `detect_fused_words` fires on the
+    # address shape rather than on a fusion, an `@` halves `valid_word_ratio`, and
+    # perplexity on a domain name is noise. Letting those decide and then
+    # correcting them afterwards is how this one line has had three different
+    # answers in this issue. If the archive has a rule for addresses, the rule is
+    # the answer.
+    #
+    # The `notation` exemption at gates 1a/1b is narrower and stays: it covers
+    # every notation shape (sigla, grid references, labels), where the perplexity
+    # routes are wrong but the rest of the cascade is not, and it deliberately
+    # does NOT exempt `rule_hard_sweep`. This route is only the URL/e-mail
+    # sub-shape, and only once an operator has said what that shape is worth.
+    #
+    # KNOWN LIMIT, measured rather than assumed: nothing here separates a
+    # correctly scanned address from a mis-scanned one. `e-mail: officeauappmost.cz`
+    # -- the same label with its `@` lost to the scanner -- already reads `Clear`
+    # today without this route. A configured category therefore applies to both,
+    # and `Noisy` is the honest setting for an archive that minds the difference.
+    if (
+        DOMAIN_NOTATION_CATEG
+        and "rule_domain_notation_categ" not in DISABLED_RULES
+        and _RE_NOTATION_URL.search(stripped)
+    ):
+        _fire("rule_domain_notation_categ")
+        return DOMAIN_NOTATION_CATEG, _DOMAIN_NOTATION_REASON[DOMAIN_NOTATION_CATEG]
 
     # ------------------------------------------------------------
     # 1. Hard sweep
@@ -1545,7 +1660,7 @@ def determine_category(
             # and the flag must not be flipped until the witness is measured
             # against a gold set (tools/gold/GOLD.md). Wiring and enabling are
             # deliberately separate commits.
-            _shape_witness = SHORT_GARBAGE_WITNESS_ENABLE and _has_shape_garbage_evidence(text_source)
+            _shape_witness = SHORT_GARBAGE_WITNESS_ENABLE and _has_shape_garbage_evidence(text_source, lang)
             if _shape_witness:
                 _fire("rule_short_garbage_witness")
             if qs < CATEG_TRASH_SCORE_MAX + 0.35 and (
@@ -1824,6 +1939,7 @@ def categorize_line(
     garbage_density: float = 0.0,
     is_upright_czech: bool = False,
     ghost_dominated: bool = False,
+    lang: str | None = None,
 ) -> tuple[str, float] | tuple[str, float, str]:
     categ, reason = determine_category(
         qs,
@@ -1839,6 +1955,7 @@ def categorize_line(
         garbage_density,
         is_upright_czech,
         ghost_dominated,
+        lang,
     )
 
     # Label constants, not literals, on the three sites where a category name is
@@ -2013,13 +2130,15 @@ def _read_token_lexicon(path: str, mtime: float, min_df: int) -> Mapping[str, in
 
     Returns a READ-ONLY MAPPING token -> document frequency, restricted to tokens
     at or above ``min_df``. It was a bare set until the de-gemination guard needed
-    to compare one token's frequency against another's (see
-    ``_is_geminate_artefact``); a set plus a parallel frequency dict would be a
-    second copy of this vocabulary and so a second thing to drift, which is the
-    argument already made for SHAPE_GARBAGE_CLAUSES. Membership tests and
-    ``bool()`` read identically on a mapping, so every existing caller is
-    unaffected. The proxy is because the result is cached: a caller that mutated
-    it would poison every later lookup in the process.
+    to compare one token's frequency against another's; that guard is gone
+    (#30 D40, 2026-09-22) but the mapping stays, because the frequencies are what
+    ``min_df`` filters on here and what ``build_token_lexicon.py``'s provenance
+    header and per-collection columns are for. A set plus a parallel frequency
+    dict would be a second copy of this vocabulary and so a second thing to
+    drift, which is the argument already made for SHAPE_GARBAGE_CLAUSES.
+    Membership tests and ``bool()`` read identically on a mapping, so every
+    existing caller is unaffected. The proxy is because the result is cached: a
+    caller that mutated it would poison every later lookup in the process.
 
     Format, as written by ``tools/build_token_lexicon.py``: ``#``-prefixed
     provenance header, then ``token<TAB>document_frequency`` per line. ``mtime``
@@ -2133,16 +2252,6 @@ def uncoupled_witness_warning(
     )
 
 
-#: The corpus size ``SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF``'s shipped value was
-#: read off. See the table in ``_is_geminate_artefact``.
-GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS: int = 822
-
-#: How far the configured table may be from that basis before the cap stops
-#: meaning what it was set to mean. 4x is generous: the measured separation the
-#: cap sits in is itself only 4.4x wide.
-_GEMINATE_SCALE_TOLERANCE: float = 4.0
-
-
 def lexicon_document_count(path: str | None = None) -> int | None:
     """How many documents the configured token table was built over, or None.
 
@@ -2168,52 +2277,6 @@ def lexicon_document_count(path: str | None = None) -> int | None:
     return None
 
 
-def geminate_cap_scale_warning(
-    lexicon_path: str | None = None,
-    max_df: int | None = None,
-) -> str | None:
-    """``SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF`` is an absolute document count.
-
-    Returns the advisory text, or ``None`` when the configuration is fine.
-
-    (#30, 2026-09-20.) The ratio guard ``SHORT_GARBAGE_LEXICON_GEMINATE_RATIO``
-    is scale-free -- it compares two counts from the same table -- but this cap
-    is not. It was read off a 4.4x gap on an 822-document table (`ppole` 35, every
-    confirmed artefact at 8 or below) and it is compared against a raw document
-    count, so pointing ``SHORT_GARBAGE_LEXICON_PATH`` at a bigger table silently
-    changes what it means. Stage 07a measured what that costs: over 113,100
-    documents the same eight tokens run 229 / 195 / 142 / 64 / 55 / 30 / 10, the
-    gap is 1.17x, and at the shipped 10 the guard is right on 2 of 7 instead of
-    7 of 7.
-
-    ADVISORY, NOT A GATE, for the same reason as ``uncoupled_witness_warning()``:
-    measuring the cap against a large table is exactly how the next threshold
-    decision gets made, and a refusal would prevent it. What must not happen is
-    someone inheriting a 137x rescale without being told.
-    """
-    if lexicon_path is None:
-        lexicon_path = SHORT_GARBAGE_LEXICON_PATH
-    if max_df is None:
-        max_df = SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF
-    if not (lexicon_path or "").strip() or max_df <= 0:
-        return None
-    documents = lexicon_document_count(lexicon_path)
-    if documents is None or documents <= 0:
-        return None
-    factor = documents / GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS
-    if factor <= _GEMINATE_SCALE_TOLERANCE:
-        return None
-    return (
-        f"SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF={max_df} was calibrated on a "
-        f"{GEMINATE_MAX_DF_CALIBRATION_DOCUMENTS}-document table; the configured one holds "
-        f"{documents:,} documents ({factor:.0f}x). The cap is an ABSOLUTE document count, so "
-        "it does not rescale with the table. Measured over 113,100 documents (#30 stage 07a) "
-        "the confirmed artefacts reach df 195 and the cap is right on 2 of 7 tokens instead "
-        "of 7 of 7. Re-measure the cap against this table before relying on the de-gemination "
-        "guard, or set SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF=0 to fall back to the ratio alone."
-    )
-
-
 def _has_vocabulary_support(token: str) -> bool:
     """Is this token attested as vocabulary elsewhere in the collection?
 
@@ -2233,137 +2296,41 @@ def _has_vocabulary_support(token: str) -> bool:
 
     Veto only: it can withdraw a conviction, never add one.
 
-    MEASURED CAVEAT (2026-09-17, 822-document table). The premise above -- that
-    OCR noise is idiosyncratic to its scan -- FAILS for a pre-printed form
-    scanned across the collection. There the error is systematic: it reproduces
-    once per document and accrues document frequency exactly like a word. The
-    corpus case is `ppole`, an OCR doubling of Czech `pole` in the form label
-    `KULTURA: ppole`, which reaches df 35 and is 57% of the entire witnessed
-    population. Attestation therefore does not by itself mean vocabulary, and
-    `_is_geminate_artefact` below carves out the one shape where the corpus shows
-    this happening. It is a carve-out, not a repair: any templated artefact that
-    is not an initial geminate is still wrongly exempted here.
+    KNOWN LIMIT, and it is now accepted rather than carved out (#30 D40,
+    2026-09-22). The premise above -- that OCR noise is idiosyncratic to its
+    scan -- FAILS for a pre-printed form scanned across the collection: there the
+    error is systematic, reproduces once per document and accrues document
+    frequency exactly like a word. A de-gemination guard used to carve that shape
+    out, letting the witness convict a doubled-initial token although the table
+    attested it. It is gone, on the data provider's answer and on measurement:
 
-    UPDATED (#30, 2026-09-21, full-collection table). `ppole` is df 229 and
-    42.7% of the stage-8 at-risk population, not 35 and 57% -- the 822-document
-    figures above are historical, kept for the record of how the guard was
-    first calibrated, not the current measurement. The full-collection numbers
-    do not change the shape of the argument, only its scale: see
-    `geminate_cap_scale_warning()` and D30 for what DOES change at this table
-    (the geminate cap's separating margin, which collapses). What this function
-    does at full scale, measured directly rather than inferred from this
-    docstring: `Mammalia`, `Triticum`, `Lepus`, `Linum`, `Arvicola` and their
-    common epithets are all attested and exempt through this path once a
-    lexicon is configured -- the taxonomic false-positive class this issue
-    spent time on (see the corpus profile) turned out to be mostly this
-    mechanism working as designed, not a predicate gap.
+    * `ppole` (`KULTURA: ppole`) is not the artefact the guard was built for --
+      it is *popelnicová pole*, the standard abbreviation, `pp` doubled for a
+      plural exactly as in `pp.` for pages (@david-spacil, 2026-09-19).
+    * `ssuti` / `ssutí` / `ssutě` are not artefacts either -- they are an old
+      spelling of `suť` (@david-spacil, 2026-09-22). So of the eight tokens the
+      guard was fitted to, FOUR are real language and four are damage, and the
+      frequency gap the threshold sat in had vocabulary on both sides of it.
+    * At full scale the table attests all eight, and zero of the 42,853 rows in
+      the witness queue carried any of them. The guard fired on nothing.
+
+    So attestation still does not by itself prove vocabulary, and a templated
+    artefact can still be wrongly exempted here. That is a recorded, accepted
+    limit with no known separating signal -- three were tried and none survived
+    the full-collection table -- rather than a gap with a patch waiting.
+
+    What this function does at full scale, measured directly rather than inferred
+    from this docstring: `Mammalia`, `Triticum`, `Lepus`, `Linum`, `Arvicola` and
+    their common epithets are all attested and exempt through this path once a
+    lexicon is configured -- the taxonomic false-positive class this issue spent
+    time on (see the corpus profile) turned out to be mostly this mechanism
+    working as designed, not a predicate gap.
     """
     lex = token_lexicon()
     if not lex:
         return False
     lowered = token.lower()
-    return lowered in lex and not _is_geminate_artefact(lowered, lex)
-
-
-def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
-    """Is this attested token a doubled-initial OCR artefact rather than a word?
-
-    (#30.) `initial_geminate` convicts a doubled consonant in first position on
-    the grounds that no European orthography opens a word that way. **That
-    premise is false for ABBREVIATIONS** -- `pp` doubled for a plural is a
-    standard Czech convention, the same one behind `pp.` for pages and `ss.` for
-    sections -- and the corpus's flagship case is exactly that: `ppole` is
-    *popelnicová pole*, urnfield culture, not a scan error (@david-spacil,
-    2026-09-19). The clause is right about the rest.
-
-    The discriminator is that the artefact's own source word is also in the
-    table, and is MORE common: `ppole` df 35 against `pole` 163, `oobjekt` 3
-    against `objekt` 378, `jjámy` 5 against `jámy` 356. A real doubled-initial
-    token has no such shadow.
-
-    The natural false positive is Roman numerals -- `xxiii` against `xiii`,
-    `xxviii` against `xviii` -- which are genuinely different numerals and not
-    doublings at all. They are excluded by ratio rather than by a numeral test,
-    because on the real table the two populations do not overlap: every one of
-    the 8 tokens at or above 4x is a templated artefact and none is
-    numeral-shaped, while all 36 below 2x are numerals or character runs. A
-    character-class rule would have been the more obvious defence and a worse
-    one, since `xxxxx` and `iiiii` are not numerals either.
-
-    Deliberately BROADER than `initial_geminate`, which matches doubled
-    CONSONANTS only (`^([bcdfghjklmnpqrstvwxz])\\1`). `oobjekt` -- df 3 against
-    `objekt` 378, the strongest ratio in the table at 126x -- is a doubled vowel,
-    so that clause never sees it and withdrawing its exemption changes nothing on
-    the shape path. It earns the breadth through `no_vocabulary`, which convicts
-    on absence and is gated by this same predicate: there, un-attesting a
-    templated artefact is the whole point. The risk the narrower form would avoid
-    is a real doubled-vowel word, and it is not reachable here -- being stripped
-    needs the DE-geminated form to be a 4x more common token, which for `Aachen`
-    or `Aalen` would mean `achen`/`alen` outnumbering them as words.
-
-    SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = 0 disables this entirely, restoring
-    the plain-attestation veto.
-    """
-    if SHORT_GARBAGE_LEXICON_GEMINATE_RATIO <= 0:
-        return False
-    if len(token) < 4 or token[0] != token[1]:
-        return False
-    df_token = lex.get(token, 0)
-    if df_token <= 0:
-        return False
-    # An ABBREVIATION is derived from its base word, so the base is ALWAYS the
-    # commoner of the two and the ratio below always fires. The ratio therefore
-    # cannot tell a convention from a scan error, and on the measured data it
-    # does not try to: `ppole` sits at ratio 4.7 and `ssuti` at 5.2.
-    #
-    # Absolute frequency separated them on the 822-document table, with a wide
-    # margin: `ppole` df 35 against every confirmed artefact at 8 or below
-    # (`oobjekt` 3, `ssutě` 4, `jjámy` 5, `ssutí` 5, `vvkop` 5, `ssuti` 8). A gap
-    # of 4.4x, and 10 sits inside it. That is what this cap was fitted to.
-    #
-    # (#30, 2026-09-20.) IT DOES NOT SURVIVE THE FULL-COLLECTION TABLE, and the
-    # run that was supposed to confirm it is the run that refutes it. Stage 07a
-    # looked the same eight tokens up over 113,100 documents / 2,764,632 tokens:
-    #
-    #     token     own df   base df    ratio
-    #     ppole        229      8,600    37.6   <- the ABBREVIATION
-    #     ssuti        195      1,667     8.5
-    #     ssutí        142      1,617    11.4
-    #     ssutě         64        900    14.1
-    #     llocm         55        417     7.6
-    #     vvkop         30      1,400    46.7
-    #     jjámy         10     14,799  1,479.9
-    #     oobjekt        -          -       -   (no longer directly attested)
-    #
-    # Neither axis separates any more. By RATIO `ppole` is fifth of seven, with
-    # four confirmed artefacts BELOW it -- so no ratio threshold works, which is
-    # what this cap already assumed. By OWN DF the 4.4x gap has collapsed to
-    # 1.17x (229 against `ssuti`'s 195): a threshold fitted between them is
-    # fitted to one true positive, not read off a gap.
-    #
-    # The consequence is live rather than theoretical. This constant is an
-    # ABSOLUTE document count, so it is only meaningful against the table it was
-    # calibrated on. At the shipped 10, on the 822-document table, the guard is
-    # right on 7 of 7; on the full-collection table it is right on 2 of 7 --
-    # every artefact except `jjámy` clears 10 and keeps a vocabulary exemption it
-    # should not have. `lexicon_scale_warning()` says so at the point where a
-    # table is configured, because the number cannot say it itself.
-    #
-    # NOT RETUNED HERE, deliberately. Eight tokens, seven of them labelled by one
-    # reading, is not a population to fit a production threshold to, and picking
-    # ~200 off this table would be the fourth time in this issue that a number
-    # was set from the data that was supposed to test it. The separating signal
-    # is per-collection concentration, not a global count -- an artefact belongs
-    # to the scanning run that produced it, an abbreviation does not -- and
-    # `build_token_lexicon.py` already emits per-collection columns to measure
-    # it with. That is an experiment, not an edit.
-    if SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF > 0 and df_token > SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF:
-        return False
-    # Both sides are necessarily present in the table when this fires: the
-    # geminate is attested by the caller's own membership test, and the source
-    # word is by definition more frequent still, so restricting the table to
-    # >= min_df cannot hide it.
-    return lex.get(token[1:], 0) >= SHORT_GARBAGE_LEXICON_GEMINATE_RATIO * df_token
+    return lowered in lex
 
 
 # The clause names, in report order. Canonical here rather than in the reporting
@@ -2371,7 +2338,19 @@ def _is_geminate_artefact(token: str, lex: Mapping[str, int]) -> bool:
 SHAPE_GARBAGE_CLAUSES: tuple[str, ...] = ("vowel_run", "triple", "initial_geminate", "low_variety", "no_vocabulary")
 
 
-def _has_shape_garbage_evidence(text_source: str) -> bool:
+def _vowel_run_min_for(lang: str | None) -> int:
+    """How many consecutive vowels convict, given the detected language (#30 D44).
+
+    `lang` is a FastText label (`deu_Latn`) or a bare base (`deu`); anything
+    unrecognised, including None, gets the general threshold. That default is
+    deliberate: not knowing the language must not silently exempt a line.
+    """
+    if lang and _lang_base(lang) in SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS:
+        return SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT
+    return SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN
+
+
+def _has_shape_garbage_evidence(text_source: str, lang: str | None = None) -> bool:
     """Phonotactic evidence that a short line is OCR garbage, not rare vocabulary.
 
     Read only when ``SHORT_GARBAGE_WITNESS_ENABLE`` is set. See the block above
@@ -2381,10 +2360,10 @@ def _has_shape_garbage_evidence(text_source: str) -> bool:
     The verdict is ``bool()`` of the clause list, so the predicate and the
     diagnosis cannot disagree -- see ``shape_garbage_clauses()``.
     """
-    return bool(shape_garbage_clauses(text_source))
+    return bool(shape_garbage_clauses(text_source, lang))
 
 
-def shape_garbage_clauses(text_source: str) -> list[str]:
+def shape_garbage_clauses(text_source: str, lang: str | None = None) -> list[str]:
     """Which witness clauses ``text_source`` satisfies, in ``SHAPE_GARBAGE_CLAUSES`` order.
 
     THE single implementation of the witness. It exists because there used to be
@@ -2500,15 +2479,20 @@ def shape_garbage_clauses(text_source: str) -> list[str]:
             ):
                 found.add("no_vocabulary")
 
-            # 3+ consecutive vowels: `oueussd`, `cuxoaid`, `IDIDIDIDIDIDUOID`.
+            # Consecutive vowels: `oueussd`, `cuxoaid`, `IDIDIDIDIDIDUOID`.
             #
-            # The length is SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN, which defaults to
-            # FUSED_VOWEL_RUN_MIN (3) and is now separately tunable. The trade at
-            # the next step up is measured and asymmetric, so it belongs to the
-            # sweep and not to a reading of the code: at 4, `oueussd` (`oueu`)
-            # stays convicted while `cuxoaid` (`oai`) escapes this clause and no
-            # other clause catches it, and `Naiade`/`Beuern`/`Oueste` stop firing.
-            if _compile_vowel_run(SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN).search(core):
+            # THE LENGTH DEPENDS ON THE LANGUAGE (#30 D44). Three in a row is
+            # evidence of damage because CZECH has no triphthongs; German and
+            # French have them natively, so in those languages the same run means
+            # nothing and the clause was convicting `Dauerleihe` (*aue*) and
+            # `FEUILLETON` (*eui*), both scanned correctly. Four is required
+            # there, and four still convicts in every language -- a German line
+            # can be scanned into `oueussd` as easily as a Czech one.
+            #
+            # `lang` is None for every caller that does not know the language,
+            # and then the general threshold applies, which is the behaviour this
+            # clause had before the split.
+            if _compile_vowel_run(_vowel_run_min_for(lang)).search(core):
                 found.add("vowel_run")
 
             # The same character three times: `sektlll`, `NINNNIC`. Capped by

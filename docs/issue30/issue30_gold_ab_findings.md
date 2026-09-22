@@ -409,12 +409,30 @@ rescale when the lexicon does, and stage 7 configured the bigger table. At `10` 
 guard is right on **2 of 7** tokens instead of 7 of 7: every artefact except `jjámy` clears
 the cap and keeps a vocabulary exemption it should not have.
 
-**Not retuned.** Eight tokens, seven labelled from one reading, is not a population to fit a
-production threshold to — and §3 of this document already argued the corresponding point
-about `min_df`. What landed instead: `text_util.geminate_cap_scale_warning()`, corrected
-figures in the code comment and `setup/config.txt`, and tests pinning both tables. The
-separating signal is **per-collection concentration**, for which `build_token_lexicon.py`
-already emits columns.
+**Not retuned — and then removed.** Eight tokens, seven labelled from one reading, is not a
+population to fit a production threshold to, and §3 of this document already argued the
+corresponding point about `min_df`. What landed first (2026-09-20) was an advisory rather
+than a new value: `text_util.geminate_cap_scale_warning()`, corrected figures in the code
+comment and `setup/config.txt`, and tests pinning both tables.
+
+> ### 🛑 Superseded 2026-09-22 — the guard is gone, and the reading above is why
+>
+> Three of the seven are not artefacts. `ssuti`, `ssutí` and `ssutě` are an old spelling of
+> *suť* (@david-spacil), so the table above is **four real words against four errors**, and
+> the frequency gap the guard's threshold sat in has vocabulary on **both** sides of it. The
+> per-collection signal that was going to separate them was refuted at the same time (A1's
+> own §8c row, below): concentration separates *institutions*, and each institution has its
+> own vocabulary.
+>
+> With the owner's approval — *"if the dictionary already covers all eight, it looks
+> redundant"* — `SHORT_GARBAGE_LEXICON_GEMINATE_RATIO`, `SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF`
+> and `geminate_cap_scale_warning()` were removed from `text_util.py` and `setup/config.txt`.
+> At full scale the guard fired on **zero of 42,853** witness-queue rows, and removal is
+> behaviourally identical to the `RATIO = 0` arm that 5d measured as bit-identical on all
+> 2,064 gold rows.
+>
+> **This section is kept unchanged above the line** because the measurement is the reason the
+> guard went, and a deleted table cannot be checked.
 
 ## A2. 07b is void, and it is 07c's bug one indirection further in
 

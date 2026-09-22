@@ -207,6 +207,29 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # without SHORT_GARBAGE_LEXICON_PATH -- advisory, because 30.runbook.md step 5a
 # measures the shape-only configuration deliberately.
 SHORT_GARBAGE_WITNESS_ENABLE            = false
+# (#30 D43) What category a recognised web or e-mail address gets.
+# @david-spacil, 2026-09-22: "`Trash` = illegible. Anything legible is `Clear`,
+# easily decipherable is `Noisy` -- regardless of how useful the line is to us."
+# `http://www.arub.cz` is scanned perfectly correctly on 5,309 lines, so by that
+# definition it is `Clear`; D33 moved it Trash -> Noisy, the right direction and
+# one step short.
+# A CATEGORY NAME rather than an on/off switch, because this line has already had
+# three answers in this issue -- Trash, then Noisy, now arguably Clear -- and a
+# fourth is defensible (Non-text, which the README says "may be checked for
+# identifiers of finds/sites"). Settling it should be a config edit and a re-score,
+# not a code change per answer.
+# EVERY address the pattern catches gets this category, not only short ones, and
+# the rule runs FIRST in the cascade -- above the hard sweep. Every signal below
+# that line measures how word-like a string is, and an address is not trying to be
+# a word: weird_ratio is 1.00 on a URL, detect_fused_words fires on the address
+# shape, an `@` halves valid_word_ratio, and perplexity on a domain name is noise.
+# KNOWN LIMIT: nothing separates a correctly scanned address from a mis-scanned
+# one, so this category applies to both. `Noisy` is the honest setting for an
+# archive that minds the difference.
+# EMPTY = off, and the cascade decides as it does today. Valid: Clear, Noisy,
+# Trash, Non-text, Empty. An unrecognised value fails at import rather than
+# silently doing nothing.
+DOMAIN_NOTATION_CATEG                   =
 # Minimum ALPHABETIC characters in a sub-token before any shape test applies.
 # Also what keeps every SHORT_VALID_WORDS / _NEUTRAL_LEXICON member out by
 # construction (`se`, `po`, `mm`, `ks` are all shorter than this).
@@ -227,6 +250,29 @@ SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA  = 8
 # catching it, and the `Naiade` / `Beuern` / `Oueste` loan false positives stop
 # firing. Let the sweep decide against gold rather than settling it by reading.
 SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
+# (#30 D44) The vowel-run clause is a fact about CZECH phonotactics, not about
+# scanning: Czech has no triphthongs, so three vowels in a row is good evidence of
+# damage -- in Czech. German and French have them natively, which is why the clause
+# reached `Dauerleihe` (*aue*, permanent loan) and `FEUILLETON` (*eui*), both
+# scanned perfectly correctly.
+# @david-spacil, 2026-09-22: "For Czech, 3+ vowels in a row is a good rule -- Czech
+# has no triphthongs. For German and French it does damage. So either split by
+# language, or try 4+."
+# The split, not the blunting. Raising the threshold to 4 everywhere was measured
+# and is the worse trade: it releases `J. Vysoean` (*Vysočan*), `POSTKRANIAINY
+# SKELET`, `lenaye` and `noienm k.` -- all damage -- to spare two German words,
+# giving up 3.5 lines that currently agree with `Trash` per at-risk line spared
+# (stage 10b).
+# So the rule is: 3 vowels convict in every language EXCEPT these, and 4 convict
+# everywhere INCLUDING these. Four is not "never": a German line can be scanned
+# into `oueussd` as easily as a Czech one.
+# The language read is the RAW FastText label (`original_lang`), never the stored
+# `lang` column -- that one has been through remap_lang(), which rewrites any base
+# outside EXPECTED_LANGS + TRUSTED_FOREIGN_LANGS to Czech and would therefore
+# answer a phonotactic question with a policy default, in the direction that costs
+# most. Empty EXEMPT_LANGS restores a single global threshold.
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS = deu,fra
+SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT   = 4
 
 # ── rule_short_garbage vocabulary signal (issue #30 D14) ────────────────────
 # The lexical half of the witness, and the only thing in this module that can
@@ -244,51 +290,33 @@ SHORT_GARBAGE_LEXICON_PATH              =
 # attested. Document frequency, not line frequency: OCR noise repeats within the
 # scan that produced it and -- WITH ONE MEASURED EXCEPTION -- rarely across scans.
 # The exception is a pre-printed form: the same misread recurs once per document
-# and accrues document frequency like a word. `ppole` (OCR of Czech `pole`)
-# reaches df 35 that way and is 57% of the witnessed population. Raising this
-# threshold does not reach it -- see SHORT_GARBAGE_LEXICON_GEMINATE_RATIO below.
+# and accrues document frequency like a word -- and `ppole` (`KULTURA: ppole`),
+# which reaches df 35 on the thin table and 229 at full scale, is NOT an example
+# of it: it is the standard abbreviation for `popelnicová pole` (@david-spacil,
+# 2026-09-19), so attesting it is correct. Raising this threshold does not reach
+# the templated-artefact class and nothing else does either; see the accepted
+# limit recorded on `_has_vocabulary_support` (#30 D40).
 # On the 822-document table (2026-09-17) the veto's effect is flat between 2 and
 # 10, and 2 is marginally best; 3 is kept as the shipped value because the
 # threshold should be set on a table built over BOTH FULL COLLECTIONS, which that
 # one is 0.7% of. At 3 on that table the CONVICT clause below misjudges 5 of 31
 # pinned vocabulary fixtures, which is why it ships false.
 SHORT_GARBAGE_LEXICON_MIN_DF            = 3
-# How much more frequent a de-geminated form must be for its doubled-initial twin
-# to be treated as a scanning artefact rather than as vocabulary: `pole` 163 vs
-# `ppole` 35 is 4.7x. This guards the VETO only -- it can restore a conviction the
-# shape clauses already reached, never invent one -- so it is inert while
-# SHORT_GARBAGE_WITNESS_ENABLE is false, like everything else here.
-# On the 822-document table the two populations do not overlap: 8 tokens at or
-# above 4x, every one a templated artefact (`ppole`, `oobjekt`, `jjámy`, `ssuti`,
-# `vvkop`, `ssutí`, `ssutě`, `llocm`); 36 below 2x, every one a Roman numeral or a
-# character run (`xxiii` vs `xiii` are different numerals, not a doubling). 4.0
-# sits in the empty gap between them. 0 disables the check.
-SHORT_GARBAGE_LEXICON_GEMINATE_RATIO    = 4.0
-# The ceiling the ratio cannot supply. An ABBREVIATION is derived from its base
-# word, so the base is always commoner and the ratio always fires -- which is how
-# `ppole` came to be convicted. It is not a scanning error: it is the standard
-# Czech abbreviation for `popelnicová pole`, urnfield culture, `pp` doubled for
-# the plural exactly as in `pp.` for pages (@david-spacil, 2026-09-19).
-# Absolute frequency separated them ON THE 822-DOCUMENT TABLE: `ppole` attested in
-# 35 documents, every confirmed artefact (`oobjekt` 3, `ssutě` 4, `jjámy` 5,
-# `ssutí` 5, `vvkop` 5, `ssuti` 8) in at most 8. A scan error appears in a handful
-# of documents; an abbreviation appears in many. 10 sits in that 4.4x gap.
-#
-# THIS VALUE IS ONLY MEANINGFUL AGAINST THE TABLE IT WAS FITTED TO. It is an
-# absolute document count, so it does not rescale when SHORT_GARBAGE_LEXICON_PATH
-# points somewhere bigger. Stage 07a (2026-09-19) looked the same eight tokens up
-# over the full 113,100-document collection and the separation is gone: `ppole`
-# 229, `ssuti` 195, `ssutí` 142, `ssutě` 64, `llocm` 55, `vvkop` 30, `jjámy` 10.
-# The gap is 1.17x rather than 4.4x, and by RATIO `ppole` is fifth of seven with
-# four confirmed artefacts below it. At 10 on that table the guard is right on 2
-# of 7 tokens instead of 7 of 7.
-# text_util.geminate_cap_scale_warning() says so on stderr when the configured
-# table is more than 4x the calibration corpus. Left at 10 deliberately: eight
-# tokens is not a population to re-fit a production threshold to, and the
-# separating signal is per-collection concentration (which build_token_lexicon.py
-# already emits columns for), not a global count. 0 disables the cap and falls
-# back to the ratio alone.
-SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF   = 10
+# (#30 D40) SHORT_GARBAGE_LEXICON_GEMINATE_RATIO and _GEMINATE_MAX_DF stood here
+# until 2026-09-22. They were the de-gemination guard: a pair of thresholds that
+# let the witness convict a doubled-initial token ALTHOUGH this table attested it,
+# fitted to eight tokens on an 822-document table. Removed, and the reason is
+# worth keeping where the keys were.
+# @david-spacil approved dropping it ("if the dictionary already covers all eight,
+# it looks redundant"), and the eight turned out to be FOUR real words against
+# four errors, not one against seven: `ppole` is an abbreviation (2026-09-19) and
+# `ssuti` / `ssutí` / `ssutě` are an old spelling of `suť` (2026-09-22). So the
+# empty frequency gap the ratio sat in had real language on BOTH sides of it, and
+# the cap -- an ABSOLUTE document count -- stopped separating anything at all once
+# the table grew 138x (07a: `ppole` 229, `ssuti` 195, `jjámy` 10). At full scale
+# the guard fired on ZERO of 42,853 witness-queue rows.
+# Removing it is behaviourally identical to the RATIO=0 arm, which was A/B-ed
+# against gold on 2026-09-19 and came back identical on all 2,064 scored rows.
 # (#30 D26) Feed the corpus lexicon to compute_valid_ratio as its `word_set`.
 # That function has always taken one and production has never passed one, so it
 # falls back to a shape test -- >=3 characters, >=70% alphabetic, nothing strange

@@ -300,13 +300,15 @@ class OCRNeighbours:
         commoner of the two and the ratio test always fires. Nothing here
         distinguishes that from a scanning error.
 
-        What does separate them on the measured data is **absolute frequency**:
-        `ppole` sits at df 35 while every confirmed artefact (`oobjekt` 3,
-        `jjámy` 5, `ssuti` 8, `vvkop` 5, `ssutí` 5, `ssutě` 4) sits at df <= 8. A
-        scan error appears in a handful of documents; an abbreviation appears in
-        many. Callers wanting a verdict rather than evidence should apply that
-        cap — `text_util._is_geminate_artefact` does, via
-        ``SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF``.
+        Absolute frequency looked like it separated them on the 822-document
+        table: `ppole` at df 35 against `oobjekt` 3, `ssutě` 4, `jjámy` 5,
+        `ssutí` 5, `vvkop` 5, `ssuti` 8. It does not hold. At 113,100 documents
+        the margin collapses to 1.17x, and three of those six -- `ssuti`,
+        `ssutí`, `ssutě` -- turned out to be an old spelling of `suť` rather than
+        damage at all (@david-spacil, 2026-09-22), so the gap has real language
+        on both sides of it. `text_util` used to apply such a cap; it does not
+        any more (#30 D40). **No production predicate turns this evidence into a
+        verdict**, and on the measurements so far none should.
 
         Returns the strongest twin at or above ``ratio`` times this token's own
         frequency, or ``None``. Evidence for a reader, not a verdict.

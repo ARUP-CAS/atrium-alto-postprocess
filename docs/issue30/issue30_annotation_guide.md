@@ -22,8 +22,10 @@
 > Nothing you may already have done is wasted. Any answers from the earlier files still join back.
 >
 > **One thing is still open, and § 7.2 is where it is written down.** It is a question about what
-> `Trash` is for, and you can answer it without the files. If you would rather settle that first,
-> please do — but it does not block the labelling.
+> `Trash` is for. @david-spacil answered it on 2026-09-22 — **`Trash` means illegible, regardless
+> of how useful the line is** — and § 4 gives you the definitions that follow from it. What is
+> left is whether you agree; a sentence either way settles it, and it does not block the labelling.
+> § 7.1 is now answered too and is kept only in case you want to dissent.
 
 ---
 
@@ -238,9 +240,9 @@ archive is a judgement about what the output is **for**, and it is yours to make
 
 ---
 
-## 7. Three questions that are not in the files
+## 7. Three questions that are not in the files — two are now answered
 
-### 7.1 A policy question about repeated text
+### 7.1 A policy question about repeated text — ✅ answered, kept here for your dissent
 
 The program has a cleaning step that works like this: if the same text appears several times in
 one document, all copies are given the **same** answer — whichever answer the majority of them
@@ -249,23 +251,52 @@ got.
 This means that if the new rule throws away three copies of a word and two copies were correct,
 those two correct copies are thrown away as well.
 
-We have now measured how often this actually happens across **both collections in full**, rather
-than in one sample. Of 61,682 groups of repeated text, 61,359 are unanimous and only 323 are
-contested at all. The cleaning step pulls **24 good lines down** — and it **rescues 305 lines**
-that would otherwise have been thrown away. It is protecting roughly twelve lines for every one
-it costs. We have also measured what happens if we turn it off: the new rule makes **more**
-mistakes, not fewer.
+> **@david-spacil answered on 2026-09-22: leave the step as it is.** He also asked us to drop the
+> other option we had offered — stopping a bare majority from pushing a readable line into
+> `Trash`. Measured across both collections, that option changes **nothing at all**: it reaches
+> zero groups. The situation it was written for does not occur.
+>
+> **This item is closed unless you disagree.** One line is enough if you do.
 
-**Our question:** is losing a small number of correct copies acceptable, when the cleaning step
-is, on balance, protecting more than it costs? Or should a bare majority never be allowed to
-throw away text that was marked as good?
+**And the numbers here were wrong, so they are replaced rather than quietly updated.** An earlier
+version of this page said 61,682 groups, 24 good lines lost, 305 rescued, "twelve lines for every
+one it costs". That measurement was made with the archive's own dictionary switched **off** — a
+setting this pipeline never ships — so it counted repeated lines the new rule can no longer reach.
+Measured properly, across both collections in full:
 
-We are not asking you to decide how to implement it. We are asking which outcome the archive
-should prefer. Please answer in one or two sentences.
+|                                           |                                    |
+|-------------------------------------------|------------------------------------|
+| groups of repeated text the step votes on | 43,103                             |
+| of those, already unanimous               | 43,052                             |
+| contested at all                          | 51                                 |
+| readable lines the vote pulls down        | 10                                 |
+| rubbish lines the vote rescues            | **51**                             |
+| **net effect**                            | **+41 lines in the step's favour** |
 
-### 7.2 The question we would most like answered, and it needs no files
+So it protects about **five** lines for every one it costs, not twelve. We have also measured what
+happens if we turn it off: the new rule makes **more** mistakes, not fewer.
+
+**The one thing still open is whether losing those 10 readable lines is a trade the archive
+accepts.** If you think it is not, please say so.
+
+### 7.2 The definition question — @david-spacil has answered it, and we need to know if you agree
 
 This one came out of the full-collection measurement and it may matter more than the labels.
+
+> ## ✅ His answer, 2026-09-22 — legibility
+>
+> *"`Trash` = illegible. Anything legible is `Clear`, easily decipherable is `Noisy` — regardless
+> of how useful the line is to us."*
+>
+> **That is the first of the two options described below**, and it is the one § 4 of this guide
+> already tells you to work to. So a correctly scanned web address such as `http://www.arub.cz` is
+> `Clear`, not `Trash`.
+>
+> **We are recording it as his view, not as a joint decision, because you are the other half of
+> it.** Nothing stops you labelling in the meantime — what waits on your agreement is how the
+> answers get scored, not whether you can start. The rest of this section is the reasoning that
+> produced the question, kept so you can disagree with it on the evidence rather than on our
+> summary of it.
 
 The definitions we work to are:
 
@@ -296,7 +327,7 @@ We think one label is being asked two different questions:
 2. **Is this running text worth keeping and searching?** — which is a different question, and the
    one the program seems to be answering in practice.
 
-**Our question to you: which of the two do you actually want?**
+**The two readings, and his answer is the first of them:**
 
 * If it is *readability*, then a correctly scanned web address is `Clear`, and we should fix the
   program — it is currently discarding several thousand perfectly readable lines.
@@ -304,12 +335,15 @@ We think one label is being asked two different questions:
   category for the second question — **`Non-text`** — which is where footers, URLs and form
   labels would belong.
 
-Either answer is workable and we will do whichever you prefer. What we cannot do is leave it
-unsaid. Suppose you start labelling and mark `http://www.arub.cz` as `Clear`. That is the correct
-answer under the definitions as written. But the measured accuracy of the new rule will then
-change, and we will not be able to tell whether that came from the definition or from the rule.
+Either answer is workable and we will do whichever the two of you prefer. What we cannot do is
+leave it unsaid. Suppose you start labelling and mark `http://www.arub.cz` as `Clear`. That is the
+correct answer under the definitions as written, and under his answer. But if the definition were
+still open, the measured accuracy of the new rule would change and nobody could tell whether that
+came from the definition or from the rule.
 
-**A couple of sentences on this would unblock more than the labels will.**
+**So the only thing we need from you here is agreement or dissent — a sentence either way.** If
+you agree, § 4 already has the definitions you work to and nothing changes for you. If you do not,
+say so before you start and we will settle it first.
 
 ### 7.3 A re-review we owe you
 

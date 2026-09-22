@@ -308,7 +308,8 @@ def test_stage8_binomials_are_exempt_once_the_lexicon_is_armed(tmp_path):
 #: `SHORT_GARBAGE_WITNESS_VARIETY_MAX`/`_MIN_ALPHA` from two named examples
 #: would be the same mistake D25/D30 already named in this issue -- fitting a
 #: production threshold to a population too small to fit one to. Accepted,
-#: named debt, same shape as the geminate cap's remaining gap.
+#: named debt -- the same shape as the doubled-initial class, where three
+#: signals were tried and none separated language from damage either.
 STAGE8_RARE_WORDS_UNRESOLVED = [
     "Kaukasus",
     "Hallstatthaus",
@@ -531,8 +532,9 @@ def test_the_witness_without_a_lexicon_is_reported_as_a_known_bad_configuration(
 
     That gap READ as 1:3-against becoming 1.7:1-in-favour, and it was quoted here
     as the reason the two settings are one decision. It is not: 90.5% of the
-    difference is the single token `ppole`, a scanning artefact the witness was
-    right about (see the de-gemination guard below), and both figures are counted
+    difference is the single token `ppole` -- which is an ABBREVIATION, so the
+    witness was wrong about it (@david-spacil, 2026-09-19), and the veto rescuing
+    it is the veto working -- and both figures are counted
     against `categ` — the pipeline's own answer — so neither can tell a wrong
     witness from a wrong pipeline. The COUPLING still holds, because a veto that
     misfires on 12.9k lines either way is not something to arm blind. The
@@ -555,22 +557,41 @@ def test_the_shipped_configuration_raises_no_advisory():
 
 
 # ---------------------------------------------------------------------------
-# The de-gemination guard (#30, 2026-09-17)
+# Attested doubled-initial tokens (#30 D40, guard removed 2026-09-22)
 # ---------------------------------------------------------------------------
 #
 # `_has_vocabulary_support` rests on "OCR noise is idiosyncratic to the scan that
 # produced it". A pre-printed form scanned across the collection breaks that: the
 # same misread recurs once per document and accrues document frequency like a
-# word. On the 822-document table `ppole` -- OCR of Czech `pole`, in the form
-# label `KULTURA: ppole` -- reached df 35 and was 57% of the whole witnessed
-# population, so the veto suppressed ~11.7k convictions that `initial_geminate`
-# had made correctly.
+# word. A DE-GEMINATION GUARD used to carve that shape out -- it let the witness
+# convict a doubled-initial token although the table attested it, on a ratio
+# against the de-geminated form plus an absolute document-count cap.
 #
-# Every frequency below is from that real table (issue30_out/03_lookup.log and
-# the 347,097-row token_df.tsv), not invented for the fixture.
+# It is gone, and these tests now pin the opposite contract. Three reasons, in
+# the order they arrived:
+#
+#   1. `ppole` -- the flagship case, and 57% of the witnessed population on the
+#      thin table -- is not an artefact at all. It is *popelnicová pole*,
+#      urnfield culture, `pp` doubled for a plural as in `pp.` for pages
+#      (@david-spacil, 2026-09-19).
+#   2. `ssuti` / `ssutí` / `ssutě` are not artefacts either. They are an old
+#      spelling of `suť` (@david-spacil, 2026-09-22). So of the eight tokens the
+#      guard was fitted to, FOUR are real language and four are damage -- and the
+#      empty frequency gap the ratio sat in had vocabulary on BOTH sides of it.
+#   3. At full scale (113,100 documents) the table attests all eight and the
+#      guard fired on zero of 42,853 witness-queue rows.
+#
+# The frequencies below are still the real ones from the 822-document table
+# (issue30_out/03_lookup.log and the 347,097-row token_df.tsv), kept because they
+# are what the removed guard was calibrated on and what these tests replay.
 
-#: Templated OCR artefacts: attested, but their own source word is far commoner.
-GEMINATE_ARTEFACTS = {
+#: Doubled-initial tokens whose own source word is also attested and commoner.
+#: FOUR of these are scanning damage -- `oobjekt`, `jjámy`, `vvkop`, `llocm` --
+#: and the three `ssut*` forms are an old spelling of `suť`, i.e. real language.
+#: The removed guard could not tell them apart, and nothing else can either:
+#: ratio, absolute document frequency and per-collection concentration were all
+#: measured and all failed. They are one class to this code now.
+ATTESTED_DOUBLED_INITIALS = {
     "oobjekt": (3, "objekt", 378),
     "jjámy": (5, "jámy", 356),
     "ssuti": (8, "suti", 42),
@@ -595,20 +616,16 @@ GEMINATE_LOOKALIKES = {
 #: ABBREVIATIONS. A doubled initial that is a real convention, not a scan error.
 #: `pp` for a plural is standard Czech -- `pp.` for pages, `ss.` for sections --
 #: and `ppole` is *popelnicová pole*, urnfield culture (@david-spacil,
-#: 2026-09-19). This document previously called it the flagship OCR artefact and
-#: built a guard that convicted it on 11,562 lines.
-#:
-#: An abbreviation is DERIVED from its base, so its base is always commoner and
-#: the ratio test always fires. Only ABSOLUTE frequency separates the classes:
-#: every artefact above sits at df <= 8, `ppole` at 35.
+#: 2026-09-19). This file previously called it the flagship OCR artefact and
+#: pinned a guard that convicted it on 11,562 lines.
 GEMINATE_ABBREVIATIONS = {
     "ppole": (35, "pole", 163),
 }
 
 
-def _geminate_table(tmp_path: Path) -> str:
+def _doubled_initial_table(tmp_path: Path) -> str:
     rows: dict[str, int] = {}
-    merged = {**GEMINATE_ARTEFACTS, **GEMINATE_LOOKALIKES, **GEMINATE_ABBREVIATIONS}
+    merged = {**ATTESTED_DOUBLED_INITIALS, **GEMINATE_LOOKALIKES, **GEMINATE_ABBREVIATIONS}
     for tok, (df_tok, source, df_source) in merged.items():
         rows[tok] = df_tok
         rows[source] = df_source
@@ -617,115 +634,88 @@ def _geminate_table(tmp_path: Path) -> str:
     return _table(tmp_path, rows)
 
 
-@pytest.mark.parametrize("token", sorted(GEMINATE_ARTEFACTS))
-def test_templated_geminate_artefacts_lose_their_veto(tmp_path, token):
-    """Attestation must not protect a scanning artefact from `initial_geminate`.
+@pytest.mark.parametrize(
+    "token",
+    sorted(ATTESTED_DOUBLED_INITIALS) + sorted(GEMINATE_LOOKALIKES) + sorted(GEMINATE_ABBREVIATIONS),
+)
+def test_every_attested_token_keeps_its_veto(tmp_path, token):
+    """Attestation is the whole test again: if the table has it, it is exempt.
 
-    This is the corpus finding: the clause was right about all 11,690 `ppole`
-    lines and the veto in front of it was what let them through.
+    This is the contract the de-gemination guard's removal creates (#30 D40), and
+    it is the assertion that would fail if anyone re-introduced a carve-out. It
+    replaces `test_templated_geminate_artefacts_lose_their_veto`, which asserted
+    exactly the opposite and was right about at most four of the six tokens it
+    covered -- the three `ssut*` forms are an old spelling of `suť`, not damage.
+
+    The three fixture dicts are listed separately because they record what the
+    removed guard tried to distinguish -- damage, numerals, abbreviations. To
+    this predicate they are now one class, which is the point.
     """
     with tu.override_constants(
-        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+        {"SHORT_GARBAGE_LEXICON_PATH": _doubled_initial_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
     ):
         assert token in tu.token_lexicon(), "fixture error: the token should be attested"
-        assert tu._has_vocabulary_support(token) is False, (
-            f"{token!r} is attested only because its scanning error repeats across documents"
+        assert tu._has_vocabulary_support(token) is True, (
+            f"{token!r} is attested, so nothing here may withdraw its exemption"
         )
 
 
-@pytest.mark.parametrize("token", sorted(GEMINATE_LOOKALIKES))
-def test_roman_numerals_and_runs_keep_their_veto(tmp_path, token):
-    """The guard must not fire on tokens whose de-geminated form is a DIFFERENT token.
-
-    `xxiii`/`xiii` sit at 1.6x and the artefacts at 4.7-126x, so a ratio
-    separates them without a character-class rule -- which would have been the
-    more obvious defence and would have missed `xxxxx` and `iiiii` anyway.
-    """
-    with tu.override_constants(
-        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
-    ):
-        assert tu._has_vocabulary_support(token) is True, f"{token!r} lost an exemption it should keep"
-
-
 @pytest.mark.parametrize("token", ["triticum", "monococcum", "lepus", "europaeus", "poaceae", "kaaden"])
-def test_the_guard_leaves_real_vocabulary_alone(tmp_path, token):
-    """The veto's actual work is untouched.
+def test_real_vocabulary_keeps_its_veto(tmp_path, token):
+    """The veto's actual work, unchanged by the removal.
 
     `Triticum monococcum` (121 lines) and `Lepus europaeus` (86) are real `Clear`
-    taxonomy that the shape clauses convict and attestation rescues. Whatever the
-    guard does, it must not reach them.
+    taxonomy that the shape clauses convict and attestation rescues.
     """
     with tu.override_constants(
-        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+        {"SHORT_GARBAGE_LEXICON_PATH": _doubled_initial_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
     ):
         assert tu._has_vocabulary_support(token) is True
 
 
-def test_the_guard_is_a_no_op_without_a_table(tmp_path):
-    """No table, no guard: the shipped configuration is byte-identical.
+def test_no_table_means_no_vocabulary_support(tmp_path):
+    """No table, no exemption: the shipped configuration is byte-identical.
 
     Both flags ship false and the path ships empty, so this is the state
-    production runs in. The guard reads the lexicon and nothing else, so with no
-    lexicon it cannot have an opinion.
+    production runs in.
     """
     with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": ""}):
         assert not tu.token_lexicon()
-        for token in list(GEMINATE_ARTEFACTS) + list(GEMINATE_LOOKALIKES):
+        for token in list(ATTESTED_DOUBLED_INITIALS) + list(GEMINATE_LOOKALIKES):
             assert tu._has_vocabulary_support(token) is False
-            assert tu._is_geminate_artefact(token, tu.token_lexicon()) is False
 
 
-def test_the_ratio_can_be_disabled(tmp_path):
-    """0 restores the plain-attestation veto, so the change is reversible in config."""
-    table = _geminate_table(tmp_path)
+def test_attestation_is_what_withdraws_the_clause_not_a_guard(tmp_path):
+    """`ssuti` is the worked example of D40, pinned so the correction cannot be lost.
+
+    `initial_geminate` matches it on shape (`^([bcdfghjklmnpqrstvwxz])\\1`), and
+    with no table that is the verdict. With the table armed, attestation
+    withdraws the conviction and nothing puts it back -- which is correct, because
+    `ssuti` is an old spelling of `suť` and not damage at all (@david-spacil,
+    2026-09-22). Before the guard was removed the armed arm returned
+    `["initial_geminate"]` here.
+
+    `suti` is the control: a clean word, attested, never witnessed either way.
+    """
+    table = _doubled_initial_table(tmp_path)
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": "", "SHORT_GARBAGE_WITNESS_ENABLE": True}):
+        assert shape_garbage_clauses("ssuti") == ["initial_geminate"], (
+            "premise: the shape clause reaches ssuti when nothing attests it"
+        )
     with tu.override_constants(
         {
             "SHORT_GARBAGE_LEXICON_PATH": table,
             "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
-            "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": 0,
-        }
-    ):
-        assert tu._has_vocabulary_support("ppole") is True
-
-
-def test_the_guard_never_adds_a_conviction_on_its_own(tmp_path):
-    """Veto-only semantics survive: the guard withdraws exemptions, it cannot convict.
-
-    Stripping `ssuti`'s attestation lets `initial_geminate` -- which had already
-    matched -- stand. It must not manufacture a clause for a line no clause
-    reached. `suti` is the control: a clean word, attested, never witnessed.
-
-    `ssuti` and not `oobjekt`: the clause matches doubled CONSONANTS only
-    (`^([bcdfghjklmnpqrstvwxz])\\1`), so a doubled vowel never reaches it. The
-    guard is deliberately broader than the clause -- see `_is_geminate_artefact`
-    -- and this test is about the clause.
-    """
-    with tu.override_constants(
-        {
-            "SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path),
-            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
             "SHORT_GARBAGE_WITNESS_ENABLE": True,
-        }
-    ):
-        assert shape_garbage_clauses("ssuti") == ["initial_geminate"]
-        assert shape_garbage_clauses("suti") == []
-        assert _has_shape_garbage_evidence("suti") is False
-
-    # The counterfactual, without which the assertions above would also pass on
-    # the unfixed code: with the ratio disabled the veto swallows the clause.
-    with tu.override_constants(
-        {
-            "SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path),
-            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
-            "SHORT_GARBAGE_WITNESS_ENABLE": True,
-            "SHORT_GARBAGE_LEXICON_GEMINATE_RATIO": 0,
         }
     ):
         assert shape_garbage_clauses("ssuti") == []
+        assert shape_garbage_clauses("suti") == []
+        assert _has_shape_garbage_evidence("suti") is False
 
 
 # ---------------------------------------------------------------------------
-# The abbreviation class (#30, 2026-09-19) — the guard's measured false positive
+# The abbreviation class (#30, 2026-09-19) — what killed the guard first
 # ---------------------------------------------------------------------------
 
 
@@ -740,47 +730,18 @@ def test_an_abbreviation_keeps_its_veto(tmp_path, token):
     `pp` doubled for a plural is a standard Czech convention — `pp.` for pages,
     `ss.` for sections — so `initial_geminate`'s premise that no European
     orthography opens a word that way is simply false for abbreviations. The
-    de-gemination guard convicted it on 11,562 lines, which is the largest single
-    population in the witnessed queue.
+    de-gemination guard convicted it on 11,562 lines, the largest single
+    population in the witnessed queue, and this is the test that recorded why.
 
-    The ratio cannot fix this: an abbreviation is DERIVED from its base, so the
-    base is always commoner and the ratio always fires. Only the absolute cap can.
+    Kept after the guard's removal (#30 D40) deliberately: the guard is gone, the
+    reason it had to go is not, and a bare `_has_vocabulary_support` assertion
+    with no provenance would invite someone to rebuild it.
     """
     with tu.override_constants(
-        {"SHORT_GARBAGE_LEXICON_PATH": _geminate_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
+        {"SHORT_GARBAGE_LEXICON_PATH": _doubled_initial_table(tmp_path), "SHORT_GARBAGE_LEXICON_MIN_DF": 3}
     ):
         assert token in tu.token_lexicon(), "fixture error: the token should be attested"
-        assert tu._is_geminate_artefact(token, tu.token_lexicon()) is False, (
-            f"{token!r} is an abbreviation and the guard convicted it as a scan error"
-        )
         assert tu._has_vocabulary_support(token) is True, f"{token!r} lost the veto that protects it"
-
-
-def test_the_cap_and_not_the_ratio_is_what_separates_the_two_classes(tmp_path):
-    """Pin the reason the fix is a frequency cap rather than a higher ratio.
-
-    `ppole` sits at ratio 4.7 and `ssuti` at 5.2 — no threshold lives between
-    them that is not fitted to two data points. The absolute frequencies are 35
-    and 8, which is a real gap.
-    """
-    table = _geminate_table(tmp_path)
-    with tu.override_constants(
-        {
-            "SHORT_GARBAGE_LEXICON_PATH": table,
-            "SHORT_GARBAGE_LEXICON_MIN_DF": 3,
-            "SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF": 0,  # cap disabled
-        }
-    ):
-        lex = tu.token_lexicon()
-        assert tu._is_geminate_artefact("ppole", lex) is True, (
-            "with the cap off the ratio alone convicts the abbreviation — the bug being fixed"
-        )
-    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": table, "SHORT_GARBAGE_LEXICON_MIN_DF": 3}):
-        lex = tu.token_lexicon()
-        assert tu._is_geminate_artefact("ppole", lex) is False
-        # ... and the cap must not cost a single genuine artefact.
-        for artefact in GEMINATE_ARTEFACTS:
-            assert tu._is_geminate_artefact(artefact, lex) is True, f"the cap lost {artefact!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -970,86 +931,20 @@ def test_no_unregistered_zero_arg_cache_reads_a_flag():
 
 
 # ---------------------------------------------------------------------------
-# The de-gemination cap does not rescale with the table (#30, 2026-09-20)
+# The token table's provenance header (#30)
 # ---------------------------------------------------------------------------
-
-
-#: Stage 07a, 2026-09-19, over 113,100 documents / 2,764,632 tokens. `ppole` is
-#: the one ABBREVIATION (@david-spacil); the other seven are confirmed scanning
-#: artefacts on the same reading.
-FULL_COLLECTION_GEMINATES = {
-    "ppole": (229, 8600),
-    "ssuti": (195, 1667),
-    "ssutí": (142, 1617),
-    "ssutě": (64, 900),
-    "llocm": (55, 417),
-    "vvkop": (30, 1400),
-    "jjámy": (10, 14799),
-}
-ABBREVIATION = "ppole"
-
-
-def test_the_geminate_cap_separates_on_the_table_it_was_fitted_to():
-    """822 documents: `ppole` 35, every confirmed artefact at 8 or below."""
-    thin = {"ppole": 35, "ssuti": 8, "ssutí": 5, "vvkop": 5, "jjámy": 5, "ssutě": 4, "oobjekt": 3}
-    artefacts = {t: df for t, df in thin.items() if t != ABBREVIATION}
-    assert min(thin[ABBREVIATION] for _ in (0,)) > max(artefacts.values())
-    assert max(artefacts.values()) < tu.SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF < thin[ABBREVIATION]
-
-
-def test_the_geminate_cap_does_not_separate_on_the_full_collection_table():
-    """And the run that was meant to confirm it is the run that refutes it.
-
-    Pinned as data rather than prose because the digest stated the opposite for
-    two days -- "`ppole` still sits at the lowest ratio of the eight" -- in the
-    same sentence that listed a range starting below it.
-    """
-    ratios = {t: base / own for t, (own, base) in FULL_COLLECTION_GEMINATES.items()}
-    artefact_ratios = {t: r for t, r in ratios.items() if t != ABBREVIATION}
-
-    # By RATIO the abbreviation is not an outlier: four artefacts sit below it.
-    below = [t for t, r in artefact_ratios.items() if r < ratios[ABBREVIATION]]
-    assert len(below) == 4, f"expected four artefacts below ppole's ratio, got {below}"
-
-    # By OWN DF the 4.4x gap of the thin table has collapsed to 1.17x.
-    own = {t: d for t, (d, _) in FULL_COLLECTION_GEMINATES.items()}
-    artefact_max = max(d for t, d in own.items() if t != ABBREVIATION)
-    assert own[ABBREVIATION] > artefact_max
-    assert own[ABBREVIATION] / artefact_max < 1.2, "a 1.17x margin is fitting, not separating"
-
-    # And the shipped cap, meant for the thin table, is right on 2 of 7 here.
-    def guard_is_correct(token: str, df: int) -> bool:
-        treated_as_artefact = df <= tu.SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF
-        should_be_artefact = token != ABBREVIATION
-        return treated_as_artefact == should_be_artefact
-
-    correct = sum(guard_is_correct(t, d) for t, d in own.items())
-    assert correct == 2, f"expected the shipped cap to be right on 2 of 7 at full scale, got {correct}"
-
-
-def test_geminate_cap_scale_warning_fires_only_when_it_should(tmp_path):
-    def table(documents: int | None) -> str:
-        path = tmp_path / f"lex_{documents}.tsv"
-        header = f"# documents: {documents}  lines: 1\n" if documents is not None else "# no provenance\n"
-        path.write_text(header + "ppole\t229\n", encoding="utf-8")
-        return str(path)
-
-    full = table(113100)
-    assert tu.geminate_cap_scale_warning(lexicon_path=full, max_df=10) is not None
-    assert "113,100" in tu.geminate_cap_scale_warning(lexicon_path=full, max_df=10)
-
-    # The basis itself, and anything within tolerance of it, is fine.
-    assert tu.geminate_cap_scale_warning(lexicon_path=table(822), max_df=10) is None
-    assert tu.geminate_cap_scale_warning(lexicon_path=table(3000), max_df=10) is None
-
-    # Silent when the cap is off, when no table is configured, and when the
-    # table carries no provenance line to read.
-    assert tu.geminate_cap_scale_warning(lexicon_path=full, max_df=0) is None
-    assert tu.geminate_cap_scale_warning(lexicon_path="", max_df=10) is None
-    assert tu.geminate_cap_scale_warning(lexicon_path=table(None), max_df=10) is None
-
-    # Silent on the shipped configuration, like every other advisory here.
-    assert tu.geminate_cap_scale_warning() is None
+#
+# Three tests stood here until 2026-09-22, all about the de-gemination cap: that
+# it separated the eight doubled-initial tokens on the 822-document table it was
+# fitted to, that it separated nothing at all on the 113,100-document one, and
+# that `geminate_cap_scale_warning()` said so on stderr. The cap and its advisory
+# are gone with the guard (#30 D40), so the tests went with them; the measurement
+# they pinned is preserved in docs/issue30/issue30_gold_ab_findings.md, which is
+# where a historical table belongs.
+#
+# `lexicon_document_count()` survives them, because it is not part of the guard:
+# tools/short_garbage_witness_report.py reads it for the banner that names the
+# configuration a run was produced in.
 
 
 def test_lexicon_document_count_reads_the_provenance_header(tmp_path):

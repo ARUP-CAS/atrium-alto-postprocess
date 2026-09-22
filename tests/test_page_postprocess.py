@@ -233,6 +233,56 @@ class TestDedupAndNoOp:
         assert (header["categ"] == "Clear").all()
         assert header["pp_dedup"].sum() == 1  # only the flipped row flagged
 
+    def test_a_tied_dedup_vote_never_lands_on_trash(self):
+        """The tie-break is alphabetical, and #30 § 2 rests on it.
+
+        `Series.mode()` returns tied values SORTED and the vote takes `[0]`, so
+        a tie resolves to the alphabetically first category -- and
+        'Clear' < 'Empty' < 'Noisy' < 'Non-text' < 'Trash'. A tie therefore
+        cannot convict. That is an accident of how the five labels are spelled,
+        not a design decision, and it is what made @david-spacil's third option
+        ("stop a bare majority pushing a readable line into Trash") measure at
+        zero groups: the case it was written for cannot occur.
+
+        Pinned HERE, on the production function. The existing test in
+        tests/test_short_garbage_witness_report.py pins the offline report
+        tool's own `_vote()`, which is a re-implementation -- so until this test
+        existed, the behaviour the decision rests on was asserted only against
+        a copy of itself.
+
+        Renaming a category, or adding one that sorts before 'Clear', flips
+        every tie silently. This test is the alarm.
+        """
+        # The ordering the whole claim rests on, asserted rather than assumed.
+        assert sorted(["Trash", "Clear", "Noisy", "Non-text", "Empty"]) == [
+            "Clear",
+            "Empty",
+            "Noisy",
+            "Non-text",
+            "Trash",
+        ]
+
+        for loser in ("Noisy", "Non-text", "Empty"):
+            rows = [
+                _row("9", 1, "Trash", "SPORNÝ ŘÁDEK"),
+                _row("9", 2, loser, "SPORNÝ ŘÁDEK"),
+                _row("9", 3, "Clear", "jiný řádek"),
+            ]
+            out = apply_document_postprocessing(_df(rows))
+            contested = out[out["text"] == "SPORNÝ ŘÁDEK"]
+            assert (contested["categ"] != "Trash").all(), f"a 1-1 tie between Trash and {loser} landed on Trash"
+            assert (contested["categ"] == loser).all()
+
+        # And a genuine Trash majority still carries, so the guard above is a
+        # tie-break and not a blanket refusal to convict.
+        rows = [
+            _row("9", 1, "Trash", "OPRAVDU SPORNÝ"),
+            _row("9", 2, "Trash", "OPRAVDU SPORNÝ"),
+            _row("9", 3, "Clear", "OPRAVDU SPORNÝ"),
+        ]
+        out = apply_document_postprocessing(_df(rows))
+        assert (out[out["text"] == "OPRAVDU SPORNÝ"]["categ"] == "Trash").all()
+
     def test_clean_page_untouched(self):
         rows = [_row("5", i, "Clear", f"jasný český text číslo {i}", lang_score=_HIGH) for i in range(1, 7)]
         out = apply_document_postprocessing(_df(rows))

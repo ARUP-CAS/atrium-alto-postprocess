@@ -291,6 +291,14 @@ def score_line(
         garbage_density=g_density,
         is_upright_czech=is_upright_czech,
         ghost_dominated=ghost_dominated,
+        # (#30 D44) The RAW FastText label, not the remapped `lang` below.
+        # `remap_lang()` rewrites any base outside EXPECTED_LANGS +
+        # TRUSTED_FOREIGN_LANGS to Czech, so passing the stored column would let
+        # that remap answer a question about phonotactics -- and it would answer
+        # it in exactly the direction that costs the most, by relabelling
+        # unrecognised foreign text as Czech and so applying the stricter
+        # three-vowel threshold to it.
+        lang=original_lang,
     )
 
     return {
@@ -826,6 +834,26 @@ def apply_document_postprocessing(df: "pd.DataFrame") -> "pd.DataFrame":
     df = df.sort_values(by=["page_num", "line_num"], ascending=True).copy()
 
     # 1. header/footer dedup -> modal category
+    #
+    # THE TIE-BREAK IS ALPHABETICAL, AND IT IS LOAD-BEARING (#30 H6/§2).
+    # `Series.mode()` returns its tied values SORTED, so `[0]` takes the
+    # alphabetically first, and 'Clear' < 'Empty' < 'Noisy' < 'Non-text' <
+    # 'Trash'. A tied vote therefore CANNOT land on `Trash`. That is an accident
+    # of how the five categories happen to be spelled, not a design decision --
+    # and it is the reason the third dedup option @david-spacil was offered
+    # ("stop a bare majority pushing a readable line into Trash") reached zero
+    # groups when it was measured: the dangerous case is already impossible.
+    #
+    # Renaming a category, or adding one that sorts before 'Clear', would change
+    # which way every tie falls, silently. `tests/test_page_postprocess.py`
+    # pins this on THIS function; a second test in
+    # tests/test_short_garbage_witness_report.py pins the offline tool's
+    # re-implementation of the same vote.
+    #
+    # Measured full-archive (2026-09-22, lexicon armed): 43,103 groups, 43,052
+    # unanimous, 51 contested, 17 of them ties. The vote pulls 10 readable lines
+    # down and rescues 51, net +41 in its favour. @david-spacil accepted it as it
+    # stands and asked for the bare-plurality option to be dropped.
     text_modes = df.groupby("text", dropna=False)["categ"].transform(
         lambda x: x.mode()[0] if not x.mode().empty else x.iloc[0]
     )

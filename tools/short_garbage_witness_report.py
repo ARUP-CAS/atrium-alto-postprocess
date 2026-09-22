@@ -152,7 +152,7 @@ def classify_line(text: str, word_count: int | None = None) -> dict:
 
 
 def _iter_csv_rows(paths: list[Path]):
-    """Yield (locator, text, word_count, stored_categ) per scoreable line.
+    """Yield (locator, text, word_count, stored_categ, lang) per scoreable line.
 
     ``locator`` is ``(file, page_num, line_num)`` -- the gold sidecar key from
     ``recategorize_from_csv.GOLD_SIDECAR_KEYS``, carried so that an annotated
@@ -176,15 +176,24 @@ def _iter_csv_rows(paths: list[Path]):
                     (row.get("page_num") or "").strip(),
                     (row.get("line_num") or "").strip(),
                 )
-                yield locator, text, wc, (row.get("categ") or "").strip() or "?"
+                # (#30 stage 11b) `original_lang`, NOT `lang`. The stored `lang`
+                # column has been through `remap_lang()`, which rewrites any base
+                # outside EXPECTED_LANGS + TRUSTED_FOREIGN_LANGS to Czech -- so it
+                # is a policy output, not a detection, and reading it here would
+                # answer "how much of this queue is non-Czech" with a number the
+                # remap partly decided. This module's own docstring already warns
+                # that `lang_score` in the CSV is the remap cap; this is the same
+                # trap one column over.
+                lang = (row.get("original_lang") or "").strip() or "?"
+                yield locator, text, wc, (row.get("categ") or "").strip() or "?", lang
 
 
 def _iter_plain_lines(path: Path):
-    """--lines mode has no locators, so the sidecar columns come back blank."""
+    """--lines mode has no locators or language, so those columns come back blank."""
     for line in path.read_text(encoding="utf-8").splitlines():
         text = line.strip()
         if text:
-            yield (path.stem, "", ""), text, None, "?"
+            yield (path.stem, "", ""), text, None, "?", "?"
 
 
 def _collect_csvs(path: Path, recursive: bool = False) -> list[Path]:
@@ -556,8 +565,14 @@ def main(argv: list[str] | None = None) -> int:
     witnessed_by_categ: Counter = Counter()
     clause_counts: Counter = Counter()
     examples: dict[str, list[str]] = {c: [] for c in _CLAUSE_ORDER}
+    # (#30 stage 11b) The language distribution of the witnessed queue. It decides
+    # whether the vowel-run language split (D44) is worth anything: 3% non-Czech
+    # and it buys nothing, 40% and it is the whole answer. Two counters, because
+    # the at-risk half is the only half a label can change.
+    lang_witnessed: Counter = Counter()
+    lang_at_risk: Counter = Counter()
 
-    for doc, text, wc, categ in source:
+    for doc, text, wc, categ, lang in source:
         total += 1
         verdict = classify_line(text, wc)
         in_scope = args.all_lengths or verdict["route_eligible"]
@@ -568,6 +583,9 @@ def main(argv: list[str] | None = None) -> int:
         if verdict["witness"]:
             witnessed_by_categ[categ] += 1
             witnessed_rows.append((doc, verdict, categ))
+            lang_witnessed[lang] += 1
+            if categ in ("Clear", "Noisy"):
+                lang_at_risk[lang] += 1
             for clause in verdict["clauses"].split(","):
                 clause_counts[clause] += 1
                 if args.examples and len(examples[clause]) < args.examples:
@@ -626,6 +644,36 @@ def main(argv: list[str] | None = None) -> int:
         for clause in _CLAUSE_ORDER:
             if clause_counts[clause]:
                 print(f"  {clause:18} {clause_counts[clause]:8d}")
+
+    if lang_witnessed:
+        # (#30 stage 11b) The measurement that sizes D44, the vowel-run language
+        # split. @david-spacil: three vowels in a row is a fact about Czech
+        # phonotactics, so the clause is a category error in German and French
+        # rather than a badly chosen threshold. This says how much that is worth.
+        #
+        # THE COLUMN READ IS `original_lang`, NOT `lang`. The stored `lang` has
+        # been through `remap_lang()`, which rewrites any base outside
+        # EXPECTED_LANGS + TRUSTED_FOREIGN_LANGS to Czech -- so reading it would
+        # answer "how much of this queue is non-Czech" with a number the remap
+        # partly decided, and in the direction that understates the answer.
+        print("\n=== detected language of the witnessed queue (raw `original_lang`) ===")
+        print("  Sizes the vowel-run language split (#30 D44). The at-risk column is the")
+        print("  half a label can still change; the other half is already Trash.")
+        print(f"  {'lang':12} {'witnessed':>10} {'share':>7} {'at risk':>9} {'share':>7}")
+        w_all = sum(lang_witnessed.values())
+        r_all = sum(lang_at_risk.values())
+        for lang, n in lang_witnessed.most_common():
+            at_risk = lang_at_risk.get(lang, 0)
+            print(
+                f"  {lang:12} {n:10d} {n / w_all if w_all else 0:7.1%} "
+                f"{at_risk:9d} {at_risk / r_all if r_all else 0:7.1%}"
+            )
+        non_czech = sum(v for k, v in lang_at_risk.items() if not k.startswith("ces"))
+        print(
+            f"  at-risk lines NOT detected as Czech: {non_czech} of {r_all} ({non_czech / r_all if r_all else 0:.1%})"
+        )
+        print("  Read against the decision rule: a few per cent and the split buys almost")
+        print("  nothing; tens of per cent and it is the whole answer.")
 
     # The two numbers the flag decision rests on. Neither is an error rate:
     # `categ` is the pipeline's own answer, so these are exposure counts that

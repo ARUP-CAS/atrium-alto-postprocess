@@ -248,8 +248,10 @@ def test_roman_numerals_do_not_trip_the_twin_check(nb):
     """`xxiii` vs `xiii` are different numerals, not a doubling.
 
     They sit at 54 and 87 — a ratio of 1.6, well under the 4.0 threshold — which
-    is why the check is a ratio and not a character rule. This is the same
-    separation `text_util._is_geminate_artefact` relies on.
+    is why the check is a ratio and not a character rule. `text_util` used to
+    rely on the same separation to convict attested tokens; that guard is gone
+    (#30 D40) and this tool's own default, declared on `stronger_twin`, is what
+    remains of it. Evidence for a reader, not a verdict.
     """
     assert nb.stronger_twin("xxiii") is None
 

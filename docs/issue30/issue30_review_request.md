@@ -146,7 +146,8 @@ Your measurement was the deciding one, and it was right: 26 lines moved, 12 impr
 worse, and every one of the 12 failures contained a Roman numeral.
 
 Since then the rule has gained four exceptions: Roman numerals, Latin family names, joined grid
-references such as `S-VIIIb`, and the doubled-letter guard described in item 4. It has now also
+references such as `S-VIIIb`, and — until 2026-09-22 — the doubled-letter guard described in
+item 4, which has since been removed on your answer. It has now also
 gained a web-address exception, described in item 5.
 
 On the full set of 2,064 annotated lines the rule now improves 12 and worsens 2. Your 508 lines are
@@ -215,7 +216,7 @@ separate the classes. It separates *institutions*, and each institution has its 
 (Measured separately, and it still holds: `ppole` appears on 2 lines in the 1990s, 45 in the 2000s
 and 13,144 in the 2010s. It arrives with the forms.)
 
-### 4b. What we will do about the safeguard
+### 4b. The safeguard — removed on your answer
 
 **Remove it**, on your answer. The doubled-letter guard exists to let the rule convict a
 doubled-letter spelling *even though* the dictionary knows it. At full scale the dictionary knows
@@ -223,8 +224,21 @@ all eight and the guard fires on none of them. So it is a threshold fitted to on
 now changes nothing. And with `ssut*` turning out to be real language, keeping it would be a
 standing risk of convicting real words for no measured benefit.
 
-We have not made the change yet: it is a code change and this round was documentation. It is
-recorded as the next step, and it needs no further input from you.
+> ✅ **Done, 2026-09-22.** The guard is out of the code, the two configuration keys are out of
+> `setup/config.txt`, and the tests that asserted the old behaviour have been replaced by one
+> that asserts the new one: **anything the dictionary attests keeps its exemption**. It needed no
+> further input from you.
+>
+> Two things are worth knowing about the change. **It cannot affect a production run** — the
+> program ships with no dictionary configured and the rule switched off, so the guard had nothing
+> to act on there; it only ever ran in our measurement tools. And **it was already measured**: the
+> guard has a setting that switches it off completely, and switching it off was tested against
+> your 2,064 annotated lines on 2026-09-19 and changed not one of them. Removing the code is the
+> same thing as that setting, made permanent.
+
+*(Written before the change, kept as the reasoning:)* We have not made the change yet: it is a
+code change and this round was documentation. It is recorded as the next step, and it needs no
+further input from you.
 
 ## 5. Two findings about the rule itself, one of which we got wrong first
 

@@ -13,6 +13,32 @@ output CSVs contain — and links here for the decision logic itself.
 > `[TEXT_UTILS]`), with defaults declared in `text_util.py`.
 
 > [!IMPORTANT]
+> **This page describes what the program does, not what the five labels mean to a reader — and
+> the two are not currently the same thing.** The definition an annotator works to was settled by
+> @david-spacil on 2026-09-22 (issue #30 § 6), pending @DanaKriv: **`Trash` means illegible.**
+> Anything legible is `Clear`; anything easily decipherable through a mistake is `Noisy` —
+> **regardless of how useful the line is**. `Non-text` cannot be told apart from `Trash` without
+> the page image and is out of scope for hand annotation.
+>
+> Measured against that, the routes below send readable text to `Trash` in at least two places:
+> a correctly scanned web address (`rule_domain_notation`, § 5, lifted as far as `Noisy` by D33)
+> and the short-garbage route, whose only verdict is `Trash` even for damage a person can
+> decipher.
+>
+> The first now has a route that finishes the job, `rule_domain_notation_clear` in gate 7 —
+> **wired and shipping OFF** behind `SHORT_LINE_URL_CLEAR_ENABLE`, because @DanaKriv is the other
+> half of the decision. It suppresses the two `damage` signals an address shape produces on its
+> own (the symbol-weirdness ratio, and `detect_fused_words`, which fires on the shape rather than
+> on any fusion) and leaves gibberish, bigram runs and garbage density live. Its measured limit:
+> nothing in that gate separates a correctly scanned address from a mis-scanned one — a line whose
+> `@` the scanner lost already reads `Clear` without the route.
+>
+> The second is not changed and is not described here as a defect: the short-garbage route's
+> target category is a decision with an owner, and it has not been put to one.
+> See [`issue30/issue30_review_request.md`](issue30/issue30_review_request.md) § 6 and
+> [`../README.md`](../README.md)'s five-category table.
+
+> [!IMPORTANT]
 > **One scoring step, three callers.** Everything on this page describes
 > `classify_TEXT.score_line()`, which is the single implementation of "how a line becomes
 > a category". Three entry points call it and none of them reimplements it:
