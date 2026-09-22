@@ -418,3 +418,68 @@ def test_per_archive_document_counts_are_printed(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "ARUP" in err and "ARUB" in err
     assert err.count("document CSV(s)") == 2
+
+
+# ---------------------------------------------------------------------------
+# (#30 D42) The banner has to carry the configuration that produced the numbers.
+#
+# 08f/08g ran with no lexicon configured and the delivered log did not say so —
+# it had to be inferred from which warning was absent, which is how a wrong
+# population survived a delivery and a 592-decision annotation ask (digest T1).
+# The same shape was waiting on SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN: separately
+# tunable, responsible for two thirds of the witness's exposure, and named in no
+# artefact the tool wrote.
+#
+# These are source-level guards rather than string assertions on one line,
+# because the failure mode is a NEW constant arriving unprinted, not this one
+# regressing.
+# ---------------------------------------------------------------------------
+def _banner(capsys, argv):
+    assert R.main(argv) == 0
+    return capsys.readouterr().out
+
+
+def test_the_banner_names_every_witness_constant_the_predicate_reads(capsys, tmp_path):
+    """Every `SHORT_GARBAGE_WITNESS_*` the clause body reads must reach the log.
+
+    `SHORT_GARBAGE_WITNESS_ENABLE` is excluded: it has its own line, and the
+    report states there that it does not affect the result.
+    """
+    import inspect
+    import re as _re
+
+    source = inspect.getsource(tu.shape_garbage_clauses)
+    read_by_predicate = {
+        name
+        for name in _re.findall(r"\bSHORT_GARBAGE_WITNESS_[A-Z_]+\b", source)
+        if name != "SHORT_GARBAGE_WITNESS_ENABLE"
+    }
+    assert read_by_predicate, "the clause body reads no witness constants — this guard has gone stale"
+
+    probe = tmp_path / "probe.txt"
+    probe.write_text("oueussd\n", encoding="utf-8")
+    out = _banner(capsys, ["--lines", str(probe)])
+
+    for name in sorted(read_by_predicate):
+        short = name[len("SHORT_GARBAGE_WITNESS_") :]
+        assert f"{short}=" in out, (
+            f"{name} steers the predicate but never reaches the report's banner. "
+            "A run's own log has to say which value produced its numbers; inferring it "
+            "from an absent warning is what cost stage 8 its exposure figures (digest T1)."
+        )
+
+
+def test_the_banner_reports_the_lexicon_whether_or_not_one_is_configured(capsys, tmp_path):
+    """The absence of a table is the case that has to be printed, not the presence."""
+    probe = tmp_path / "probe.txt"
+    probe.write_text("oueussd\n", encoding="utf-8")
+
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": ""}):
+        assert "NONE CONFIGURED" in _banner(capsys, ["--lines", str(probe)])
+
+    table = tmp_path / "token_df.tsv"
+    table.write_text("# documents: 113,100  lines: 56,599,631\nvrstva\t429\n", encoding="utf-8")
+    with tu.override_constants({"SHORT_GARBAGE_LEXICON_PATH": str(table)}):
+        out = _banner(capsys, ["--lines", str(probe)])
+    assert str(table) in out
+    assert "113,100 documents" in out, "the provenance line is the whole point of naming the path"

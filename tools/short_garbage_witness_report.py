@@ -578,8 +578,32 @@ def main(argv: list[str] | None = None) -> int:
         f"witness constants: MIN_ALPHA={tu.SHORT_GARBAGE_WITNESS_MIN_ALPHA} "
         f"VARIETY_MIN_ALPHA={tu.SHORT_GARBAGE_WITNESS_VARIETY_MIN_ALPHA} "
         f"VARIETY_MAX={tu.SHORT_GARBAGE_WITNESS_VARIETY_MAX} "
-        f"TRIPLE_MAX_ALPHA={tu.SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA}"
+        f"TRIPLE_MAX_ALPHA={tu.SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA} "
+        f"VOWEL_RUN_MIN={tu.SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN}"
     )
+    # (#30 D42) The lexicon line prints WHETHER OR NOT a table is configured, and
+    # VOWEL_RUN_MIN joins the constants line above. Both are here for one reason.
+    #
+    # 08f and 08g were run with no lexicon configured, and that could not be read
+    # off the log they produced -- it had to be INFERRED from which warning did
+    # and did not appear, which is how the defect survived a delivery and a
+    # 592-decision annotation ask built on top of it (digest T1). VOWEL_RUN_MIN
+    # is the same shape waiting to happen: it is the clause that accounts for
+    # two thirds of the witness's exposure, it is separately tunable, and until
+    # now no artefact this tool wrote said which value produced it.
+    #
+    # "no table configured" is the line whose ABSENCE was the problem, so it is
+    # printed as loudly as its presence.
+    lexicon_path = tu.SHORT_GARBAGE_LEXICON_PATH
+    if lexicon_path:
+        documents = tu.lexicon_document_count(lexicon_path)
+        built_over = f"{documents:,} documents" if documents else "document count not recorded in the table"
+        print(f"vocabulary lexicon: {lexicon_path}  ({built_over})")
+    else:
+        print(
+            "vocabulary lexicon: NONE CONFIGURED -- _has_vocabulary_support() is inert, so this "
+            "report measures a population the witness never ships against"
+        )
     scope = (
         "all lines"
         if args.all_lengths
