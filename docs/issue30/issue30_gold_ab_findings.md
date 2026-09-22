@@ -170,7 +170,14 @@ token is — and that generalises where a threshold does not.
 Two corrections to that guard's own documentation, from re-measuring it on the same table.
 Its load-bearing claim is exactly right: **8 tokens at or above 4× — `ppole`, `oobjekt`,
 `jjámy`, `ssuti`, `vvkop`, `ssutí`, `ssutě`, `llocm` — with a genuinely empty gap from
-2.60× to 4.66×.** But "36 below 2×" is 51 when both forms must be attested at `MIN_DF`, and
+2.60× to 4.66×.**
+
+> 🛑 **Corrected 2026-09-22.** Four of those eight are real language, not damage.
+> @david-spacil: `ppole` is an abbreviation (already known) and **`ssuti` / `ssutí` / `ssutě` are
+> an old way of spelling *suť***. Only `llocm`, `vvkop`, `jjámy` and `oobjekt` are scanning errors.
+> The ratio gap the guard is built on is therefore not a gap between damage and language at all —
+> it separates *doubled-letter shapes* from everything else, and both classes sit above it. He has
+> agreed the guard can be dropped, since the dictionary reaches all eight at full scale. But "36 below 2×" is 51 when both forms must be attested at `MIN_DF`, and
 66 when the twin is counted at any frequency; 36 matches neither filter. And on this corpus
 the guard's entire reach is one family: of the 11,690 lines where it restores a conviction,
 all 11,690 are `ppole` and its 17 surface forms. It currently does exactly one job. Stage
@@ -383,15 +390,15 @@ lowest ratio of the eight"* — in a sentence that then gives the artefact range
 at 7.6×, below `ppole`'s 37.6×. Straight from `07a_geminate_lookup.log`, over 113,100
 documents:
 
-| token                 |  own df | base df |    ratio |
-|-----------------------|--------:|--------:|---------:|
-| **`ppole`** (abbrev.) | **229** |   8,600 | **37.6** |
-| `ssuti`               |     195 |   1,667 |      8.5 |
-| `ssutí`               |     142 |   1,617 |     11.4 |
-| `ssutě`               |      64 |     900 |     14.1 |
-| `llocm`               |      55 |     417 |      7.6 |
-| `vvkop`               |      30 |   1,400 |     46.7 |
-| `jjámy`               |      10 |  14,799 |  1,479.9 |
+| token                      |  own df | base df |    ratio |
+|----------------------------|--------:|--------:|---------:|
+| **`ppole`** (abbrev.)      | **229** |   8,600 | **37.6** |
+| **`ssuti`** (old spelling) | **195** |   1,667 |  **8.5** |
+| **`ssutí`** (old spelling) | **142** |   1,617 | **11.4** |
+| **`ssutě`** (old spelling) |  **64** |     900 | **14.1** |
+| `llocm`                    |      55 |     417 |      7.6 |
+| `vvkop`                    |      30 |   1,400 |     46.7 |
+| `jjámy`                    |      10 |  14,799 |  1,479.9 |
 
 By ratio `ppole` is fifth of seven. By own document frequency the gap that
 `SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF = 10` was fitted to — 35 against 8 on the
@@ -663,3 +670,34 @@ the witness's scope, corpus-wide** — a figure this document previously had to
 leave unmeasured because the only version available was circular. It is a floor,
 not the production effect: the witness's scope also requires `word_count <= 3`
 and `rule_domain_notation` does not.
+
+---
+
+## Addendum, 2026-09-22 (second) — @david-spacil's answers, and one they put at risk
+
+Recorded here because two of them bear on measurement rather than on policy.
+
+**`ssuti` / `ssutí` / `ssutě` are an old spelling of *suť*, not scanning errors.** Four of the eight
+doubled-letter tokens are real language; four are damage. The de-gemination guard's ratio gap does
+not separate those classes — both sit above it — and he has agreed the guard can be dropped, since
+the full-scale dictionary reaches all eight (V7). Every table in this repository that called those
+three artefacts has been corrected.
+
+**The consequence that is not documentation: the gold sidecar predates this.** He annotated
+`tools/gold/sidecars/issue30_gold_2067.csv` while believing those three were damage. If any of its
+2,064 rows is an `ssut*` line carrying `gold_categ = Trash`, that row is now wrong — and this is the
+sidecar every `Clear`-loss figure in this issue is measured against, including the **40** the
+adoption gate turns on. The sidecar carries locators and no text, so the check needs the corpus and
+is cluster-side. The exposure is small — 1,667 `ssuti` lines in 56.6M, and the 822-document gold
+corpus is 0.7% of the collections — which is exactly why it should be ruled out by looking rather
+than by arithmetic. **Recorded as a stage-11 action; until it is done, `Clear`-loss 40 carries an
+unquantified asterisk.**
+
+**And a correction to the stage-8 re-run read.** V5 listed `J. Vysoean` and `B/ POSTKRANIAINY SKELET:`
+among the "correctly-read" strings that a higher vowel-run threshold would spare. They are scanning
+errors — `Vysočan`, `POSTKRANIÁLNÍ SKELET` — so the three-vowel clause convicts them correctly. V4's
+own table had them right as damaged; V5 contradicted it two sections later. The honest trade at
+min=4 is two confirmed-correct strings spared against a good deal of real damage released, which is
+a much weaker case than V5 made. His alternative — gate the clause on the detected language, since
+Czech has no three-vowel runs and German and French do — is the better direction and is recorded as
+D44.

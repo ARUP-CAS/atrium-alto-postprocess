@@ -414,6 +414,16 @@ As the script processes, it assigns each line one of five categories 🪧:
 | 🫙 **Empty**    | Can be ignored                                     | Line contains only whitespace (paragraphs separator)                                                                                                                           |
 
 > [!NOTE]
+> **The table above describes what the program does with a line. It is not the definition an
+> annotator works to, and the two were drifting apart.** For issue #30 the definition was settled by
+> @david-spacil on 2026-09-22, pending @DanaKriv: **`Trash` means illegible.** Anything legible is
+> `Clear`; anything easily decipherable through a mistake is `Noisy` — **regardless of how useful
+> the line is**. So a correctly scanned web address is `Clear`, not `Trash`. `Non-text` cannot be
+> distinguished from `Trash` without the page image and is out of scope for hand annotation.
+> The `Trash` row above is already consistent with this: re-process rather than delete.
+> See [`docs/issue30/issue30_review_request.md`](docs/issue30/issue30_review_request.md) § 6.
+
+> [!NOTE]
 > This script generates two primary output directories:
 > `DOC_LINE_LANG_CLASS/` and `DOC_LINE_STATS/`, while the
 > raw **text** 📝 files (primary input) are stored in `../PAGE_TXT/` generated from `../PAGE_ALTO/`.

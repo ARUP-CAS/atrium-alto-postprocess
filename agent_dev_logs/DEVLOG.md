@@ -698,3 +698,54 @@ sentences over 35 words 0.0–3.7%, no unglossed jargon.
 `Dauerleihe` was protected by the dictionary. It is not — it is the single largest item at risk. Fixed
 where it appeared.
 * Suite 1,333 passing, 0 failed, `ruff` clean. Documentation-only change plus the version bump.
+
+## 2026-09-22 (third entry)
+- **#30** — **@david-spacil answered the review request in full**, section by section, without
+waiting for the tag. Four items close. **Two of them close by correcting us**, and both corrections
+are of things this repository had already measured and then read past — not of things it could not
+see. Six findings (W1–W6 in `digests/30.digest.md`).
+* **W2 — `ssuti` / `ssutí` / `ssutě` are an old spelling of *suť*, not scanning errors.** The
+doubled-letter split is **four legitimate against four damaged**, not one against seven. Corrected in
+six places. The negative result survives and gets a better reason: the per-collection table was read
+as an inversion (*the* legitimate token being the most one-sided of the eight), and it is not one —
+**both kinds of real language are house conventions, one per institution** (`ppole` is ARUB's at
+3/226, `ssut*` is ARÚP's at 152/43), while the four real errors are small and split across both.
+Concentration separates *institutions*, and each institution has its own vocabulary. It also sharpens
+the ratio table: the "genuinely empty gap from 2.60× to 4.66×" that
+`SHORT_GARBAGE_LEXICON_GEMINATE_MAX_DF` is fitted to has real language on **both** sides of it.
+* **W3 — D40 resolves: the de-gemination guard comes out.** *"if the dictionary already covers all
+eight, it looks redundant – no objection to dropping it."* V7 is the measurement that says it does —
+zero of 42,853 queue rows carry any of the eight. Stage **11c**; not changed in this pass, because
+this pass was the reading.
+* **W4 — T9 resolves in favour of legibility.** `Trash` = illegible; legible is `Clear`; easily
+decipherable is `Noisy`; **regardless of usefulness**. Pending @DanaKriv. So `http://www.arub.cz` is
+`Clear` and D33 left it one step short at `Noisy`. **And it explains the gold set for the first
+time**: he could not tell `Non-text` from `Trash` without the page image, so he labelled only three
+categories — which is why the sidecar carries 45 `Non-text` rows against 1,302 `Clear`, an asymmetry
+visible in every class-support table this issue has printed and never accounted for. One thing it
+resolves in the code's favour: the root `README.md`'s `Trash` row ("re-processed by another OCR
+tool") matches his answer exactly, so only the legibility half of the two descriptions needed
+reconciling. **D43.**
+* **W5 — the vowel-run clause is the right rule at the wrong scope, and V5 mislabelled two of its
+own examples.** `J. Vysoean` and `B/ POSTKRANIAINY SKELET:` are scanning errors, not correctly-read
+text — **V4's own table said so and V5 contradicted it two sections later**. Corrected in place: the
+honest trade at min=4 is **299 confirmed-good lines spared against at least 226 confirmed-bad ones
+released**, not the clean rescue V5 described. His direction is better than the threshold: a
+three-vowel run is a fact about Czech phonotactics, so gate the clause on the detected language.
+**Cost checked rather than assumed** — `lang`/`original_lang` exist per line, but
+`determine_category()` takes only `lang_score`, `orig_lang_score` and `is_upright_czech`, and that
+last reduces to a Czech word-list hit on this population, which both `Dauerleihe` and the damaged
+`J. Vysoean` fail. Signature change plus its own A/B. **D44**, conditional on sizing it first.
+* **W6 — the consequence nobody asked about.** He annotated the gold sidecar *before* discovering
+`ssut*` is real language. If any of its 2,064 rows is an `ssut*` line labelled `Trash`, that row is
+now wrong — and it is the sidecar `Clear`-loss **40** is measured against, the number the adoption
+gate turns on. Exposure is small (1,667 `ssuti` lines in 56.6M, over an 822-document gold corpus),
+which is exactly why it should be *seen* to be zero rather than argued to be. **Stage 11a**, and
+until it runs, 40 carries an unquantified asterisk.
+* **Stage 11 added** (11a gold check · 11b `lang` distribution of the queue · 11c guard removal ·
+11d language gate · 11e reconcile the five category descriptions), and stage 10's *reading* updated
+without touching the running job: 10b's spared set is a mixture rather than a rescue list, and 10c's
+overlap with the delivered ask is how the mixture gets quantified.
+* Also fixed: § 8 of the review request still numbered its sub-items 7.1/7.2/7.3 after the section
+was renamed, which is why he had to write "§ 8 (item 7.1)".
+* Documentation only. Suite 1,335 passing, `ruff` clean.

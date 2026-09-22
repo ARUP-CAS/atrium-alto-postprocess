@@ -2,12 +2,26 @@
 
 **For:** @david-spacil
 **Issue:** [ufal/atrium-alto-postprocess#30](https://github.com/ufal/atrium-alto-postprocess/issues/30)
-**Time needed:** items 1 and 2 need one short reply each. Item 3 is a judgement call. Item 4 is the
-one nobody else can answer.
+**Time needed:** none. **You answered this on 2026-09-22 and every question below is now closed or
+waiting on @DanaKriv.** Your answers are recorded in place, marked ✅.
+
+> ## ✅ Answered — 2026-09-22
+>
+> | item  | your answer                                                                                                                                                             | what it settles                              |
+> |-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
+> | § 2   | Option 1; drop option 3                                                                                                                                                 | the de-duplication step stays as it is       |
+> | § 3   | after the tag                                                                                                                                                           | nothing blocked                              |
+> | § 4   | **`ssuti` / `ssutí` / `ssutě` are an old spelling of *suť* — they are `Clear`**; the other four stay errors; no objection to dropping the safeguard                     | a two-month assumption, corrected            |
+> | § 6   | **`Trash` = illegible.** Legible is `Clear`, easily decipherable is `Noisy`, *regardless of usefulness*. Re-process rather than delete. `Non-text` needs the page image | the definition the whole annotation rests on |
+> | § 7   | 3+ vowels is right for Czech and wrong for German and French — **split by language, or try 4+**; and two of our examples were mislabelled                               | the direction of the next change             |
+> | § 8.1 | close the raw-perplexity thread                                                                                                                                         | done                                         |
+>
+> **Two of them correct us rather than answer us**, and both corrections are carried through every
+> document in this folder rather than noted here and forgotten. They are marked 🛑 where they appear.
 
 **What changed since the last version (2026-09-22).** Stage 6, an 87-hour measurement, has
 finished. It answers your standing objection that our figures were graded by the program against
-its own output. It also produced one number that affects item 2. See § 7.2.
+its own output. It also produced one number that affects item 2. See § 8.2.
 
 *Earlier, on 2026-09-21:* the run we asked you to sanity-check has happened and it passed, so that
 item is now reported rather than asked. The de-duplication question in item 2 now has a figure
@@ -120,9 +134,13 @@ idea. It has simply been measured against the data it would run on, twice, in tw
 configurations, and found nothing to act on either time. **The decision is still yours.** One line
 is enough.
 
+> ✅ **Answered 2026-09-22 — option 1, nothing else needed.** The step stays as it is and option 3
+> is dropped. This item is closed.
+
 ## 3. Please re-check your 508 lines against the current rule
 
-Unchanged from the last version, and still open.
+> ✅ **Answered 2026-09-22 — you will do this after the tag.** Recorded, not chased. Nothing else
+> in this issue waits on it.
 
 Your measurement was the deciding one, and it was right: 26 lines moved, 12 improved, 12 made
 worse, and every one of the 12 failures contained a Roman numeral.
@@ -136,20 +154,33 @@ part of that set, so the number it worsens within your sample cannot be more tha
 sound reasoning, but indirect. It was your finding and your tooling, and a direct figure on the 508
 would close it properly.
 
-## 4. The eight doubled-letter tokens — no longer urgent, and here is why
+## 4. The eight doubled-letter tokens — answered, and we had three of them wrong
 
-> **This item no longer holds anything up.** When the measurement was repeated with the archive's
-> dictionary loaded, **none of the eight spellings appears anywhere in the list of text the rule
-> can reach** — not one row out of 42,853. Three of them (`ssutí`, `ssutě`, `jjámy`) carry Czech
-> accents, and the rule never looks at lines with accents in them, so they could never have been
-> there. The other five are protected by the dictionary, because they appear in far more documents
-> than the safeguard's limit allows.
+> ## 🛑 ✅ Answered 2026-09-22, and it corrects us
 >
-> So no labelling decision and no accuracy figure depends on your answer any more. The question
-> below is now about whether the safeguard should exist at all. It is still worth one line from
-> you, and it is no longer blocking anyone.
+> **`ssuti`, `ssutí` and `ssutě` are not scanning errors.** They are an **old way of spelling the
+> word *suť*** — so they are `Clear`. The other four doubled-letter spellings (`llocm`, `vvkop`,
+> `jjámy`, `oobjekt`) remain scanning errors.
+>
+> That changes the count this issue has worked from since July. It is not **one** legitimate
+> spelling against seven errors. It is **four against four**: `ppole` and the three `ssut*` forms
+> are real language, and four are damage.
+>
+> **On the safeguard:** *"if the dictionary already covers all eight, it looks redundant – no
+> objection to dropping it."* It does cover all eight (below), so we will drop it. See § 4b.
+>
+> **Every table in this folder that called these three "artefacts" has been corrected.** The
+> measurement was already pointing this way — a spelling that appears in 195 separate documents is
+> not what a scanning artefact looks like, and we said so — but we did not draw the conclusion.
 
-The rest of this item is as it was written, because the reasoning still stands.
+**This item also no longer holds anything up.** The measurement was repeated with the archive's
+dictionary loaded, and **none of the eight spellings appears anywhere in the list of text the rule
+can reach** — not one row out of 42,853. Three of them (`ssutí`, `ssutě`, `jjámy`) carry Czech
+accents, and the rule never looks at lines with accents. The other five are protected by the
+dictionary: they appear in far more documents than the safeguard's limit allows.
+
+The rest of this item is kept as it was written. It is how we got here, and its conclusion — that
+no automatic test separates the two classes — survives your answer.
 
 On 2026-09-19 you told us that `ppole` is an abbreviation for *popelnicová pole*, and that the
 other doubled-first-letter examples really are scanning errors. Since then we have tried three ways
@@ -163,34 +194,37 @@ to make that distinction automatically:
    work: a scanning error belongs to the machine that produced it, while an abbreviation is a
    shared convention. Measured:
 
-| spelling    |  ARÚP |    ARUB |                  |
-|-------------|------:|--------:|------------------|
-| **`ppole`** | **3** | **226** | the abbreviation |
-| `ssuti`     |   152 |      43 | scanning error   |
-| `ssutí`     |   116 |      26 | scanning error   |
-| `ssutě`     |    46 |      18 | scanning error   |
-| `llocm`     |    44 |      11 | scanning error   |
-| `vvkop`     |     1 |      29 | scanning error   |
-| `jjámy`     |     2 |       8 | scanning error   |
-| `oobjekt`   |     2 |       2 | scanning error   |
+| spelling    |    ARÚP |    ARUB |                                       |
+|-------------|--------:|--------:|---------------------------------------|
+| **`ppole`** |   **3** | **226** | **abbreviation** — *popelnicová pole* |
+| **`ssuti`** | **152** |  **43** | **old spelling of *suť***             |
+| **`ssutí`** | **116** |  **26** | **old spelling of *suť***             |
+| **`ssutě`** |  **46** |  **18** | **old spelling of *suť***             |
+| `llocm`     |      44 |      11 | scanning error                        |
+| `vvkop`     |       1 |      29 | scanning error                        |
+| `jjámy`     |       2 |       8 | scanning error                        |
+| `oobjekt`   |       2 |       2 | scanning error                        |
 
-**The abbreviation is the most one-sided of the eight spellings.** The test does not
-simply fail — it points the wrong way. `ppole` looks more like a scanning error than any real
-scanning error does, because it is a convention of ARUB's own forms from the 2010s rather than of
-the archive as a whole. (Measured separately: `ppole` appears on 2 lines in the 1990s, 45 in the
-2000s and 13,144 in the 2010s. It arrives with the forms.)
+**With your answer, the table reads differently and the conclusion gets simpler.** We used to read
+it as a paradox. The one legitimate spelling was the most one-sided of the eight, so concentration
+pointed exactly the wrong way. It is not a paradox. **Both kinds of legitimate spelling are house
+conventions, and each house is a different one** — `ppole` belongs to ARUB's forms, `ssut*` to
+ARÚP's. The four real scanning errors are small and split across both. So concentration cannot
+separate the classes. It separates *institutions*, and each institution has its own vocabulary.
 
-**So no frequency-based signal is left.** Two questions follow, and one line each is plenty:
+(Measured separately, and it still holds: `ppole` appears on 2 lines in the 1990s, 45 in the 2000s
+and 13,144 in the 2010s. It arrives with the forms.)
 
-* **At this scale, are `ssuti` (195 documents), `ssutí` (142) and `ssutě` (64) still scanning
-  errors?** Appearing in 195 separate documents is not what we would expect from a scanning
-  artefact, and it is close to `ppole`'s 229. Either the same misreading repeats across a very
-  large number of scans of the same form — which is quite possible — or some of them are
-  conventions too, and the 822-document view was too small to show it.
-* **Since no automatic test works, should we simply remove the doubled-letter guard?** Removing it
-  would fall back to the plain dictionary check. Keeping it means keeping a threshold that we know
-  was fitted to one small table, and that is wrong on 5 of the 7 tokens at full scale. We have not
-  changed it, because at this point it is a judgement rather than a measurement.
+### 4b. What we will do about the safeguard
+
+**Remove it**, on your answer. The doubled-letter guard exists to let the rule convict a
+doubled-letter spelling *even though* the dictionary knows it. At full scale the dictionary knows
+all eight and the guard fires on none of them. So it is a threshold fitted to one small table that
+now changes nothing. And with `ssut*` turning out to be real language, keeping it would be a
+standing risk of convicting real words for no measured benefit.
+
+We have not made the change yet: it is a code change and this round was documentation. It is
+recorded as the next step, and it needs no further input from you.
 
 ## 5. Two findings about the rule itself, one of which we got wrong first
 
@@ -289,6 +323,34 @@ or from the definition.
 README agree with each other, rather than continuing with three descriptions of five categories.
 The same question is § 7.2 of Dana's guide.
 
+> ## ✅ Answered 2026-09-22 — legibility, pending @DanaKriv
+>
+> * **`Trash` = illegible.** Anything legible is `Clear`; easily decipherable is `Noisy` —
+>   **regardless of how useful the line is to us.**
+> * **Delete versus re-OCR:** no strong opinion, and most of it is probably a handwriting-recognition
+>   candidate, so **re-process rather than delete**.
+> * **`Non-text`:** you cannot tell it from `Trash` without the source image. Apart from the first few
+>   hundred lines of your original annotation (1950s ARÚB, complete documents), you labelled only
+>   `Clear`/`Noisy`/`Trash`, and whatever the pre-filter marked `Non-text` was out of scope.
+>
+> **What follows, once @DanaKriv agrees.**
+>
+> 1. **`http://www.arub.cz` is `Clear`.** It is perfectly legible. We moved it from `Trash` to
+>    `Noisy` when we taught the program to recognise web addresses — the right direction, and one
+>    step short of where your answer puts it.
+> 2. **Dana's guide holds the correct definitions** and stops being one of two candidates. The
+>    conflict table above is resolved in its favour on legibility.
+> 3. **The `README.md` row you might have expected to be wrong is right.** It says `Trash` "should
+>    be re-processed by another OCR tool", which is exactly your delete-versus-re-OCR answer. Only
+>    its *legibility* semantics needed reconciling, not the processing column.
+> 4. **`Non-text` is out of scope for annotation**, and Dana is being told the same. That also
+>    explains the shape of the annotated set — 45 `Non-text` rows against 1,302 `Clear` — which we
+>    had never accounted for.
+>
+> This is marked *pending @DanaKriv* because you framed it as your view rather than a joint
+> decision, and she is the other half of it. Nothing stops her labelling in the meantime; what
+> waits is how the answers are scored.
+
 ## 7. One setting decides most of this, and the choice is archaeological
 
 This item is new, and it is the one we would most like your view on after item 6.
@@ -300,7 +362,7 @@ one of them fires:
 |-----------------------------|------------------------|-----------------------------------------:|------------------------------------------------------:|
 | **three vowels in a row**   | `aue`, `eui`, `oea`    |                                **64.6%** |                                                 79.8% |
 | few different letters       | `OUUIUO`, `Aa/III 116` |                                    19.7% |                                                 80.3% |
-| doubled first letter        | `ssuti`, `vvkop`       |                                     9.0% |                                                 88.3% |
+| doubled first letter        | `vvkop`, `llocm`       |                                     9.0% |                                                 88.3% |
 | the same letter 3× in a row | `sektlll`              |                                     1.2% |                                                 97.9% |
 
 Read the last column as a rough accuracy check. It is the share of each test's firings that land on
@@ -321,9 +383,21 @@ that read `OUUITN`, `OUOISP`, `OUUIUO` — have four or more vowels in a row.
 |           **4** |                                            2,891 | −56.6% |
 |               5 |                                            2,436 | −63.5% |
 
-At four, every correctly-read item we can name is spared — `Dauerleihe`, `FEUILLETON.`,
-`J. Vysoean`, `POSTKRANIAINY SKELET` — and the page stamps are still caught, along with `eaual to:`
-(which has *eaua*, four in a row).
+~~At four, every correctly-read item we can name is spared — `Dauerleihe`, `FEUILLETON.`,
+`J. Vysoean`, `POSTKRANIAINY SKELET` — and the page stamps are still caught, along with
+`eaual to:` (which has *eaua*, four in a row).~~
+
+> 🛑 **That sentence was wrong, and you caught it.** `J. Vysoean` and `B/ POSTKRANIAINY SKELET:` are
+> **not** correctly read. They are scanning errors — `Vysočan` and `POSTKRANIÁLNÍ SKELET` — so the
+> three-vowel test catches them **correctly**, and four would let them through. (Our own table in
+> § 6 of Dana's guide had them right as damaged; this sentence contradicted it.)
+
+**The honest version of the trade at four.** It spares two strings we can confirm are correctly
+read: `Dauerleihe` (286 lines) and `FEUILLETON.` (13). At the same time it releases real scanning
+errors — `J. Vysoean` (125), `lenaye` (46), `Poeitaecxy soubor` (26), `noienm k.` (19) and
+`B/ POSTKRANIAINY SKELET:` (10). The page stamps and `eaual to:` (*eaua*, four in a row) are still
+caught. That is a much weaker case than the one we put to you, and it is the reason your other
+suggestion is the better one.
 
 **We have not made this change, and we would like you to tell us whether to.** Two reasons for
 caution, stated plainly:
@@ -341,12 +415,36 @@ scanning error in this archive?** In ordinary Czech it very nearly is. In an arc
 carries German museum terms, French section headings, Latin species names and foreign place names,
 we suspect it is not. You know this material and we do not.
 
+> ## ✅ Answered 2026-09-22 — split by language, or failing that try four
+>
+> *"For Czech, 3+ vowels in a row is a good rule – Czech has no triphthongs. For German and French
+> it does damage (`Dauerleihe`, `FEUILLETON`). So either split by language, or try 4+."*
+>
+> **This is the better answer and it changes what we build.** The test is a fact about Czech
+> phonology, so applying it to German and French is a category error rather than a badly chosen
+> threshold. Blunting it to four does not fix that — it just stops convicting a lot of genuine
+> damage as well, as the corrected paragraph above now shows.
+>
+> **What it costs, stated plainly.** The program already records a detected language for every line.
+> It is not currently passed to the part of the code that makes this decision, so the split is a
+> real change rather than a setting, and it needs measuring like anything else. We are not treating
+> your one-line answer as authorisation for that; it is the direction, and the measurement comes
+> first.
+>
+> **What we are doing about it, in order:**
+>
+> 1. Count how many of the lines at risk are detected as *not* Czech. If that is 3%, the split buys
+>    almost nothing and four is the pragmatic choice after all. If it is 40%, the split is the whole
+>    answer. This costs nothing and is the next measurement.
+> 2. Whichever way that goes, check it against @DanaKriv's labels before changing anything.
+
 ## 8. Three smaller items
 
-**7.1 Is the raw perplexity thread finished?** The 367,208 lines arrived via filesender and we read
-them. If nothing further was intended, we will close that thread.
+**8.1 Is the raw perplexity thread finished?** ✅ **Answered 2026-09-22 — yes, closed.** The
+367,208 lines arrived via filesender and we read them. Nothing further was intended and the thread
+is closed.
 
-**7.2 Two things stage 6 settled, one of which you raised.**
+**8.2 Two things stage 6 settled, one of which you raised.**
 
 Stage 6 — an 87-hour measurement of all 23 rules — finished on 2026-09-22.
 
@@ -368,7 +466,7 @@ attached at all, and the two that clear that threshold both cost readable lines.
 of rules to delete, and we have written that into our records so that nobody reads it that way
 later.
 
-**7.3 Corrections to things we told you before.**
+**8.3 Corrections to things we told you before.**
 
 * We reported that the vocabulary check had "zero effect", then that the result was void. It is now
   properly measured, and it is a **clear rejection**: 212 lines improved against 540 made worse, and
@@ -380,9 +478,18 @@ later.
   effect**: 5 lines improved, 5 made worse.
 * We reported the reach of the de-duplication step as 7 groups / 22 lines. That was correct for the
   sample it was measured on. Item 2 above is the full-archive figure and replaces it.
+* 🛑 We described `J. Vysoean` and `B/ POSTKRANIAINY SKELET:` as correctly read in § 7, while
+  describing them as damaged in Dana's guide. You corrected it; both documents now say damaged.
+* 🛑 We called `ssuti`, `ssutí` and `ssutě` confirmed scanning errors in six places across this
+  repository. That was our own reading of a frequency table, not anything you had told us. You
+  corrected it, and all six now say *old spelling of suť*.
 
 ---
 
-Thank you. Item 6 would save the most rework if it is settled before the labels come back. Item 7
-is the one where your knowledge of the material decides a piece of the program directly. Item 4 has
-stopped being urgent, and still deserves your one line when you have it.
+**Thank you — all of it is answered.** Two of your answers corrected us rather than replying to us,
+and both were things we had measured and misread rather than things we could not see: `ssut*`
+appears in 195 separate documents, and our own annotation guide already called `J. Vysoean` damaged.
+That is worth saying because it is the third time in this issue that reading our own output more
+carefully would have got there first.
+
+Nothing here now waits on you. What remains is @DanaKriv's agreement on § 6 and her 357 decisions.

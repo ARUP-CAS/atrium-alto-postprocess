@@ -112,11 +112,21 @@ Write one of these five words:
 
 | write      | when                                                                                                                             |
 |------------|----------------------------------------------------------------------------------------------------------------------------------|
-| `Clear`    | This is correct, readable text. A researcher could use it as it stands.                                                          |
-| `Noisy`    | This is damaged, but a person can still tell what it says and it is worth keeping. Use this for text you would not want deleted. |
-| `Trash`    | This is scanning rubbish. Nothing is lost by deleting it.                                                                        |
-| `Non-text` | This is not language at all — a line of a table border, a page decoration, a ruler mark.                                         |
+| `Clear`    | You can read this. It does not have to be useful — a web address or a form label counts.                                         |
+| `Noisy`    | You can work out what it says, through a mistake. *"Easily decipherable."*                                                       |
+| `Trash`    | Nobody can read this.                                                                                                            |
+| `Non-text` | **Please leave blank.** See the note below.                                                                                      |
 | `Empty`    | There is nothing here.                                                                                                           |
+
+**These three definitions are @david-spacil's, given on 2026-09-22**, and they answer the question
+in § 7.2 below. The important word is in the second column of the first row: **it does not have to
+be useful.** A correctly scanned web address is `Clear`, even though nobody wants it in a search
+index. Whether a line is worth keeping is our problem, not a label.
+
+**Please leave `Non-text` alone.** @david-spacil's reason is a good one: you cannot tell `Non-text`
+from `Trash` without looking at the scanned page, and you do not have the page. He labelled only
+`Clear`, `Noisy` and `Trash` for exactly that reason, apart from a few hundred early lines where he
+did have complete documents. Please do the same. A blank cell is skipped and costs nothing.
 
 **If you are not sure, leave the cell empty.** This is not laziness and it costs us nothing. An
 empty cell is skipped completely. A guess is worse than no answer, because we cannot tell the
@@ -200,19 +210,27 @@ request. What is left is a different kind of text:
 | text                       | lines | the program says                 | our question                                                            |
 |----------------------------|------:|----------------------------------|-------------------------------------------------------------------------|
 | `Dauerleihe`               |   305 | `Clear:277` `Trash:19` `Noisy:9` | German for *permanent loan*. Scanned correctly. Should it stay `Clear`? |
-| `J. Vysoean`               |   125 | `Noisy:125`                      | A name, damaged. Most likely *Vysočan*. Readable enough to keep?        |
+| `J. Vysoean`               |   125 | `Noisy:125`                      | ✅ Confirmed damaged — *Vysočan*. Readable enough to keep?               |
 | `Dated=Dated (relatively)` |    47 | `Noisy:47`                       | A field label from a form, not prose. Is that text at all?              |
 | `lenaye`                   |    47 | `Clear:46` `Trash:1`             | Damaged, and we cannot tell from what. Rubbish, or worth keeping?       |
 | `Aa/III 116`               |    24 | `Trash:21` `Noisy:3`             | A find identifier, answered two ways. Which is right?                   |
 | `eaual to:`                |    21 | `Clear:14` `Noisy:7`             | Almost certainly *equal to:*. One letter wrong. `Clear` or `Noisy`?     |
 | `FEUILLETON.`              |    13 | `Noisy:13`                       | A real word — the feature section of a newspaper. Scanned correctly.    |
-| `B/ POSTKRANIAINY SKELET:` |    11 | `Noisy:10` `Trash:1`             | *POSTKRANIÁLNÍ SKELET*, with the accents lost. Readable, but damaged.   |
+| `B/ POSTKRANIAINY SKELET:` |    11 | `Noisy:10` `Trash:1`             | ✅ Confirmed damaged — *POSTKRANIÁLNÍ SKELET*, accents lost.             |
 
 **Two of these are the heart of the request.** `Dauerleihe` and `FEUILLETON.` are ordinary words,
 read perfectly by the scanner. The rule flags them because they have three vowels in a row, which
 usually means damage, and because a dictionary built from Czech archaeology has never seen either
-word. If your answer is that they are `Clear`, that is exactly the result we need: it tells us the
-rule is set one notch too tight, and that is a single number we can change.
+word. If your answer is that they are `Clear`, that is exactly the result we need.
+
+**The rows marked ✅ are ones @david-spacil has already confirmed as damaged.** You are not
+re-deciding those. Your `Clear` or `Noisy` call on them still matters, because that is the
+difference between keeping a line and throwing it away.
+
+He has also told us why the three-vowel test exists and where it goes wrong. Czech has no runs of
+three vowels, so in Czech such a run is good evidence of damage. German and French words have them
+naturally — which is why `Dauerleihe` and `FEUILLETON.` are on this list, and why `J. Vysoean` is
+on it for a completely different reason.
 
 `B/ POSTKRANIAINY SKELET:` is the mirror image of your original complaint — damaged but readable,
 and currently only just being kept. Whether a damaged-but-readable line is worth keeping in the

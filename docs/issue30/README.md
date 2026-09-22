@@ -33,11 +33,10 @@ worth reading before you begin.
 **2b. If you are @david-spacil — the open questions**
 [`issue30_review_request.md`](issue30_review_request.md) · most items need one line each
 
-Eight items. Item 6, about what `Trash` is for, is the one that matters most and is a question for
-the two of you together. Item 4, about eight doubled-letter spellings, no longer holds anything up:
-none of the eight can reach the new rule at all, so it has become a question about a safeguard
-rather than about the archive. Item 7 is new — a single setting that decides most of what the new
-rule would discard.
+**✅ Answered in full on 2026-09-22.** Eight items, all closed or waiting on @DanaKriv. Worth
+reading even though nothing is asked of you any more: two of the answers correct things this folder
+used to state as fact — three doubled-letter spellings turn out to be an old spelling of *suť*
+rather than scanning errors, and two strings we described as correctly scanned are not.
 
 **3. Reference, when you need it**
 [`annotation_ask_README.md`](annotation_ask_README.md) — how the two request files are built and
@@ -80,23 +79,27 @@ identical to each other and hold only the invented demonstration rows.
 
 ---
 
-## The two open questions
+## The two open questions — both now answered by @david-spacil
 
-Both need a human answer. Neither can be settled by more computing.
+He answered on 2026-09-22, and neither answer came from more computing. Both are recorded in full
+in [`issue30_review_request.md`](issue30_review_request.md).
 
-**1. What should `Trash` mean?** `http://www.arub.cz` appears on 5,309 lines, scanned perfectly
-correctly. The program used to call it `Trash`; since we taught it to recognise web addresses it
-calls it `Noisy`, which means *readable through a minor mistake* — and there is no mistake. One
-label is being asked two different questions: *can a person read this*, and *is this worth keeping
-as text*. The five categories are described in two places that do not agree with each other. The
-labelling can start before this is settled, but the answers cannot be scored until it is. See
-`issue30_annotation_guide.md` § 7.2 and `issue30_review_request.md` § 6.
+**1. What should `Trash` mean?** ✅ **Illegible.** Anything legible is `Clear`; easily decipherable
+is `Noisy` — regardless of how useful the line is. So a correctly scanned web address such as
+`http://www.arub.cz` is `Clear`. `Trash` lines should be scanned again rather than deleted, and
+`Non-text` cannot be judged without the page image, so it is out of scope for labelling.
 
-**2. Is the new rule set one notch too tight?** The largest single item it would discard is
-`Dauerleihe` — German for *permanent loan* — on 286 lines that are scanned correctly. It is caught
-by a test for three vowels in a row. Requiring four instead would spare it, and every other
-correctly-read item on the list, while still catching the page-stamp marks the rule exists for. We
-have measured the trade but not yet checked it against hand-labelled text. See
+**@DanaKriv, this is the one thing worth reading before you start.** It is his view, not yet a
+joint decision, and the whole measurement is scored against it. If you disagree, please say so
+first. See `issue30_annotation_guide.md` § 4 and § 7.2.
+
+**2. Is the new rule set one notch too tight?** ✅ **It is set to the wrong question.** The test
+looks for three vowels in a row, which is good evidence of damage in Czech — Czech has no
+three-vowel runs — and simply wrong for German and French, where words like `Dauerleihe` and
+`FEUILLETON` have them naturally. His answer is to split the rule by language rather than blunt it.
+
+He also corrected us: `J. Vysoean` and `POSTKRANIAINY SKELET` are **not** correctly scanned, as we
+had written. They are real scanning errors, so the three-vowel test catches them rightly. See
 `issue30_review_request.md` § 7.
 
 ---

@@ -148,17 +148,37 @@ program has never seen `Dauerleihe` often enough to know it, and it cannot tell 
 spelling apart from the damaged ones — `auerleihe`, `Bauerleihe`, `Jauerleihe` — because it has
 never seen any of them.
 
-**There is a single setting behind this.** The rule can be told to require four vowels in a row
-instead of three. That would spare `Dauerleihe`, `FEUILLETON.`, `J. Vysoean` and every other
-correctly-read item on the list, while still catching the page-stamp marks (`OUUITN`, `OUOISP`)
-that the rule exists for — cutting what it would discard by more than half. We have measured that
-trade roughly and have not yet checked it against hand-labelled text, which is the next step. It
-is put to @david-spacil as § 7 of the review request.
+**There is a single setting behind this**, and @david-spacil has now told us it is the wrong lever.
+
+The rule can be told to require four vowels in a row instead of three. That cuts what it would
+discard by more than half. We first wrote that it would spare "every correctly-read item on the
+list" and named `J. Vysoean` and `B/ POSTKRANIAINY SKELET:` among them. **That was wrong, and he
+corrected it.** Both are scanning errors — `Vysočan` and `POSTKRANIÁLNÍ SKELET` — so the
+three-vowel test catches them correctly and four would let them go. The honest version: four spares
+two words we can confirm are correct, and releases a good deal of real damage with them.
+
+**His answer points at the real problem.** Czech has no runs of three vowels, so in Czech such a
+run really is good evidence of damage. German and French words have them naturally. The test is a
+fact about one language being applied to three, which is why blunting it helps the wrong cases:
+
+> *"For Czech, 3+ vowels in a row is a good rule – Czech has no triphthongs. For German and French
+> it does damage. So either split by language, or try 4+."*
+
+The program already records a detected language for every line, so splitting the rule by language
+is possible. It is not a setting, though — that language is not currently passed to the part of
+the code that makes this decision — so it is a change to be measured rather than switched on. The
+first measurement is simply counting how many of the lines at risk are detected as not Czech.
 
 ## 4. The abbreviation problem has no automatic solution, and we now know that for certain
 
+> **Corrected 2026-09-22.** This section used to call `ssuti`, `ssutí` and `ssutě` scanning errors.
+> @david-spacil has since told us they are **an old way of spelling the word *suť***, so they are
+> real language. The count is not one legitimate spelling against seven errors; it is **four
+> against four**. The conclusion below is unchanged — no counting method separates the two classes
+> — but the reason is now simpler, and it is at the end of the section.
+
 `ppole` is an OCR-plausible shape (a doubled first letter) that is actually an abbreviation. We
-tried three ways to separate that class from genuine doubled-letter scanning errors like `ssuti`:
+tried three ways to separate that class from genuine doubled-letter scanning errors like `vvkop`:
 
 1. **How much commoner is the base word?** — `ppole` sits mid-pack among the artefacts. No.
 2. **How many documents does it appear in?** — on 822 documents this separated cleanly (35 against
@@ -166,24 +186,25 @@ tried three ways to separate that class from genuine doubled-letter scanning err
 3. **Is it concentrated in one collection?** — the idea being that a scanner artefact belongs to
    the machine that made it, while an abbreviation is a shared convention. Measured:
 
-| spelling    |  ARUP |    ARUB |                  |
-|-------------|------:|--------:|------------------|
-| **`ppole`** | **3** | **226** | the abbreviation |
-| `ssuti`     |   152 |      43 | artefact         |
-| `vvkop`     |     1 |      29 | artefact         |
-| `jjámy`     |     2 |       8 | artefact         |
+| spelling    |    ARUP |    ARUB |                            |
+|-------------|--------:|--------:|----------------------------|
+| **`ppole`** |   **3** | **226** | abbreviation, ARUB's forms |
+| **`ssuti`** | **152** |  **43** | old spelling, ARÚP's forms |
+| `vvkop`     |       1 |      29 | scanning error             |
+| `jjámy`     |       2 |       8 | scanning error             |
 
-The abbreviation is **the most one-sided of the eight spellings** — it looks more like a
-scanner artefact than any actual artefact does, because it is a convention of *one institution's*
-forms. The test does not fail, it inverts.
+**This is where the answer changed the reasoning rather than just a label.** We used to read the
+table as an inversion: the one legitimate spelling was the most one-sided of the eight, so
+concentration pointed exactly the wrong way. With `ssuti` now known to be real language, the table
+says something much plainer.
 
-**So no counting method separates a local convention from a local scanning error.** This is why
-@david-spacil's reading of those eight tokens is not a formality. At this scale it is the only
-evidence there is.
+**Both kinds of real language are house conventions, and each house is a different one.** `ppole`
+belongs to ARUB's forms; `ssut*` belongs to ARÚP's. The genuine scanning errors are small and
+appear in both. So concentration cannot separate real language from damage, because what it
+actually separates is *institutions* — and each institution has its own vocabulary.
 
-The specific open question: are `ssuti` (195 documents), `ssutí` (142) and `ssutě` (64) still
-scanning errors? Appearing in
-195 separate documents is not what we would have expected from a scan artefact.
+**So no counting method works.** This is why @david-spacil's reading of those eight tokens was not
+a formality. At this scale it was the only evidence there was, and it reversed three of the eight.
 
 ## 5. The archive's register is abbreviated, coded and full of proper nouns — and that breaks dictionary tests
 
@@ -256,8 +277,23 @@ By the definition above, none of those is `Trash`. Anyone can read them.
 **Since this was written, the first two have moved.** The program now recognises web and e-mail
 addresses and calls them `Noisy` rather than `Trash`. That is an improvement and it is still not
 right, because `Noisy` means *readable through a minor mistake* and there is no mistake in a
-correctly scanned web address. `ARCHAIA Brno o.p.s.` has not moved and is still `Trash`. The
-question below is therefore unchanged; only the wrong answer has changed.
+correctly scanned web address. `ARCHAIA Brno o.p.s.` has not moved and is still `Trash`.
+
+> ## ✅ Answered 2026-09-22 by @david-spacil, pending @DanaKriv
+>
+> * **`Trash` = illegible.** Anything legible is `Clear`; easily decipherable is `Noisy` —
+>   **regardless of how useful the line is to us.**
+> * **Delete or scan again?** Scan again. Most of it is probably a handwriting-recognition
+>   candidate.
+> * **`Non-text`** cannot be told from `Trash` without the scanned page, so it is out of scope for
+>   annotation.
+>
+> **So legibility wins over usefulness**, and `http://www.arub.cz` is `Clear`. The program's move
+> from `Trash` to `Noisy` was the right direction and one step short.
+>
+> One thing this resolves in the program's favour: the main `README.md` says `Trash` "should be
+> re-processed by another OCR tool", which is exactly his answer on delete-versus-re-OCR. Only the
+> legibility half of the two descriptions needed reconciling.
 
 What has happened is that one label is answering two different questions:
 
@@ -349,14 +385,19 @@ recommended deleting the feature the project has spent two months building.
 
 * **The risk of switching the new rule on is much smaller than the raw numbers suggest**, because
   the archive's own dictionary already protects the abbreviation, the organisation name, the
-  species names and the footer URLs. The measurement that shows this is being re-run properly
-  before anything is decided.
-* **What is left after that is a genuine long tail** — about 9,900 lines across 7,400 different
-  strings, 94% of which occur exactly once. That is the part where a human eye is irreplaceable,
-  and it is what the re-cut annotation request will sample.
-* **Two things cannot be settled by any amount of computation.** Whether those eight
-  doubled-letter tokens are conventions or errors at full scale (§ 4). And whether `Trash` means
-  illegible, or means not-prose (§ 7).
+  species names and the footer URLs. That measurement has now been made properly, and it removes
+  82% of the apparent risk.
+* **What is left is a genuine long tail** — 6,714 lines across 5,563 different strings, 96% of
+  which occur exactly once. That is the part where a human eye is irreplaceable, and it is what
+  the annotation request samples.
+* **Two things could not be settled by any amount of computation, and @david-spacil has now settled
+  both.** The eight doubled-letter tokens: four are real language, four are errors (§ 4). And
+  `Trash` means **illegible**, not not-prose (§ 7), pending @DanaKriv's agreement. Neither answer
+  came from more measuring, and in both cases the measurements we already had were pointing the
+  right way without us reading them that way.
+* **The next question is a language question, not a threshold.** The test that accounts for most
+  of what the rule would discard looks for three vowels in a row, which is sound Czech and wrong
+  for German and French (§ 3c).
 * **The rule we have been narrowing is part of the cost, not just the fix.** The
   short-garbage rule destroys 7 of the 40 readable lines the program loses; the
   short-line rule saves 31. Both numbers are new, and neither was available
