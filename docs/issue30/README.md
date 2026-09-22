@@ -102,6 +102,36 @@ He also corrected us: `J. Vysoean` and `POSTKRANIAINY SKELET` are **not** correc
 had written. They are real scanning errors, so the three-vowel test catches them rightly. See
 `issue30_review_request.md` § 7.
 
+**Measured since then, on 2026-09-22.** Two runs finished and both agree with him:
+
+* **Simply requiring four vowels instead of three is not worth doing.** Against the 2,064 labelled
+  lines it changes nothing that matters, and it finds less rubbish than the current rule.
+* **The new rule as a whole passes its test** — 513 mistakes down to 503, no extra readable lines
+  lost, and half as much rubbish found again.
+* **The only two lines the rule gets wrong are both caught by the three-vowel test**, and one of
+  them is a German sentence. The part he identified is the only part in dispute.
+
+The language split is now built and switched off. What it would do, worked out line by line: one
+fewer readable line destroyed, one more rubbish line kept. Details in
+`issue30_review_request.md` § 7.
+
+---
+
+## A new file you can edit yourselves
+
+`setup/word_lists.txt` is a plain text file listing the words this program should not treat as
+damage. Until now those lists lived inside the program code or in a settings file, and adding a
+word meant asking a developer.
+
+**The section to use is `[allowed]`.** If the program keeps throwing away a word you know is real —
+a German museum term, a Latin species name, an old spelling, a local abbreviation, a place name —
+put it there with a short note saying what it is. Listing a word can only *stop* the program
+treating it as damage; nothing you write there can make the program discard anything.
+
+It ships empty on purpose. The words we already know about are in the file, commented out, with a
+note beside each. Switching them on changes how lines are categorised, so that is a decision to
+take deliberately rather than a default we set for you.
+
 ---
 
 _If anything here is unclear, or a row is impossible to judge without seeing the page it came from,

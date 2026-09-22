@@ -7,6 +7,53 @@ quoted from a log was recomputed from those artefacts against the committed pred
 
 ---
 
+## Stage 10 — the threshold closed, the gate confirmed (2026-09-22)
+
+Two gold-scored A/Bs over the same 2,064-row sidecar, both on the post-D33 tree.
+
+**10d — `SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN` 3 vs 4.** A null that costs recall.
+
+| min | macro_f1 | errors |   cost | `Clear`-loss | `Trash`-recall |
+|----:|---------:|-------:|-------:|-------------:|----------------|
+|   3 |   0.6345 |    503 | 0.2810 |           38 | 34/180 = 18.9% |
+|   4 |   0.6325 |    503 | 0.2810 |           38 | 32/180 = 17.8% |
+
+Fixes 2 / breaks 2, exact McNemar p = 1. The gate is indifferent and both
+secondary measures move the wrong way. **The global threshold question is closed**
+in favour of the language split (D44), which is @david-spacil's other suggestion.
+
+**10e — `SHORT_GARBAGE_WITNESS_ENABLE` false vs true.** The gate passes.
+
+| flag  | macro_f1 |  errors |       cost | `Clear`-loss | `Trash`-recall     |
+|-------|---------:|--------:|-----------:|-------------:|--------------------|
+| false |   0.6174 |     513 |     0.2897 |           38 | 22/180 = 12.2%     |
+| true  |   0.6345 | **503** | **0.2810** |           38 | **34/180 = 18.9%** |
+
+Fixes 12 / breaks 2, exact McNemar p = 0.01294, significant. Errors −10, cost
+−0.0087, `Clear`-loss unchanged. This is what 08b reported before D33 and what
+stage 9a was owed to confirm.
+
+**Two things to carry forward.**
+
+1. **`Clear`-loss is 38, not 40, and it is 38 in both arms** — where 08b reported
+   40 in both of its own. The shift is flag-independent, so it belongs to the tree
+   rather than to the witness, which is the shape D33 predicts.
+2. **The witness's only two errors are 10d's two fixes.** Both are `vowel_run`-only
+   — `Frauenzimmerbad", sämtlic Gesellschastsbäder,` (gold `Clear`) and
+   `Lokolieace: •VIII,` (gold `Noisy`). One run's fix is the other's break, and
+   everything else the witness does on gold is uncontested.
+
+**What the split would do, computed on those 14 rows.** Both breaks are
+`vowel_run`-only, and so are exactly two of the twelve fixes (`deutendes.
+Alhimiaal`, `MI*I\ EOOCO`); the other ten fire `triple`, `initial_geminate` or
+`low_variety` and are untouched at any threshold. The likely case gives **11 fixes
+and 1 break** — errors 503 → 504, `Clear`-loss 38 → 37. It trades a gold-`Clear`
+error for a gold-`Trash` one, improving the composition and not the count, **and
+the adoption gate as written rejects any +1 on errors**. The gate is what needs
+the argument, not the split. Contingent on four language labels nobody has read.
+
+---
+
 ## 0. Provenance, before anything else
 
 Two checks first, because several conclusions below contradict things currently written

@@ -86,9 +86,7 @@ WQX_CHARS = wqxWQX
 # (#7 Tier 1) Czech function words recognisable upright; their mirror/rotation
 # ghost images (ROT_GHOSTLIST) are derived at import time. Changing this key
 # requires re-import — override_constants() does not rebuild the ghostlist.
-ROT_WHITELIST = po,pod,do,od,on,ony,by,bez,ne,nebo,ven,den,zde,se,ve,mez,pouze,bude
 # (#7 Tier 1) Ghost images colliding with real words — never count as ghosts.
-GHOST_WORD_COLLISIONS = no,bo
 # (#7 Tier 1) Trailing filler chars stripped before headline/short-line
 # checks. Unicode-escape decoded (configparser strips leading whitespace, so
 # the leading space is written as \x20).
@@ -163,18 +161,54 @@ LANG_SCORE_REMAP_FAR        = 0.50
 # toggle rather than a code change, since this exact call has flipped twice.
 LANG_REMAP_ALWAYS           = true
 SINGLE_CHAR_ALLOWED         = aAiIuUvVzZkKsS
-SHORT_VALID_WORDS           = a,i,k,o,s,u,v,z,se,si,po,na,za,ze,do,od,ke,ku,ve,ní,mi,ti,by,je,to,co,ač,my,ty,on,ji,jí,už,až
 REPEAT_ALLOWED_CHARS        = oOuU
 REPEATED_DOUBLE_MIN         = 2
 VOWEL_RATIO_LOW             = 0.20
 VOWEL_RATIO_HIGH            = 0.70
+# ── word lists that live in setup/word_lists.txt ───────────────────────────
+# These five moved to setup/word_lists.txt on 2026-09-22, where they can be
+# edited by hand with a note beside each entry. The keys stay here, EMPTY, and
+# they still WIN if you set them: empty means "not overridden, use the file", so
+# the member list lives in one place while your ability to override it -- from
+# this file, from a LANGID_CONFIG pointed elsewhere, or from
+# ATRIUM_TEXT_UTILS_<KEY> in the environment -- is unchanged.
+#
+# Setting one here is the right move for a one-off experiment. Editing the file
+# is the right move for something this archive believes.
+SHORT_VALID_WORDS           =
+SHORT_EXCEPTION_TOKENS      =
+LDL_UNITS                   =
+ROT_WHITELIST               =
+GHOST_WORD_COLLISIONS       =
+
+# ── word lists that did NOT move to setup/word_lists.txt, and why ──────────
+# Five word lists moved there on 2026-09-22 (SHORT_VALID_WORDS,
+# SHORT_EXCEPTION_TOKENS, LDL_UNITS, ROT_WHITELIST, GHOST_WORD_COLLISIONS).
+# These three stayed, each for a concrete reason rather than for lack of time:
+#
+#   ACADEMIC_TITLES     is matched CASE-SENSITIVELY (`core.rstrip(".") in
+#                       ACADEMIC_TITLES`, no .lower()), and word_lists.txt folds
+#                       every token to lower case. Moving it would silently stop
+#                       `PhDr` matching.
+#   METADATA_MARKERS    carries TRAILING SPACES that are load-bearing -- `obr `
+#                       with a space matches the marker and not `obrázek` -- and
+#                       word_lists.txt strips whitespace per line. It is also the
+#                       one list read with _get_str().split(",") rather than
+#                       _get_csv_set(), which is how those spaces survive today.
+#   LDL_ALLOWED_FOLLOW  is PUNCTUATION, not words: . , / : % - ; ? ) =. It belongs
+#                       with the character sets above, and putting a character
+#                       class in a file called "word lists" would undo the reason
+#                       that file exists.
+#
+# Each is fixable -- a quoted form, or a per-section case flag -- but none is
+# fixable without making the file harder to edit by hand, which is the one thing
+# it is for.
+
 ACADEMIC_TITLES             = PhDr,MUDr,JUDr,MVDr,RNDr,PaedDr,CSc,DrSc,Ing,Mgr,Bc,PhD,DiS,prof,doc
 LDL_ALLOWED_FOLLOW          = .,/:%-;?)=
-LDL_UNITS                   = m,cm,mm,g,kg,km,ha,l,ml
 # (#3 2026-07-02 calibration) is_forgiven_headline: bare unit/abbreviation
 # tokens and short numbered headlines/captions get a Trash/Non-text -> Noisy
 # floor instead of falling through the ordinary valid-word-ratio scoring.
-SHORT_EXCEPTION_TOKENS       = mm,cm,m,g,kg,km,ha,l,ml,tb,neg,obr,str,č,čneg
 HEADLINE_MAX_WORDS          = 8
 # Pure-digit tokens longer than this are treated as GARBAGE, not harmless
 # structural numbering — keeps archive/stamp codes (e.g. "6694", "1920")
@@ -207,6 +241,25 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # without SHORT_GARBAGE_LEXICON_PATH -- advisory, because 30.runbook.md step 5a
 # measures the shape-only configuration deliberately.
 SHORT_GARBAGE_WITNESS_ENABLE            = false
+# (#30) The hand-maintained word lists. THIS IS THE FILE FOR PEOPLE WHO KNOW THE
+# MATERIAL: units, reference labels, section headings, and -- the section that did
+# not exist before 2026-09-22 -- ordinary open-class words this archive uses that
+# the program keeps getting wrong (German museum terms, Latin species names, old
+# spellings, local abbreviations, place names).
+#
+# Why it had to exist: every word list the code carried was CLOSED-class -- Czech
+# function words, units, academic titles, catalogue markers. The open-class
+# vocabulary this issue keeps mis-convicting (`Dauerleihe`, `Kaukasus`, `ssuti`,
+# `ppole`, the taxonomy) lived only in the test suite, and the one mechanism meant
+# to cover it -- SHORT_GARBAGE_LEXICON_PATH, a corpus frequency table -- ships
+# EMPTY and no such table exists anywhere in this repository. So in the shipped
+# configuration there was no open-class protection at all.
+#
+# Every section in that file is a VETO: it can stop a conviction, never create
+# one. Relative paths resolve against text_util.py, not the working directory.
+# EMPTY = fall back to the values compiled into text_util.py, which is exactly the
+# behaviour that shipped before the file existed.
+WORD_LISTS_PATH                         = setup/word_lists.txt
 # (#30 D43) What category a recognised web or e-mail address gets.
 # @david-spacil, 2026-09-22: "`Trash` = illegible. Anything legible is `Clear`,
 # easily decipherable is `Noisy` -- regardless of how useful the line is to us."

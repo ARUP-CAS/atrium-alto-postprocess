@@ -230,6 +230,118 @@ def _get_csv_set(section, key, default):
     return frozenset(t.strip() for t in raw.split(",") if t.strip())
 
 
+# ---------------------------------------------------------------------------
+# The hand-maintained word lists (#30)
+# ---------------------------------------------------------------------------
+#
+# Defined HERE, high in the module, because the constants that read it are
+# themselves module-level and are evaluated in source order. Everything below
+# needs only `_get_str`, `os`, `Path`, `functools` and `MappingProxyType`, all of
+# which exist by this point.
+
+# (#30) Where the hand-maintained word lists live. This is the one file in the
+# repository meant to be edited by the people who know the material rather than
+# by the people who deploy the code: units, reference labels, section headings,
+# and -- the section that did not exist before -- ordinary open-class words this
+# archive uses that the program keeps getting wrong.
+#
+# Every section is a VETO. Nothing in that file can make the program convict a
+# line; it can only stop it. Adding a word that was never at risk does nothing.
+#
+# EMPTY = fall back to the values compiled in below, which is exactly the
+# behaviour that shipped before the file existed. A file that omits a section
+# falls back for that section alone, so deleting a section cannot silently empty
+# a list production depends on.
+WORD_LISTS_PATH = _get_str("TEXT_UTILS", "WORD_LISTS_PATH", "setup/word_lists.txt").strip()
+if WORD_LISTS_PATH and not os.path.isabs(WORD_LISTS_PATH):
+    # Anchored to this module, not to the working directory -- the same fix
+    # 30.plan.md records for the config path itself, made here before it bites.
+    WORD_LISTS_PATH = str(Path(__file__).resolve().parent / WORD_LISTS_PATH)
+
+#: The sections `setup/word_lists.txt` may define, and the in-code fallback for
+#: each. The fallback is what the module used before the file existed, so an empty
+#: `WORD_LISTS_PATH` — or a file that simply omits a section — is byte-identical to
+#: the behaviour that shipped before 2026-09-22.
+#:
+#: `allowed` has no fallback and defaults to empty: it is the new open-class layer
+#: (#30), and an archive that has not written one has none.
+_WORD_LIST_SECTIONS: tuple[str, ...] = ("allowed", "neutral", "notation_labels", "header_labels")
+
+
+@functools.lru_cache(maxsize=4)
+def _read_word_lists(path: str, mtime: float) -> Mapping[str, frozenset]:
+    """Parse the hand-maintained section file, keyed on path+mtime so edits are seen.
+
+    Format, and it is deliberately the plainest thing that can hold several lists:
+    ``[section]`` opens a section, one token per line, ``#`` starts a comment
+    anywhere on a line, blanks are skipped, and everything is case-folded. A
+    section that is absent or empty is simply absent from the result, and the
+    caller falls back to its in-code default — so deleting a section cannot
+    silently empty a list that production depends on.
+
+    A file that cannot be read degrades to ``{}`` rather than raising. This is
+    configuration, not input: a missing file must not stop the pipeline, and the
+    fallbacks are the values that shipped for a year before the file existed.
+
+    Cached on (path, mtime) rather than zero-argument, like ``_read_token_lexicon``
+    above and for the same reason — a zero-argument cache would freeze a flag and
+    is exactly the class of bug ``_CACHES_FROM_FLAG`` exists to close (#30 D28).
+    """
+    out: dict[str, set] = {}
+    section: str | None = None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                if line.startswith("[") and line.endswith("]"):
+                    section = line[1:-1].strip().lower()
+                    out.setdefault(section, set())
+                    continue
+                if section is None:
+                    continue
+                out[section].add(line.lower())
+    except OSError:
+        return MappingProxyType({})
+    return MappingProxyType({k: frozenset(v) for k, v in out.items() if v})
+
+
+def word_list(section: str, fallback: frozenset, override: str = "") -> frozenset:
+    """One section of the hand-maintained file, with the config key still on top.
+
+    PRECEDENCE, and the middle layer is the new one:
+
+        1. an explicit config/env value  -- `ATRIUM_TEXT_UTILS_<KEY>`, or the key
+           in whatever `LANGID_CONFIG` points at;
+        2. the `[section]` in `setup/word_lists.txt`;
+        3. the in-code default.
+
+    Layer 1 exists because moving a list into the file would otherwise TAKE AWAY
+    an operator's ability to override it -- `tests/test_config_constants.py`'s
+    tier-1 round-trip caught exactly that, by pointing `LANGID_CONFIG` at an
+    alternate config and finding `ROT_WHITELIST` no longer followed it. The keys
+    therefore stay in `setup/config.txt`, but EMPTY: empty means "not overridden,
+    use the file", so the member list lives in one place while the override path
+    stays open.
+
+    Read at CALL time, not at import, so an operator editing the file does not
+    have to restart a long-running service to see the change -- the mtime key on
+    the cache above is what makes that cheap.
+    """
+    override = (override or "").strip()
+    if override:
+        return frozenset(t.strip() for t in override.split(",") if t.strip())
+    path = (WORD_LISTS_PATH or "").strip()
+    if not path:
+        return fallback
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return fallback
+    return _read_word_lists(path, mtime).get(section.lower(), fallback)
+
+
 # (#30) The two [CLASSIFY] language fallbacks, named once.
 #
 # They used to be spelled out at three call sites -- here, classify_TEXT.main()
@@ -371,11 +483,11 @@ PAGE_PPL_LONG_MIN_WC = _get_int("TEXT_UTILS", "PAGE_PPL_LONG_MIN_WC", 4)
 # Minimum number of such lines before a page reference is trusted at all.
 PAGE_PPL_MIN_LONG_LINES = _get_int("TEXT_UTILS", "PAGE_PPL_MIN_LONG_LINES", 3)
 
-SHORT_VALID_WORDS = _get_csv_set(
-    "TEXT_UTILS",
-    "SHORT_VALID_WORDS",
-    "a,i,k,o,s,u,v,z,se,si,po,na,za,ze,do,od,ke,ku,ve,ní,mi,ti,by,je,to,co,ač,my,ty,on,ji,jí,už,až",
+SHORT_VALID_WORDS_DEFAULT = frozenset(
+    "a,i,k,o,s,u,v,z,se,si,po,na,za,ze,do,od,ke,ku,ve,ní,mi,ti,by,je,to,co,ač,my,ty,on,ji,jí,už,až".split(",")
 )
+#: Hand-editable in setup/word_lists.txt [short_valid] since 2026-09-22.
+SHORT_VALID_WORDS = word_list("short_valid", SHORT_VALID_WORDS_DEFAULT, _get_str("TEXT_UTILS", "SHORT_VALID_WORDS", ""))
 
 REPEAT_ALLOWED_CHARS = _get_str("TEXT_UTILS", "REPEAT_ALLOWED_CHARS", "oOuU")
 REPEATED_DOUBLE_MIN = _get_int("TEXT_UTILS", "REPEATED_DOUBLE_MIN", 2)
@@ -388,12 +500,14 @@ ACADEMIC_TITLES = _get_csv_set(
 )
 
 LDL_ALLOWED_FOLLOW = frozenset(_get_str("TEXT_UTILS", "LDL_ALLOWED_FOLLOW", ".,/:%-;?)="))
-LDL_UNITS = _get_csv_set("TEXT_UTILS", "LDL_UNITS", "m,cm,mm,g,kg,km,ha,l,ml")
+LDL_UNITS_DEFAULT: frozenset = frozenset("m,cm,mm,g,kg,km,ha,l,ml".split(","))
+#: Hand-editable in setup/word_lists.txt [ldl_units] since 2026-09-22.
+LDL_UNITS: frozenset = word_list("ldl_units", LDL_UNITS_DEFAULT, _get_str("TEXT_UTILS", "LDL_UNITS", ""))
 
-SHORT_EXCEPTION_TOKENS = _get_csv_set(
-    "TEXT_UTILS",
-    "SHORT_EXCEPTION_TOKENS",
-    "mm,cm,m,g,kg,km,ha,l,ml,tb,neg,obr,str,č,čneg",
+SHORT_EXCEPTION_TOKENS_DEFAULT = frozenset("mm,cm,m,g,kg,km,ha,l,ml,tb,neg,obr,str,č,čneg".split(","))
+#: Hand-editable in setup/word_lists.txt [short_exception] since 2026-09-22.
+SHORT_EXCEPTION_TOKENS = word_list(
+    "short_exception", SHORT_EXCEPTION_TOKENS_DEFAULT, _get_str("TEXT_UTILS", "SHORT_EXCEPTION_TOKENS", "")
 )
 HEADLINE_MAX_WORDS = _get_int("TEXT_UTILS", "HEADLINE_MAX_WORDS", 8)
 HEADLINE_MAX_DIGITS = _get_int("TEXT_UTILS", "HEADLINE_MAX_DIGITS", 2)
@@ -733,10 +847,18 @@ def _transform_word(w: str, glyph_map: dict) -> str | None:
     return "".join(reversed(out))
 
 
-ROT_WHITELIST: frozenset = _get_csv_set(
-    "TEXT_UTILS", "ROT_WHITELIST", "po,pod,do,od,on,ony,by,bez,ne,nebo,ven,den,zde,se,ve,mez,pouze,bude"
+ROT_WHITELIST_DEFAULT: frozenset = frozenset(
+    "po,pod,do,od,on,ony,by,bez,ne,nebo,ven,den,zde,se,ve,mez,pouze,bude".split(",")
 )
-_GHOST_REAL_WORD_COLLISIONS: frozenset = _get_csv_set("TEXT_UTILS", "GHOST_WORD_COLLISIONS", "no,bo")
+#: Hand-editable in setup/word_lists.txt [rot_whitelist] since 2026-09-22.
+ROT_WHITELIST: frozenset = word_list(
+    "rot_whitelist", ROT_WHITELIST_DEFAULT, _get_str("TEXT_UTILS", "ROT_WHITELIST", "")
+)
+_GHOST_REAL_WORD_COLLISIONS_DEFAULT: frozenset = frozenset({"no", "bo"})
+#: Hand-editable in setup/word_lists.txt [ghost_collisions] since 2026-09-22.
+_GHOST_REAL_WORD_COLLISIONS: frozenset = word_list(
+    "ghost_collisions", _GHOST_REAL_WORD_COLLISIONS_DEFAULT, _get_str("TEXT_UTILS", "GHOST_WORD_COLLISIONS", "")
+)
 
 
 def _build_ghostlist() -> frozenset:
@@ -915,12 +1037,41 @@ def compute_vowel_ratio(text: str) -> float:
     return sum(1 for c in denom if c in VOWEL_CHARS) / len(denom)
 
 
+def _is_allowed_token(core: str) -> bool:
+    """Is this token on the archive's hand-maintained allow list? (#30)
+
+    Reads `setup/word_lists.txt` `[allowed]`, which ships EMPTY -- so this returns
+    False for everything until an archive writes one, and every caller below is a
+    no-op in the shipped configuration.
+
+    WHAT IT MEANS: the token contributes NOTHING to the line's quality score. It
+    stops counting toward the invalid-word, weird-word, gibberish and fused-word
+    measurements -- which together are 0.60 of the score's weight. It does not
+    count as a GOOD word either: `compute_valid_ratio` treats it as non-evaluable,
+    the way `_is_neutral_token` already treats a unit. "Not debuffed" is the ask;
+    actively raising the ratio would be more than the ask.
+
+    MATCHING IS EXACT, case-folded and `_STRIP_CHARS`-stripped, and deliberately
+    does NOT fold diacritics -- unlike `_NOTATION_LABELS_FOLDED`, which does.
+    Folding here would mean that listing `jáma` also excuses `jama`, i.e. the
+    accent-stripped form OCR produces when it fails. That is the damaged reading,
+    and a list of words the archive says are real should not quietly also cover
+    the ways they come out wrong. An archive that wants both lists both.
+    """
+    lst = word_list("allowed", frozenset())
+    if not lst:
+        return False
+    return core.strip(_STRIP_CHARS).lower() in lst
+
+
 def detect_gibberish_words(text: str) -> int:
     count = 0
     for word in text.split():
         flagged = False
         for sub in _split_subtokens(word):
             core = sub.strip(_STRIP_CHARS)
+            if _is_allowed_token(core):
+                continue
             if len(core) < 4 or core.isupper():
                 continue
             numeric_chars = sum(1 for c in core if c.isdigit() or c in "-./,;:")
@@ -974,7 +1125,7 @@ def detect_wx_words(text: str) -> int:
         flagged = False
         for sub in _split_subtokens(word):
             core = sub.strip(_STRIP_CHARS)
-            if not core:
+            if not core or _is_allowed_token(core):
                 continue
             if sum(1 for c in core if c in "wW") >= WX_REPEAT_MIN or sum(1 for c in core if c in "xX") >= WX_REPEAT_MIN:
                 flagged = True
@@ -1001,7 +1152,7 @@ def detect_fused_words(text: str) -> int:
         flagged = False
         for sub in _split_subtokens(word):
             core = sub.strip(_STRIP_CHARS)
-            if not core or not any(c.isalpha() for c in core):
+            if not core or not any(c.isalpha() for c in core) or _is_allowed_token(core):
                 continue
             if len(core) > 14 or _RE_FUSED_CONSONANT_RUN.search(core) or _RE_FUSED_VOWEL_RUN.search(core):
                 flagged = True
@@ -1141,6 +1292,11 @@ def parse_line_splits(line_text: str) -> tuple[str, str, str]:
 
 def score_word(word: str) -> float:
     core = word.strip(_STRIP_CHARS)
+    # (#30) The archive's own allow list, before any shape test. A word a person
+    # has vouched for carries no weirdness, whatever it looks like -- which is the
+    # point, since every word on that list is there BECAUSE it looks wrong.
+    if _is_allowed_token(core):
+        return 0.0
     if len(core) == 1:
         if core in SINGLE_CHAR_ALLOWED or "." in word:
             return 0.0
@@ -2775,7 +2931,7 @@ def _looks_like_date_or_document_reference(text_source: str) -> bool:
 
 _RE_TOC_ENTRY = re.compile(r"^\d{1,2}[.,]\s+\S.*\s(?:\d{1,3}|\S{1,2}\s*[-–]\s*\d{1,3})$")
 
-_DOCUMENT_HEADER_LABELS = frozenset(
+_DOCUMENT_HEADER_LABELS_DEFAULT = frozenset(
     {
         "obsah",
         "úvod",
@@ -2789,6 +2945,8 @@ _DOCUMENT_HEADER_LABELS = frozenset(
         "resumé",
     }
 )
+#: Hand-editable in setup/word_lists.txt [header_labels] since 2026-09-22.
+_DOCUMENT_HEADER_LABELS = word_list("header_labels", _DOCUMENT_HEADER_LABELS_DEFAULT)
 
 
 def _looks_like_document_structure_label(text_source: str) -> bool:
@@ -2900,7 +3058,12 @@ def compute_digit_ratio(text: str) -> float:
 
 _RE_INITIALS = re.compile(r"^([A-ZÁČĎÉĚÍŇÓŘŠŤŮÚÝŽ]\.?){1,3}$")
 _RE_DOTTED_ABBREV = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ſ]{1,4}(\.[A-Za-zÀ-ÖØ-öø-ſ]{1,4})*$")
-_NEUTRAL_LEXICON = frozenset({"dr", "x", "mm", "cm", "dm", "km", "g", "dkg", "kg", "ha", "hl", "ks", "m", "l"})
+#: Units and measurement abbreviations: not judged as words when the program
+#: measures how much of a line is real vocabulary. Hand-editable in
+#: setup/word_lists.txt [neutral] since 2026-09-22; the literal below is the
+#: fallback and is what shipped before the file existed.
+_NEUTRAL_LEXICON_DEFAULT = frozenset({"dr", "x", "mm", "cm", "dm", "km", "g", "dkg", "kg", "ha", "hl", "ks", "m", "l"})
+_NEUTRAL_LEXICON = word_list("neutral", _NEUTRAL_LEXICON_DEFAULT)
 _RE_ROMAN_TOKEN = re.compile(r"^[IVXLCDM]{1,7}$")
 _RE_ABBREV_NUM = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ſ]{1,4}[.,]\d+[a-z]?$")
 
@@ -2975,7 +3138,7 @@ def _fold_diacritics(word: str) -> str:
 # it was the single false positive in the reviewer's 30-line sample. A closed set
 # is the same technique `_DOCUMENT_HEADER_LABELS` already uses, and it costs
 # nothing in recall because the vocabulary of these labels is genuinely small.
-_NOTATION_LABELS = frozenset(
+_NOTATION_LABELS_DEFAULT = frozenset(
     {
         "lokalisace",
         "lokalizace",
@@ -3020,6 +3183,10 @@ _NOTATION_LABELS = frozenset(
         "komponenta",
     }
 )
+#: Hand-editable in setup/word_lists.txt [notation_labels] since 2026-09-22. The
+#: closure is the point -- see the comment above -- so the file is the place to
+#: add a real label, not a reason to reopen the pattern.
+_NOTATION_LABELS = word_list("notation_labels", _NOTATION_LABELS_DEFAULT)
 _NOTATION_LABELS_FOLDED = frozenset(_fold_diacritics(w) for w in _NOTATION_LABELS)
 
 # `Lokalisace: MM-III`, `sonda: III` — a KNOWN label, then a grid reference.
@@ -3195,7 +3362,10 @@ def compute_valid_ratio(text: str, word_set: set | None = None) -> float:
                 valid += 1
         else:
             next_core = words[wi + 1].strip(_STRIP_CHARS) if wi + 1 < len(words) else ""
-            if _is_neutral_token(core, word, next_core):
+            # (#30) Non-evaluable, exactly as a unit is: the token neither helps
+            # the ratio nor hurts it. Counting it VALID would raise the score,
+            # which is more than "not debuffed".
+            if _is_allowed_token(core) or _is_neutral_token(core, word, next_core):
                 continue
             evaluable += 1
             if core.lower() in SHORT_VALID_WORDS or core in SINGLE_CHAR_ALLOWED:

@@ -429,6 +429,50 @@ scanning error in this archive?** In ordinary Czech it very nearly is. In an arc
 carries German museum terms, French section headings, Latin species names and foreign place names,
 we suspect it is not. You know this material and we do not.
 
+> ## 📊 And we have now measured it — 2026-09-22
+>
+> Two runs finished after you answered. Both scored the program against the 2,064 lines you and
+> @DanaKriv labelled.
+>
+> **First: four vowels instead of three is not an improvement.** We tried it, and against your
+> labels it changes nothing that matters — the same number of mistakes, the same number of readable
+> lines lost, and two lines fixed against two lines broken. At the same time it finds *less*
+> rubbish: 32 `Trash` lines out of 180 instead of 34. So the simple change you offered as a
+> fallback is now closed. It is not harmful; it is just not worth making.
+>
+> **Second: the new rule as a whole passes its test.** Switching it on reduces mistakes from 513 to
+> 503 and does not lose a single extra readable line. It finds 34 of the 180 `Trash` lines instead
+> of 22 — half as many again. Twelve lines improve, two get worse, and the result is statistically
+> solid rather than luck.
+>
+> **The interesting part is those two lines that get worse.** They are the only two the rule gets
+> wrong in the whole set, and both are caught by the three-vowel test — the exact test you told us
+> was wrong for German and French. One of them is a German sentence:
+>
+> ```
+> Frauenzimmerbad", sämtlic Gesellschastsbäder,
+> ```
+>
+> **So your answer and our measurement agree completely.** Everything else the rule does is
+> uncontested; the only thing in dispute is the one test you identified, on the one kind of text
+> you identified.
+>
+> **What the language split would do, worked out line by line.** We have now built it — three
+> vowels count as damage in Czech, four in German and French — and checked it against those same
+> 14 lines. It would spare the German sentence above, which is a clear win. It would also let
+> through one line of real rubbish that the current rule catches. So: **one fewer readable line
+> destroyed, one more rubbish line kept.**
+>
+> That is a better trade than it sounds, because the two mistakes are not equally bad — losing a
+> readable German sentence is worse than keeping a line of rubbish. But it does mean the total
+> number of mistakes goes up by one, and our own acceptance test refuses any change that raises
+> that total. **So the rule we wrote for ourselves may be the thing standing in the way, not the
+> change.** We would rather tell you that now than discover it after the next run.
+>
+> One thing we still need before any of this is final: the program records which language it
+> thinks each line is, and nobody has looked at what it says for these four lines. That is the next
+> check and it is a small one.
+
 > ## ✅ Answered 2026-09-22 — split by language, or failing that try four
 >
 > *"For Czech, 3+ vowels in a row is a good rule – Czech has no triphthongs. For German and French
