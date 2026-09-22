@@ -3,8 +3,8 @@
 **For:** @david-spacil and @DanaKriv
 **Issue:** [ufal/atrium-alto-postprocess#30](https://github.com/ufal/atrium-alto-postprocess/issues/30)
 **Why this exists:** every other document in this issue is about a decision. This one is about
-the corpus, because the stage-8 run was the first to look at **all 113,100 documents** rather than
-a 822-document sample, and what it found says more about the archive than about the algorithm.
+the archive itself. The stage-8 run was the first to look at **all 113,100 documents** rather than
+a sample of 822. What it found says more about the archive than about the program.
 
 Nothing here asks you for anything. The two documents that do are
 [`issue30_annotation_guide.md`](issue30_annotation_guide.md) (@DanaKriv) and
@@ -44,8 +44,8 @@ errors automatically — see §4.
 
 ## 2. The modern half of the archive is a different kind of document
 
-This issue is titled *"Algorithm change for 2010+ years documents"*, and the full-collection pass
-is the first measurement that shows why that framing was right.
+This issue is titled *"Algorithm change for 2010+ years documents"*. The full-collection pass is
+the first measurement that shows why that framing was right.
 
 |   decade | lines the rule reaches | of those, currently kept as good text |      rate |
 |---------:|-----------------------:|--------------------------------------:|----------:|
@@ -92,8 +92,9 @@ Of the 36,744 lines that are currently kept as good text and would be newly disc
 
 **Roughly 59% is text that was read correctly.** An abbreviation for *popelnicová pole*, a company
 name in a page header, `Lepus europaeus`, `Triticum monococcum`, `http://www.arub.cz`. The
-question for that 59% is never "did the scanner get this right" — it plainly did — but "is this
-the kind of text this project wants to keep", which is a different question and a human one.
+question for that 59% is never "did the scanner get this right". It plainly did. The question is
+"is this the kind of text the project wants to keep" — which is a different question, and a human
+one.
 
 **The good news, and it is genuinely good:** the program already has a mechanism for this. It
 builds a dictionary from the archive's own words, and anything appearing across enough documents
@@ -113,27 +114,29 @@ tried three ways to separate that class from genuine doubled-letter scanning err
 3. **Is it concentrated in one collection?** — the idea being that a scanner artefact belongs to
    the machine that made it, while an abbreviation is a shared convention. Measured:
 
-| token       |  ARUP |    ARUB |                  |
+| spelling    |  ARUP |    ARUB |                  |
 |-------------|------:|--------:|------------------|
 | **`ppole`** | **3** | **226** | the abbreviation |
 | `ssuti`     |   152 |      43 | artefact         |
 | `vvkop`     |     1 |      29 | artefact         |
 | `jjámy`     |     2 |       8 | artefact         |
 
-The abbreviation is **the most collection-concentrated token of the eight** — it looks more like a
+The abbreviation is **the most one-sided of the eight spellings** — it looks more like a
 scanner artefact than any actual artefact does, because it is a convention of *one institution's*
 forms. The test does not fail, it inverts.
 
-**So there is no frequency-shaped signal that separates a local convention from a local scanning
-error.** This is the concrete reason @david-spacil's reading of those eight tokens is not a
-formality: at this scale it is the only evidence there is. The specific open question is whether
-`ssuti` (195 documents), `ssutí` (142) and `ssutě` (64) are still scanning errors — appearing in
+**So no counting method separates a local convention from a local scanning error.** This is why
+@david-spacil's reading of those eight tokens is not a formality. At this scale it is the only
+evidence there is.
+
+The specific open question: are `ssuti` (195 documents), `ssutí` (142) and `ssutě` (64) still
+scanning errors? Appearing in
 195 separate documents is not what we would have expected from a scan artefact.
 
 ## 5. The archive's register is abbreviated, coded and full of proper nouns — and that breaks dictionary tests
 
-We tested a change that would require a line's words to be attested in the archive's vocabulary
-before calling it good. It finds a lot of genuine rubbish — but it destroys **540 lines of
+We tested a change that would require a line's words to be found in the archive's own vocabulary
+before calling the line good. It finds a lot of genuine rubbish — but it destroys **540 lines of
 perfectly good text for every 212 it fixes**, and it triples the number of good lines lost.
 
 The expectation was that this would be a language problem: a Czech-centric dictionary convicting
@@ -204,17 +207,42 @@ What has happened is that one label is answering two different questions:
 2. **Is this running text worth keeping and indexing?** — usefulness. A URL, a form label, an
    inventory code and a species name are all perfectly legible and none of them are prose.
 
-The five-category scheme already has a place for the second question — **`Non-text`** — and it is
-not being used for it.
+We first thought the second question already had a home — **`Non-text`**. Checking the documents
+properly, it does not, and that turned up a second problem we should have found sooner.
 
-**This needs a decision from you two, and it should come before the annotation, not after.** If
-the answer is "legibility, as written", then a correctly-scanned URL is `Clear`, the program is
-currently mislabelling several thousand lines, and the quality metrics will move when that is
-fixed. If the answer is "we want prose and the label is shorthand for that", then the definitions
-need rewriting, and `Non-text` is probably where footers, URLs and form labels belong. Either is
-workable. What does not work is leaving it implicit: an annotator applying the written definitions
-will mark `http://www.arub.cz` as `Clear`, the measured accuracy of the rule will change, and
-nobody will be able to tell whether that was the annotator or the definition.
+**The five categories are written down in two places, and the two do not agree.** The annotation
+guide defines them by whether a person can read the line. The main `README.md` defines them by what
+the program did and what should happen to the line next. Three conflicts matter:
+
+|               | the annotation guide says                                               | `README.md` says                                                                                                                                              |
+|---------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Trash`       | "scanning rubbish — nothing is lost by deleting it"                     | "should be re-processed by another OCR tool"                                                                                                                  |
+| `Non-text`    | "not language at all — a table border, a page decoration, a ruler mark" | whatever the pre-filter caught: too short, too few different characters, under 30% letters — and it is meant to be searched for **site and find identifiers** |
+| a legible URL | `Clear`                                                                 | can be `Trash`                                                                                                                                                |
+
+The `Trash` row matters to you as data providers. **"Delete it" and "re-scan it with another OCR
+tool" are not the same instruction.** Which one is meant changes what you would do with the output.
+
+The `Non-text` row is why our easy answer fails. The program already puts real, meaningful content
+there — an inventory number such as `A123/2024` is `Non-text` today, and the README says that
+category "may be checked for identifiers of finds/sites". It is not an empty shelf we can move web
+addresses onto.
+
+**So this needs a decision from you two, and it should come before the annotation.** The question
+is the first one. **Is the label about whether a person can read the line? Or about whether the
+line is useful as text?**
+
+* If the answer is *readability*, then a correctly scanned URL is `Clear`. The program is
+  mislabelling several thousand lines, and the quality figures will move once that is fixed.
+* If the answer is *usefulness*, then the definitions need rewriting — and we will need a new home
+  for footers, URLs and form labels, because `Non-text` is already occupied.
+
+Either answer works. What does not work is leaving it unsaid. An annotator applying the written definitions will mark
+`http://www.arub.cz` as `Clear`. The measured accuracy of the rule will then change, and nobody
+will be able to tell whether that came from the annotator or from the definition.
+
+Once you decide, we will make the program, the annotation guide and the README agree with one
+another. At the moment there are three descriptions of five categories.
 
 ## 7b. Which rules actually protect the readable text, and which destroy it
 
@@ -236,14 +264,14 @@ against your 2,064 annotated lines gives this:
 **The third row is the one worth knowing.** The short-garbage rule is the rule
 this whole issue has been about — the one your patch narrowed in July. It is
 itself responsible for **7 of the 40** readable lines the program currently
-loses. The figure of 40 has been the yardstick every decision in this issue is
-measured against, and it turns out part of it is produced by the very rule we
-have been trying to make safer, rather than being a fixed background cost.
+loses. The figure of 40 has been the yardstick for every decision in this issue.
+It turns out that part of it is produced by the very rule we have been trying to
+make safer. It is not a fixed background cost.
 
 **One caution about the same measurement, because the table it comes from looks
 more decisive than it is.** Seven of the 23 rules score *better* when removed. It
 is tempting to read that as "delete seven rules". We do not think it is, for a
-plain reason: the measurement has no statistical test attached, and five of those
+plain reason. The measurement has no statistical test attached. And five of those
 seven move the score by less than a single annotated line out of 2,064. That is
 noise, not a finding. Only two move enough to be worth a proper test, and both of
 them **cost** readable lines when removed. Nothing here is a reason to remove
@@ -268,9 +296,9 @@ recommended deleting the feature the project has spent two months building.
 * **What is left after that is a genuine long tail** — about 9,900 lines across 7,400 different
   strings, 94% of which occur exactly once. That is the part where a human eye is irreplaceable,
   and it is what the re-cut annotation request will sample.
-* **Two things cannot be settled by any amount of computation**: whether those eight doubled-letter
-  tokens are conventions or errors at full scale (§4), and whether `Trash` means illegible or
-  means not-prose (§7).
+* **Two things cannot be settled by any amount of computation.** Whether those eight
+  doubled-letter tokens are conventions or errors at full scale (§ 4). And whether `Trash` means
+  illegible, or means not-prose (§ 7).
 * **The rule we have been narrowing is part of the cost, not just the fix.** The
   short-garbage rule destroys 7 of the 40 readable lines the program loses; the
   short-line rule saves 31. Both numbers are new, and neither was available

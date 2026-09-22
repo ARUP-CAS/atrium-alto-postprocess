@@ -92,10 +92,11 @@ label there changes nothing.
 | `frame.json` |       — | A small technical file. **Please send it back with the others.** Without it the 200 rows cannot be turned into a number.      |
 
 As delivered, `census.csv` claims to settle 82.8% of the problem in 592 decisions. **That is the
-figure the notice at the top of this document retracts.** Against the population that is really
-at risk it settles about 31%, because the items that made the census efficient — `ppole`, the
-`ARCHAIA` company name, `Lepus europaeus`, `vodovod` — are exactly the ones the dictionary
-already protects. The re-cut request will be smaller and will lean on `sample.csv`'s method
+figure the notice at the top of this document withdraws.** Against the text that is really at
+risk, it settles about 31%.
+
+The reason is simple. The items that made the list efficient — `ppole`, the `ARCHAIA` company
+name, `Lepus europaeus`, `vodovod` — are exactly the ones the dictionary already protects. The re-cut request will be smaller and will lean on `sample.csv`'s method
 rather than on a list of the most common text.
 
 ---
@@ -203,9 +204,9 @@ of your original complaint: damaged but readable, currently being thrown away. W
 damaged-but-readable line is worth keeping in the archive is a judgement about what the output is
 **for**, and it is yours to make, not ours.
 
-Note that several rows above are on the list only because the dictionary was switched off when
-the files were built — `ppole`, `ARCHAIA`, `Lepus europaeus`, `vodovod` and `Dauerleihe` are all
-protected once it is on. They are still worth your opinion if you have one, but they are no longer
+Several rows above are on the list only because the dictionary was switched off when the files
+were built. `ppole`, `ARCHAIA`, `Lepus europaeus`, `vodovod` and `Dauerleihe` are all protected
+once it is switched on. They are still worth your opinion if you have one. But they are no longer
 the risk.
 
 ---
@@ -271,10 +272,11 @@ We think one label is being asked two different questions:
   labels would belong.
 
 Either answer is workable and we will do whichever you prefer. What we cannot do is leave it
-unsaid: if you start labelling and mark `http://www.arub.cz` as `Clear` — which is the correct
-answer under the definitions as written — the measured accuracy of the new rule will change, and
-we will not be able to tell whether that happened because of the definition or because of the
-rule. **A couple of sentences on this would unblock more than the labels will.**
+unsaid. Suppose you start labelling and mark `http://www.arub.cz` as `Clear`. That is the correct
+answer under the definitions as written. But the measured accuracy of the new rule will then
+change, and we will not be able to tell whether that came from the definition or from the rule.
+
+**A couple of sentences on this would unblock more than the labels will.**
 
 ### 7.3 A re-review we owe you
 
