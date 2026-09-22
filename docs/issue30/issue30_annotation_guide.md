@@ -7,26 +7,23 @@
 
 ---
 
-> ## ⏸️ Please wait before starting — 2026-09-21
+> ## ✅ Ready to start — 2026-09-22
 >
-> **The files currently attached are sized against the wrong population, and we would be wasting
-> your time.** We measured the risk with one of the program's own safeguards switched off by
-> mistake. With it switched on — which is how the program actually runs — **about three quarters
-> of what we were going to ask you about cannot be affected at all**, including the single
-> biggest item (`ppole`, 15,466 lines) and most of the rest of the first page.
+> **The earlier notice asking you to wait is withdrawn.** The files have been rebuilt and
+> replaced, and these are the ones to work on.
 >
-> We are re-cutting the request now. It will be **smaller**, and it will be mostly a random
-> sample rather than a list of the most common text, because once the safe items are removed
-> there is no "most common" left — 94% of what remains occurs exactly once.
+> What happened: we measured the risk with one of the program's own safeguards switched off by
+> mistake. With it switched on — which is how the program actually runs — **82% of what we were
+> going to ask you about cannot be affected at all**, including the single biggest item of the
+> old list, `ppole`. The request is now **357 decisions instead of 792**, and most of it is a
+> random sample rather than a list of the most common text, because once the protected items are
+> removed there is no "most common" left: 96% of what remains occurs exactly once.
 >
-> Nothing you may already have done is wasted: the answers still join back. But please do not
-> start a fresh session on these files. **Section 7.2 below is a question you can answer right
-> now, without the files, and it is currently the most useful thing in this document.**
+> Nothing you may already have done is wasted. Any answers from the earlier files still join back.
 >
-> The full reasoning is in `agent_dev_logs/digests/30.digest.md` § T1 and T2. We are telling you
-> in this much detail because this is the third time in this issue that a summary of a run
-> turned out not to survive reading the run itself, and you are entitled to know when that
-> affects a request we made of you.
+> **One thing is still open, and § 7.2 is where it is written down.** It is a question about what
+> `Trash` is for, and you can answer it without the files. If you would rather settle that first,
+> please do — but it does not block the labelling.
 
 ---
 
@@ -48,7 +45,7 @@ We cannot answer this ourselves. The program can only compare itself against its
 answers, which proves nothing. We need a person who knows the archive to look at the actual
 text and say what each line is.
 
-**That is what we are asking you for.** It is 293 decisions.
+**That is what we are asking you for.** It is 357 decisions.
 
 ---
 
@@ -57,26 +54,28 @@ text and say what each line is.
 This is worth one paragraph, because it explains why the request is small and why it is the
 only thing that can help.
 
-The new rule can affect **100,824 lines** across the whole archive. Of those lines, a few dozen
+The new rule can affect **48,909 lines** across the whole archive. Of those lines, a few dozen
 currently have a human opinion attached — far less than one line in a thousand. Every decision we
 have made so far therefore rests on about **fifteen lines** where switching the rule on changes
 the answer. Fifteen lines is not enough to decide anything about an archive of 113,100 documents,
 and no amount of extra programming changes that number. Only a person looking at text changes it.
 
-What programming *did* change, in the last few days, is **how many of those 100,824 lines are
-genuinely at stake**. The program keeps a dictionary built from the archive's own words, and
-anything appearing across enough documents is left alone by the new rule. We had measured the
-risk without that dictionary loaded. With it loaded, the number of lines that are both kept today
-and threatened by the rule drops from **37,555 to about 9,900**. That is the re-cut described in
-the notice above.
+What programming *did* change is **how many of those 48,909 lines are genuinely at stake**. The
+program keeps a dictionary built from the archive's own words, and anything appearing across
+enough documents is left alone by the new rule. We had first measured the risk without that
+dictionary loaded. With it loaded, the number of lines that are both kept today and threatened by
+the rule drops from **37,555 to 6,714**. That is why this request is so much smaller than the
+first one.
 
 ---
 
 ## 3. What is in the two files
 
-The 100,824 lines are not 100,824 different pieces of text. The archive repeats itself: the same
-word appears on printed forms in hundreds of documents. In total there are **50,042 different
-pieces of text**, and one of them, `ppole`, appears **15,466 times** on its own.
+The 48,909 lines are not 48,909 different pieces of text. The archive repeats itself: the same
+word appears on printed forms in many documents. In total there are **42,248 different pieces of
+text**. The repetition is much weaker than it used to be, though, because the items that repeated
+most are the ones the dictionary now protects: on average each piece of text appears only **1.1
+times**, and 96% of the text at risk appears exactly once.
 
 So we are not asking you to look at lines. We are asking you to look at **each different piece
 of text once**. One decision settles every line that contains it.
@@ -87,17 +86,21 @@ label there changes nothing.
 
 | file         |    rows | what it is                                                                                                                    |
 |--------------|--------:|-------------------------------------------------------------------------------------------------------------------------------|
-| `census.csv` | **592** | The most common at-risk text, plus every piece of text the program currently answers in two different ways.                   |
+| `census.csv` | **157** | The most common at-risk text, every piece of text the program currently answers in two different ways, and 39 checks.         |
 | `sample.csv` | **200** | A random selection from the long tail of rare text. These are chosen by computer so that we can calculate a result from them. |
 | `frame.json` |       — | A small technical file. **Please send it back with the others.** Without it the 200 rows cannot be turned into a number.      |
 
-As delivered, `census.csv` claims to settle 82.8% of the problem in 592 decisions. **That is the
-figure the notice at the top of this document withdraws.** Against the text that is really at
-risk, it settles about 31%.
+`census.csv` settles **18.1%** of the problem in 157 decisions, and `sample.csv` estimates the
+rest to within about seven percentage points.
 
-The reason is simple. The items that made the list efficient — `ppole`, the `ARCHAIA` company
-name, `Lepus europaeus`, `vodovod` — are exactly the ones the dictionary already protects. The re-cut request will be smaller and will lean on `sample.csv`'s method
-rather than on a list of the most common text.
+The old version of this file claimed 82.8% in 592 decisions, and that figure was real — but it
+was measured over text most of which was never at risk. The items that made the old list
+efficient — `ppole`, the `ARCHAIA` company name, `Lepus europaeus`, `vodovod` — are exactly the
+ones the dictionary already protects. Take them out and there is no efficient list left, so the
+work now rests on `sample.csv` rather than on a list of the most common text.
+
+One row of the 157 often covers several spellings of the same thing: 357 decisions cover **516
+different spellings** in total. The `variants` column shows which ones.
 
 ---
 
@@ -166,48 +169,54 @@ direction in particular:
   *not* evidence of rubbish. `Kaukasus` and `Schuhleistenkeilbruchstueck` both score zero and
   both are perfectly good German archaeological words.
 * `edit1` in `nearest_attested` means "one letter different". **This is often a coincidence.**
-  `Linum` and `ilium` are one letter apart and both are real Latin words. We can now put a number
-  on how much of the evidence this affects: **90% of all the suggestions in these files are
-  `edit1`** (12,511 of 13,972), and they were generated with a setting that our own tooling warns
-  is too permissive on an archive this size. The re-cut request will use a stricter setting. Until
-  then, treat `nearest_attested` as a prompt to look, never as a reason to agree.
+  `Linum` and `ilium` are one letter apart and both are real Latin words. We can put a number on
+  how much of the evidence this affects: **94% of all the suggestions in these files are `edit1`**
+  (9,649 of 10,246), and they were generated with a setting that our own tooling warns is too
+  permissive on an archive this size. We meant to tighten that setting when the files were rebuilt
+  and did not, so this has not improved. Please treat `nearest_attested` as a prompt to look,
+  never as a reason to agree.
 
 And "recoverable" does not mean "damaged". `ppole` can be reconstructed as `pole`, but David has
 told us it is an **abbreviation** for *popelnicová pole*, not a scanning error at all. That
 correction changed several of our conclusions, which is a good illustration of why we are asking
 you rather than measuring harder.
 
+The opposite case is in the files too. `Dauerleihe` scores **0.00**, which here means only that
+this archive has never used the word often enough for us to know it. It is a perfectly good
+German word. A score of zero is not evidence against a line.
+
 ---
 
 ## 6. Where to start, and some real rows
 
 `census.csv` is sorted so that the largest decisions come first — the first row alone covers
-15,676 lines. Please read § 7.2 before working down it, and see the notice at the top of this
-document about why the re-cut version is worth waiting for.
+305 lines. Please read § 7.2 before working down it.
 
-Some rows you will meet early:
+**None of the examples in the earlier version of this guide are here any more.** `ppole`,
+`ARCHAIA`, `Lepus europaeus`, `vodovod` and `Mammalia indet.` are all protected by the archive's
+own dictionary, so no answer about them can change anything. They have been removed from the
+request. What is left is a different kind of text:
 
-| text                  |  lines | the program says                     | our question                                                              |
-|-----------------------|-------:|--------------------------------------|---------------------------------------------------------------------------|
-| `ppole`               | 15,676 | `Clear:15,494` `Noisy:180` `Trash:2` | David says this is an abbreviation. Should it stay `Clear`?               |
-| `ARCHAIA`             |  1,176 | `Clear:1,008` `Trash:116` `Noisy:52` | Your own company name, answered three ways. Which is right?               |
-| `ARCHAIA Brno o.p.s.` |  1,121 | `Noisy:680` `Trash:441`              | The same name with the town — and a different answer.                     |
-| `Lepus europaeus`     |    976 | `Clear:955` `Noisy:16` `Trash:5`     | An animal name. We think keeping it is right — please confirm.            |
-| `Mammalia indet.`     |    910 | `Trash:472` `Noisy:438`              | Near coin-flip on identical text. Which is right?                         |
-| `vodovod`             |    619 | `Clear:331` `Trash:207` `Noisy:81`   | An ordinary Czech word the rule dislikes for its repeated letters.        |
-| `1 fraament okraie`   |    530 | `Trash` (mostly)                     | Readable as *"1 fragment okraje"*. Is it worth keeping, or is it rubbish? |
-| `Dauerleihe`          |    305 | `Clear:277` `Trash:19` `Noisy:9`     | A real German museum term the archive's dictionary does not know.         |
-| `sektlll`             |    543 | `Trash`                              | We believe this is genuine rubbish. Please confirm.                       |
+| text                       | lines | the program says                 | our question                                                            |
+|----------------------------|------:|----------------------------------|-------------------------------------------------------------------------|
+| `Dauerleihe`               |   305 | `Clear:277` `Trash:19` `Noisy:9` | German for *permanent loan*. Scanned correctly. Should it stay `Clear`? |
+| `J. Vysoean`               |   125 | `Noisy:125`                      | A name, damaged. Most likely *Vysočan*. Readable enough to keep?        |
+| `Dated=Dated (relatively)` |    47 | `Noisy:47`                       | A field label from a form, not prose. Is that text at all?              |
+| `lenaye`                   |    47 | `Clear:46` `Trash:1`             | Damaged, and we cannot tell from what. Rubbish, or worth keeping?       |
+| `Aa/III 116`               |    24 | `Trash:21` `Noisy:3`             | A find identifier, answered two ways. Which is right?                   |
+| `eaual to:`                |    21 | `Clear:14` `Noisy:7`             | Almost certainly *equal to:*. One letter wrong. `Clear` or `Noisy`?     |
+| `FEUILLETON.`              |    13 | `Noisy:13`                       | A real word — the feature section of a newspaper. Scanned correctly.    |
+| `B/ POSTKRANIAINY SKELET:` |    11 | `Noisy:10` `Trash:1`             | *POSTKRANIÁLNÍ SKELET*, with the accents lost. Readable, but damaged.   |
 
-The `1 fraament okraie` row is the question we are least sure about, and it is the mirror image
-of your original complaint: damaged but readable, currently being thrown away. Whether a
-damaged-but-readable line is worth keeping in the archive is a judgement about what the output is
-**for**, and it is yours to make, not ours.
+**Two of these are the heart of the request.** `Dauerleihe` and `FEUILLETON.` are ordinary words,
+read perfectly by the scanner. The rule flags them because they have three vowels in a row, which
+usually means damage, and because a dictionary built from Czech archaeology has never seen either
+word. If your answer is that they are `Clear`, that is exactly the result we need: it tells us the
+rule is set one notch too tight, and that is a single number we can change.
 
-Several rows above are on the list only because the dictionary was switched off when the files
-were built. `ppole`, `ARCHAIA`, `Lepus europaeus`, `vodovod` and `Dauerleihe` are all protected
-once it is switched on. They are still worth your opinion if you have one. But they are no longer
-the risk.
+`B/ POSTKRANIAINY SKELET:` is the mirror image of your original complaint — damaged but readable,
+and currently only just being kept. Whether a damaged-but-readable line is worth keeping in the
+archive is a judgement about what the output is **for**, and it is yours to make, not ours.
 
 ---
 
@@ -252,10 +261,16 @@ By those definitions, these lines are not `Trash`. Anyone can read them:
 * `e-mail: mhauer@zip-ops.cz`;
 * `ARCHAIA Brno o.p.s.` — while `ARCHAIA` on its own is marked `Clear`.
 
-The program currently marks all three as `Trash`. And in fact **77% of everything the program
-throws away in this part of the archive has nothing wrong with it at all** — no garbled letters,
-no strange symbols. It is readable text that simply is not prose: web addresses, form labels,
-inventory codes, company names in page headers.
+The program used to mark all three as `Trash`. Since then we have taught it to recognise web
+addresses and e-mail addresses, so those two now come out as **`Noisy`** instead. That is better,
+and it is not right: `Noisy` means *a person can tell what it says, through a minor mistake*, and
+there is no mistake in `http://www.arub.cz` at all. `ARCHAIA Brno o.p.s.` is unchanged and is
+still `Trash`.
+
+So the question has not gone away — it has only moved. And in fact **77% of everything the
+program throws away in this part of the archive has nothing wrong with it at all** — no garbled
+letters, no strange symbols. It is readable text that simply is not prose: web addresses, form
+labels, inventory codes, company names in page headers.
 
 We think one label is being asked two different questions:
 

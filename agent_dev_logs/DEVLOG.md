@@ -635,3 +635,66 @@ stale row and a classification D35 already corrects, and `issue30_stage6_job.sh`
 the witness flag must be a separate job (it refuses to start otherwise).
 * Suite 1,290 → 1,297 passing, 0 failed, `ruff` clean. An existing test caught the new class correctly
 (`test_run_coverage_smoke` enumerates the valid class set) and was updated rather than worked around.
+
+## 2026-09-22 (second entry)
+- **#30** — **Stages 9b/9c ran: the exposure pass and the annotation ask were re-cut with the vocabulary
+lexicon armed.** The configuration `setup/config.txt` says the witness only ever ships in. Same corpus,
+same 56,599,631 lines read. Twelve findings (V0–V11 in `digests/30.digest.md`); the ask landed on `test`
+as `d9c41a5` and **the hold on @DanaKriv's request is lifted**.
+* **V1 — T1's estimate was low, in the direction it keeps being low.** T1 put the exempt share at
+**73.1%**; measured it is **82.1%**. At-risk falls from 8,529 strings / 37,555 lines to
+**5,563 / 6,714**, not the projected 7,433 / 9,876. Nothing that followed from T1/T2 changes sign — the
+ask still had to be re-cut and still came out smaller — but every estimate this issue has made of how far
+`_has_vocabulary_support()` reaches has been too conservative, and that is worth carrying forward.
+* **V2 — D33's corpus-wide effect is measured, for free, and it is a floor.** Both runs read the same
+lines; in-scope moved **7,493,429 → 7,477,924**, so **D33 removes 15,505 lines from the witness's scope**.
+Sound only because D33 is the *only* change to the three scope vetoes between the runs. The production
+figure is larger, because the witness's scope also demands `word_count <= 3` and `rule_domain_notation`
+does not. **This falsifies the `unreleased` release row's "no categorisation change"** — rewritten, and
+the release is a minor bump.
+* **V3 — the witness is one clause with three small companions.** `vowel_run` is the **sole** reason for
+**4,305 of 6,668 at-risk lines (64.6%)** and is the least discriminating of the four (79.8% agreement with
+the pipeline's existing answer, against `triple`'s 97.9%). 93.7% of at-risk strings satisfy exactly one
+clause, so the attribution is clean rather than a slice.
+* **V4 — the at-risk head is no longer the archive's own vocabulary.** `ppole`, `ARCHAIA` and the Latin
+taxonomy are all exempt now. What is left is **`Dauerleihe`** — German for *permanent loan*, **286 `Clear`
+lines**, scanned perfectly — plus `J. Vysoean`, `Dated=Dated (relatively)` and `FEUILLETON.`. The
+mechanism generalises: the lexicon is built from the archive's own text, so it protects what the archive
+says *often* and offers nothing to a word that is correct but rare *here*. Third appearance of the same
+failure, through a third door, and the first where it lands on a language rather than a register.
+* **V5 — there is a lever, and it is not adopted.** `SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN` 3 → 4 is
+estimated to cut at-risk exposure **56.6%**, sparing every correctly-read item in the head while keeping
+the `OUUITN`/`OUOISP` page-stamp family and `eaual to:`. **Estimate, not measurement** — it applies the
+clause's regex to the delivered text rather than running `shape_garbage_clauses()` — and it is not
+gold-scored, so 08b's adoption gate does not cover it. Fitting a threshold to four nameable words is
+precisely the D25/D30 mistake; it becomes stage 10a/10b, both local and cheap.
+* **V6 — H6 option 2 is closed by measurement.** Blocking a bare plurality from demoting `Clear` →
+`Trash` changes **0 groups and saves 0 lines** corpus-wide. The cascade is a net rescuer by **+41**
+(51 `Trash` lines lifted, 10 `Clear` lines pulled down) — the sign flipped relative to the 822-document
+queue, where it was 31 against 17. The alphabetical tie-break is still load-bearing and still undefended
+by a test that names it, but decides 17 groups now rather than T14's 180.
+* **V7 — none of the eight doubled-letter tokens is in the queue.** Zero rows of 42,853. Three carry
+Czech diacritics and could never be in scope; the rest are exempt by document frequency. § 4 of the
+review request stops blocking the ask and becomes a question about the de-gemination guard alone (D40).
+* **V8 — two reconciliation gaps, recorded rather than chased.** 08f writes 42,853 distinct strings and
+08g's queue reports 42,248; 08g's at-risk is 5,563 / 6,714 against 5,695 / 6,668 recomputed from its own
+CSV. 2.3% of strings, 0.7% of lines, no conclusion affected — **but 18.1% is quoted to collaborators
+against a denominator that cannot be reproduced from the delivered files**, so the ask README says so.
+* **V9 — 18.1% is 15.9% once the controls come out.** 39 of the 157 census rows (149 lines) are
+`confirms_trash` checks whose label cannot move a decision. The arithmetic closes: 5,563 − 118 = 5,445,
+exactly the frame's string total. And the instrument has changed character because the population did:
+**95.7% of at-risk strings occur exactly once**, the top 500 settle 12.5% of witnessed lines, so the
+census keeps only 60 frequency rows and the 200-row sample carries the estimate. 357 decisions cover
+**516 distinct spellings** — `Dauerleihe` alone folds 24.
+* **Release prepared as `v1.6.0-beta`**, not a patch, because of V2. `CITATION.cff` and
+`setup/para_config.txt` bumped together; `check_version.py` agrees with and without `--tag`.
+* **Collaborator documents refreshed for the round with @DanaKriv and @david-spacil**: the ⏸️ notices
+removed from `annotation_ask_README.md`, `issue30_annotation_guide.md` and `docs/issue30/README.md`;
+§ 0 / § 3 of `issue30_corpus_profile.md` rebuilt on the lexicon-on figures with the old table kept and
+labelled; a new § 7 in `issue30_review_request.md` putting the vowel-run trade to @david-spacil, whose
+judgement about this material decides it. Re-measured after editing: median sentence 11.5–16 words,
+sentences over 35 words 0.0–3.7%, no unglossed jargon.
+* **One correction inside the collaborator documents.** The previous revision told @DanaKriv that
+`Dauerleihe` was protected by the dictionary. It is not — it is the single largest item at risk. Fixed
+where it appeared.
+* Suite 1,333 passing, 0 failed, `ruff` clean. Documentation-only change plus the version bump.

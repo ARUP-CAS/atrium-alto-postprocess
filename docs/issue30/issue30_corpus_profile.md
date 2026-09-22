@@ -17,11 +17,18 @@ Nothing here asks you for anything. The two documents that do are
 The program sorts every scanned line into `Clear`, `Noisy`, `Trash`, `Non-text` or `Empty`. We
 have been trying to switch on a rule that would recover rubbish currently sitting in `Clear`. To
 size the risk we measured every short line in both collections — 56.6 million lines read, 7.5
-million in scope, 100,824 that the rule can reach. **The four largest things it reaches are not
-scanning errors.** They are an abbreviation, the excavating organisation's own name, Latin species
-names, and the web addresses in your own page footers. That is not a bug in the rule so much as a
-fact about the archive: **its characteristic text is not prose**, and most automatic quality tests
-are built for prose.
+million in scope, **48,909 that the rule can reach**, of which **6,714 are lines the program
+keeps today**. Those 6,714 are the only ones a decision can change.
+
+**The largest things the rule would discard are not scanning errors.** The biggest single item is
+`Dauerleihe`, German for *permanent loan*, on 286 lines that are scanned perfectly. After it come
+a damaged personal name, a form label, and `FEUILLETON.` — another ordinary word, read correctly.
+That is not a bug in the rule so much as a fact about the archive: **its characteristic text is
+not prose**, and most automatic quality tests are built for prose.
+
+**This section was rewritten on 2026-09-22**, after the measurement was repeated in the
+configuration the program actually runs in. The first version of it described a much larger and
+quite different set of text. What changed and why is in § 3.
 
 ---
 
@@ -80,7 +87,13 @@ than damage:
 
 ## 3. What the rule actually reaches, once you look at all of it
 
-Of the 36,744 lines that are currently kept as good text and would be newly discarded:
+> **The first table below is out of date on purpose.** It is what the rule appeared to reach when
+> the archive's own dictionary was switched off by mistake. It is kept because the first
+> annotation request was built from it, and because the contrast with § 3b is the most useful
+> thing in this document.
+
+With the dictionary off, of the 36,744 lines that are currently kept as good text and would be
+newly discarded:
 
 | what it is                           |  lines | distinct strings |     share |
 |--------------------------------------|-------:|-----------------:|----------:|
@@ -98,10 +111,49 @@ one.
 
 **The good news, and it is genuinely good:** the program already has a mechanism for this. It
 builds a dictionary from the archive's own words, and anything appearing across enough documents
-is left alone. Measured on the stage-8 data, switching that dictionary on removes **about three
-quarters of the apparent risk** — every item in the table above except the long tail. We had not
-run the measurement in that configuration, which is why the annotation request currently attached
-to the issue is larger than it needs to be. That is being re-cut before it reaches @DanaKriv.
+is left alone. **The table above was measured with that dictionary switched off by mistake.** With
+it switched on, every class in it except the long tail disappears: the risk falls from 37,555
+lines to **6,714**, a reduction of 82%. The annotation request has been re-cut from the smaller
+set and is now with @DanaKriv.
+
+### 3b. What the rule reaches once the dictionary is on
+
+This is the list that matters. Measured 2026-09-22 over both collections, with the program
+configured the way it ships:
+
+| what it is                                              | lines | share of the risk |
+|---------------------------------------------------------|------:|------------------:|
+| `Dauerleihe` and its spellings — German, read correctly |   286 |              4.3% |
+| `J. Vysoean` — a personal name, damaged                 |   125 |              1.9% |
+| `Dated=Dated (relatively)` — a form label               |    47 |              0.7% |
+| everything else, almost all of it appearing once        | 6,256 |             93.2% |
+
+**The shape of the problem has changed completely.** Before, a handful of enormous repeated items
+carried most of the risk and could be settled in a few decisions. Now **96% of the text at risk
+appears exactly once**, and even the 500 most common pieces of it cover only 22% of the lines at
+risk. There is no efficient list left to work down.
+
+### 3c. Why a correctly scanned German word is at risk at all
+
+This is worth understanding, because the same thing will happen again.
+
+The rule looks for shapes that usually mean damage. One of them is **three vowels in a row**.
+`Dauerleihe` has *aue*; `FEUILLETON` has *eui*; the Czech name `Vysoean` has *oea*. The dictionary
+is supposed to rescue real words from that test — but the dictionary is built from **this
+archive's own text**. It therefore protects whatever this archive says often, and offers nothing
+to a word that is perfectly correct but rare *here*.
+
+German museum vocabulary is exactly that. So are French loanwords and foreign place names. The
+program has never seen `Dauerleihe` often enough to know it, and it cannot tell the correct
+spelling apart from the damaged ones — `auerleihe`, `Bauerleihe`, `Jauerleihe` — because it has
+never seen any of them.
+
+**There is a single setting behind this.** The rule can be told to require four vowels in a row
+instead of three. That would spare `Dauerleihe`, `FEUILLETON.`, `J. Vysoean` and every other
+correctly-read item on the list, while still catching the page-stamp marks (`OUUITN`, `OUOISP`)
+that the rule exists for — cutting what it would discard by more than half. We have measured that
+trade roughly and have not yet checked it against hand-labelled text, which is the next step. It
+is put to @david-spacil as § 7 of the review request.
 
 ## 4. The abbreviation problem has no automatic solution, and we now know that for certain
 
@@ -193,13 +245,19 @@ The definitions this project works to are:
 
 Measured against those definitions, the current `Trash` bucket does not match. **76.9% of the
 flagged `Trash` lines contain no repeated-character run and no unusual glyph at all.** Concretely,
-the program currently stores as `Trash`:
+the program used to store as `Trash`:
 
 * `http://www.arub.cz` — 5,309 lines, read correctly, perfectly legible;
 * `e-mail: mhauer@zip-ops.cz` — 181 of its 241 lines;
 * `ARCHAIA Brno o.p.s.` — 316 lines, while calling `ARCHAIA` `Clear`.
 
 By the definition above, none of those is `Trash`. Anyone can read them.
+
+**Since this was written, the first two have moved.** The program now recognises web and e-mail
+addresses and calls them `Noisy` rather than `Trash`. That is an improvement and it is still not
+right, because `Noisy` means *readable through a minor mistake* and there is no mistake in a
+correctly scanned web address. `ARCHAIA Brno o.p.s.` has not moved and is still `Trash`. The
+question below is therefore unchanged; only the wrong answer has changed.
 
 What has happened is that one label is answering two different questions:
 
@@ -282,7 +340,7 @@ concludes otherwise.
 sentence because it concerns the rule at the centre of this issue. The run
 reported the new shape-witness rule as *dead code, safe to delete*. It is not
 dead — it is switched off, so of course it never fired. The same rule had already
-been measured reaching **100,824 lines**. The tool has been fixed so it now says
+been measured reaching tens of thousands of lines. The tool has been fixed so it now says
 "switched off" instead of "dead", but it is a fair illustration of why we keep
 re-reading these runs rather than trusting their summaries: the instrument
 recommended deleting the feature the project has spent two months building.
@@ -310,7 +368,11 @@ recommended deleting the feature the project has spent two months building.
 
 ---
 
-_Measured 2026-09-21 from the stage-8 delivery, with § 7b added 2026-09-22 from the stage-6 delivery (a 23-rule sweep scored against the 2,064 annotated lines): 113,100 documents, 56,599,631 lines read,
-7,493,429 in scope, 100,824 reached by the rule. Every figure here is recomputed from the CSVs
-attached to issue #30 and is reproducible from them; the technical write-up is
-`agent_dev_logs/digests/30.digest.md` § "Stage 8 read against its own delivery"._
+_Measured 2026-09-22 from the repeated stage-8 run, the first one made with the archive's own
+dictionary loaded: 113,100 documents, 56,599,631 lines read, 7,477,924 in scope, **48,909 reached
+by the rule**, **6,714 of them kept today**. Sections 0 and 3 were rewritten on that date; § 7b was
+added on 2026-09-22 from a separate 23-rule review scored against the 2,064 annotated lines; the
+remaining sections were measured on 2026-09-21 and are unaffected by the repeat, because they
+describe the archive rather than the rule. Every figure here is recomputed from the files attached
+to issue #30 and is reproducible from them. The technical write-up is
+`agent_dev_logs/digests/30.digest.md`, § "Stage 8 f/g re-run read against its own delivery"._

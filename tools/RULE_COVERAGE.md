@@ -27,7 +27,7 @@ never runs. That is the only gold-free retirement criterion.
 >
 > The case that forced this: the 2026-09-21 stage-6 sweep classified
 > `rule_short_garbage_witness` DEAD and listed it as safe to retire, while stage
-> 08f had measured the same predicate reaching **100,824 lines** across both
+> 08f had measured the same predicate reaching **48,909 lines** across both
 > collections and stage 08b had flipped its flag and passed the adoption gate
 > (McNemar p = 0.01294). Retiring on that verdict would have deleted the feature
 > issue #30 exists to build. `tests/test_pipeline_parity.py::UNREACHABLE_RULES`

@@ -17,23 +17,27 @@ and use the results, rather than for the people writing the code.
 
 Measured across all 113,100 documents. It covers the two collections, why documents from 2010
 onwards behave differently, Latin species names, your own company name in page headers, and why
-dictionary-style checks keep misfiring on this archive. **Nothing in it asks you for anything.**
-If you read one document, read this one.
+dictionary-style checks keep misfiring on this archive. Sections 0 and 3 were rewritten on
+2026-09-22 after the measurement was repeated correctly; § 3c explains why a correctly scanned
+German word is the largest thing at risk. **Nothing in it asks you for anything.** If you read one
+document, read this one.
 
 **2a. If you are @DanaKriv — how the labelling works**
 [`issue30_annotation_guide.md`](issue30_annotation_guide.md) · about two to four hours of work
 
 What each of the five labels means, what to fill in, what to leave alone, and where to start.
-**It currently opens with a notice asking you to wait** — please read that first. Section 7.2
-contains a question you can answer straight away, without the files, and it is the most useful
-thing in the document right now.
+**The earlier notice asking you to wait has been withdrawn** — the files were rebuilt and the
+request is ready. Section 7.2 contains a question you can answer without the files, and it is
+worth reading before you begin.
 
 **2b. If you are @david-spacil — the open questions**
 [`issue30_review_request.md`](issue30_review_request.md) · most items need one line each
 
-Seven items. Item 4, about eight doubled-letter spellings, is the one nobody else can answer:
-every automatic method we have tried has now failed. Item 6 is a question for the two of you
-together.
+Eight items. Item 6, about what `Trash` is for, is the one that matters most and is a question for
+the two of you together. Item 4, about eight doubled-letter spellings, no longer holds anything up:
+none of the eight can reach the new rule at all, so it has become a question about a safeguard
+rather than about the archive. Item 7 is new — a single setting that decides most of what the new
+rule would discard.
 
 **3. Reference, when you need it**
 [`annotation_ask_README.md`](annotation_ask_README.md) — how the two request files are built and
@@ -45,8 +49,8 @@ how to fill them in. Read it together with the guide rather than on its own.
 
 | file         | what it is                                                                                                                                                                     |
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `census.csv` | 592 rows. The most common text at risk, plus every string the program currently answers in two different ways. **On hold** — see the notice in `annotation_ask_README.md`.     |
-| `sample.csv` | 200 rows. A random selection from the long tail of rare text. Also on hold.                                                                                                    |
+| `census.csv` | 157 rows. The most common text at risk, every string the program currently answers in two different ways, and 39 checks. **Ready to work on.**                                 |
+| `sample.csv` | 200 rows. A random selection from the long tail of rare text. Ready to work on.                                                                                                |
 | `frame.json` | A small technical file recording how `sample.csv` was chosen. **It must come back with the answers**, or those 200 rows cannot be turned into a figure. Please do not edit it. |
 
 In `census.csv` and `sample.csv` there are three empty columns: `gold_categ`, `confidence` and
@@ -80,16 +84,20 @@ identical to each other and hold only the invented demonstration rows.
 
 Both need a human answer. Neither can be settled by more computing.
 
-**1. What should `Trash` mean?** The program currently marks `http://www.arub.cz` as `Trash` on
-5,309 lines. It is scanned perfectly correctly and anyone can read it. One label is being asked two
-different questions — *can a person read this*, and *is this worth keeping as text* — and the five
-categories are currently described in two places that do not agree with each other. This needs
-settling **before** the labelling starts. See `issue30_annotation_guide.md` § 7.2 and
-`issue30_review_request.md` § 6.
+**1. What should `Trash` mean?** `http://www.arub.cz` appears on 5,309 lines, scanned perfectly
+correctly. The program used to call it `Trash`; since we taught it to recognise web addresses it
+calls it `Noisy`, which means *readable through a minor mistake* — and there is no mistake. One
+label is being asked two different questions: *can a person read this*, and *is this worth keeping
+as text*. The five categories are described in two places that do not agree with each other. The
+labelling can start before this is settled, but the answers cannot be scored until it is. See
+`issue30_annotation_guide.md` § 7.2 and `issue30_review_request.md` § 6.
 
-**2. Are eight doubled-letter spellings scanning errors or abbreviations?** We have tried three
-automatic methods. The third one pointed the wrong way: the one confirmed abbreviation looks more
-like a scanning error than any real scanning error does. See `issue30_review_request.md` § 4.
+**2. Is the new rule set one notch too tight?** The largest single item it would discard is
+`Dauerleihe` — German for *permanent loan* — on 286 lines that are scanned correctly. It is caught
+by a test for three vowels in a row. Requiring four instead would spare it, and every other
+correctly-read item on the list, while still catching the page-stamp marks the rule exists for. We
+have measured the trade but not yet checked it against hand-labelled text. See
+`issue30_review_request.md` § 7.
 
 ---
 

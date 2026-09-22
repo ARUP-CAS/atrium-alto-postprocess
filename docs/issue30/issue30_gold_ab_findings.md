@@ -580,7 +580,8 @@ This one computes the right number and draws a false conclusion from it:
 classifier turned that into `DEAD`, defined in its own docstring as "unreachable
 dead code [that] can be permanently deleted ... because deletion provably changes
 nothing", and printed it under "safe to retire". The rule is switched off, not
-dead; 08f measured the same predicate at 100,824 lines and 08b passed its
+dead; 08f measured the same predicate at 100,824 lines — the lexicon-off figure,
+48,909 once the lexicon was armed, see the addendum — and 08b passed its
 adoption gate. **The instrument recommended deleting the feature this issue
 exists to build.**
 
@@ -609,3 +610,56 @@ absolute count beside a delta, with the baseline computed by the same pass and
 discarded (**D36**, now emitted); and `decisive_cascade` is not the page cascade
 three separate places said it was, because no smoothing-off baseline pass exists
 in the tool at all (**D37**, corrected in place).
+
+---
+
+## Addendum, 2026-09-22 — the exposure pass was re-run with the lexicon armed
+
+Stage 9b/9c. `08f_exposure_full` and `08g_annotation_ask` re-executed with
+`ATRIUM_TEXT_UTILS_SHORT_GARBAGE_LEXICON_PATH` set; 08a–08e were not re-run and
+are untouched. Same corpus, same 56,599,631 lines read. The full reading is in
+`agent_dev_logs/digests/30.digest.md`, § "Stage 8 f/g re-run read against its own
+delivery" (V0–V11). What belongs here is the part about instruments.
+
+**The estimate this document carried was wrong in the direction the instrument
+made easy.** T1 estimated from 08g's `token_status` column that 73.1% of the
+at-risk exposure would evaporate once the lexicon was configured, and said in
+terms that it was an estimate. Measured: **82.1%**. The gap is not sampling
+noise; it is `ocr_neighbours.py`'s tokenisation being more conservative than
+`_split_subtokens()` about what counts as attested, exactly the mismatch T1
+named as its own caveat. **The caveat was right and the number derived from it
+was still used as if it were nearly right.**
+
+| quantity                  | T1/T2 estimate |  measured |
+|---------------------------|---------------:|----------:|
+| at-risk exposure exempted |          73.1% | **82.1%** |
+| at-risk lines surviving   |          9,876 | **6,714** |
+| at-risk strings surviving |          7,433 | **5,563** |
+
+**A second instrument caution, and it is new.** The re-run's own log and its own
+CSV do not agree with each other. `logs8.log` reports the queue at 42,248
+strings; `08f_witness_distinct.csv` holds 42,853. It reports at-risk as 5,563
+strings / 6,714 lines; recomputing from `08g_distinct_evidence.csv` gives 5,695 /
+6,668. The differences are 2.3% of strings and 0.7% of lines, they change no
+conclusion, and **they are the figures quoted to @DanaKriv**. Recorded in
+`annotation_ask_README.md` rather than smoothed over. The general form is the one
+this document keeps meeting: a summary line computed by a different code path
+from the file beside it, with nothing forcing the two to agree.
+
+**One instrument worked better than this document said it did.** T11 was hard on
+`recoverability`, and the criticism stands — it cannot distinguish *correct but
+rare* from *damaged beyond recognition*, and both score 0.00. But across the
+at-risk population it is bimodal rather than flat (48.8% at 0.00, 24.8% at 1.00),
+and on the two rows that matter most it is right in both directions: `Dauerleihe`
+scores 0.00 because the table genuinely has never seen the word, and `J. Vysoean`
+scores 1.00 because it genuinely is a damaged copy of a real name. A column that
+is weaker than its name is not the same as a column that is useless, and this
+document had drifted toward the second reading.
+
+**And one measurement arrived for free.** Both runs read the same corpus through
+the same three scope vetoes, and in-scope moved 7,493,429 → 7,477,924. D33 is the
+only change to those vetoes between the runs, so **D33 removes 15,505 lines from
+the witness's scope, corpus-wide** — a figure this document previously had to
+leave unmeasured because the only version available was circular. It is a floor,
+not the production effect: the witness's scope also requires `word_count <= 3`
+and `rule_domain_notation` does not.

@@ -1,24 +1,19 @@
 # Issue #30 — the annotation request
 
-> ## ⏸️ Please do not start on these files yet
+> ## ✅ These files are ready — 2026-09-22
 >
-> **They were built from the wrong set of lines, and we are rebuilding them.**
+> **The earlier hold is lifted.** The previous version of this request was built from the wrong
+> set of lines. It has been rebuilt from the right one and replaced. This is the version to work
+> on.
 >
-> The program keeps a dictionary of words that appear across the archive, and anything in that
-> dictionary is left alone by the new rule. When we measured how much text was at risk, that
-> dictionary was switched off by mistake. With it switched on, **about three quarters of what we
-> were going to ask about cannot be affected at all.**
+> It is much smaller: **357 decisions instead of 792**. The reason is the one given in the hold
+> notice. The program keeps a dictionary of words that appear across the archive, and anything in
+> that dictionary is left alone by the new rule. When we first measured how much text was at risk,
+> that dictionary was switched off by mistake. With it switched on, **82% of what we were going to
+> ask about cannot be affected at all** — including the single biggest item, `ppole`, and most of
+> the rest of the old first page.
 >
-> That includes the single biggest item on the list — `ppole`, 15,466 lines — and most of the rest
-> of the first page.
->
-> The replacement will be **smaller**. It will also be mostly a random selection rather than a list
-> of the most common text, because once the safe items are removed there is no "most common" left:
-> 94% of what remains appears exactly once.
->
-> **Nothing already done is wasted.** Any answers still join back correctly.
->
-> The files below are kept exactly as they were delivered, so the record is complete.
+> **Nothing already done is wasted.** Any answers from the earlier files still join back correctly.
 
 ---
 
@@ -38,28 +33,44 @@ decision settles.
 
 | file         | rows |       lines settled | what it is                                                                                                                                |
 |--------------|-----:|--------------------:|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `census.csv` |  592 |              31,102 | The most common text at risk, plus every string the program currently answers in two different ways. Complete, not a sample.              |
-| `sample.csv` |  200 | 9,906 (represented) | A random selection from the long tail of rare text.                                                                                       |
+| `census.csv` |  157 |               1,217 | The most common text at risk, every string the program currently answers in two different ways, and a few checks. Complete, not a sample. |
+| `sample.csv` |  200 | 5,646 (represented) | A random selection from the long tail of rare text.                                                                                       |
 | `frame.json` |    — |                   — | A small technical file. **Please send it back with the answers.** Without it the 200 rows in `sample.csv` cannot be turned into a number. |
 
-## What the request was meant to buy
+**357 decisions, 516 different spellings.** One row often covers several spellings of the same
+thing — punctuation, spacing, a stray mark. The `variants` column lists them. The largest row,
+`Dauerleihe`, covers **24** spellings on its own.
 
-These were the figures at delivery:
+## What the request buys
 
-* The full list holds **50,042 different pieces of text**, covering **100,824 lines**.
-* Of those, **8,529 pieces of text / 37,555 lines** were thought to be *at risk* — meaning the
-  program keeps them today, so switching the new rule on would start discarding them. The rest are
-  already discarded, where an answer cannot change anything.
-* `census.csv` was expected to settle **82.8%** of that risk in 592 decisions.
-* `sample.csv` was expected to estimate the rest to within **±6.9 percentage points**.
+* The full list holds **42,248 different pieces of text**, covering **48,909 lines**.
+* Of those, **5,563 pieces of text / 6,714 lines** are *at risk* — meaning the program keeps them
+  today, so switching the new rule on would start discarding them. The rest are already discarded,
+  where an answer cannot change anything.
+* `census.csv` settles **18.1%** of that risk in 157 decisions.
+* `sample.csv` estimates the rest to within **±6.9 percentage points**.
 
-**The last two figures do not hold**, for the reason in the notice above. Measured against the way
-the program actually runs, the text genuinely at risk is **7,433 pieces / 9,876 lines**, not
-8,529 / 37,555. On that smaller set the 592 rows of `census.csv` settle about **31%**, not 82.8%.
+Two honest notes on those last two figures, neither of which changes what you are being asked to
+do:
 
-A list of the most common text is the right tool for the first set and the wrong tool for the
-second. That is why the replacement is being rebuilt as a random selection, rather than by running
-the same method again on a new file.
+* **18.1% counts 149 lines that cannot change anything.** 39 of the 157 census rows are checks:
+  text the program already discards, included so we can see whether the new rule agrees with it.
+  Counting only the rows where your answer can move a decision, the census settles **15.9%**.
+* **The 18.1% and the 6,714 come from the program's own summary**, and recounting them from the
+  delivered files gives figures about 2% apart (5,695 pieces of text / 6,668 lines). The difference
+  is in how two tools count the same thing and it is recorded rather than hidden. It changes
+  nothing about the rows themselves.
+
+## Why the census is small now
+
+The old request could settle most of the risk in a few hundred rows because a handful of pieces of
+text repeated tens of thousands of times. Those are exactly the items the dictionary now protects.
+What is left is flat: **96% of the text at risk appears exactly once**, and even the 500 most
+common pieces of it cover only 22% of the lines at risk.
+
+So `census.csv` is only 60 frequency rows. The rest of the file is 97 pieces of text the program
+currently answers two different ways in different places — worth settling for their own sake — and
+the 39 checks. The estimate now comes from `sample.csv`.
 
 ## The selection record — please keep this file with the answers
 
@@ -71,19 +82,32 @@ included, and `weight` is how many:
 
 | group             | pieces of text | lines | how many we ask about |  weight | margin of error |
 |-------------------|---------------:|------:|----------------------:|--------:|----------------:|
-| `at_risk/full`    |          3,252 | 4,483 |                    80 |   40.65 |    ±11.0 points |
-| `at_risk/none`    |          2,798 | 3,053 |                    69 | 40.5507 |    ±11.8 points |
-| `at_risk/partial` |          2,090 | 2,370 |                    51 | 40.9804 |    ±13.7 points |
+| `at_risk/full`    |          1,310 | 1,370 |                    48 | 27.2917 |    ±14.1 points |
+| `at_risk/none`    |          2,668 | 2,766 |                    98 | 27.2245 |     ±9.9 points |
+| `at_risk/partial` |          1,467 | 1,510 |                    54 | 27.1667 |    ±13.3 points |
 
 To turn answers into a figure for the whole archive, we work out a rate for each group separately,
 then combine the three by their **line** counts — not by their counts of distinct text. The three
-groups have very different average numbers of lines per entry, so combining them the other way
-gives the wrong answer.
+groups have different average numbers of lines per entry, so combining them the other way gives the
+wrong answer.
 
-One shortcut looks right and is not: multiplying `lines_settled` by `weight` gives 10,051 lines
-against the 9,906 recorded above. The weight counts pieces of text, not lines.
+One shortcut looks right and is not: multiplying `lines_settled` by `weight` gives 5,717 lines
+against the 5,646 recorded above. The weight counts pieces of text, not lines.
 
 Settings used to build these files: `--census 60 --sample 200 --seed 30`.
+
+## One thing worth knowing before you start
+
+The largest single item in this request is **`Dauerleihe`** — German for *permanent loan* — on 286
+lines the program currently keeps. It is scanned perfectly correctly. It is flagged because it has
+three vowels in a row, which usually means damage, and because the archive's own dictionary has
+never seen the word.
+
+`FEUILLETON.` is the same story. So, in a different way, is `Dated=Dated (relatively)`.
+
+This is not a trick, and there is no right answer we are hoping for. If your answer is that these
+are `Clear`, that tells us the rule is set one notch too tight, which is a single number we can
+change. Please judge what you see.
 
 ---
 

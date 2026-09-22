@@ -30,12 +30,18 @@ The **shape witness** — the narrower rule meant to clean those up — **passes
 as of stage 8. Errors fell from 513 to 503, readable lines lost stayed at 40, and the cost measure
 went down. Your Roman-numeral finding is closed and has stayed closed.
 
-The rule is still switched off, and the reason has changed. It is no longer the readable-lines
-criterion, and it is no longer waiting for annotation. We discovered that the run which measured
-*how much text the rule would affect* was made with the vocabulary dictionary switched off — a
-setting we would never ship. With the dictionary on, about three quarters of the apparent risk is
-not risk at all. We are re-running that measurement before deciding. **Nothing about your patch or
-your gradings is affected.**
+The rule is still switched off, and the reason has changed twice. Last week we found that the run
+which measured *how much text the rule would affect* had been made with the vocabulary dictionary
+switched off — a setting we would never ship. **That measurement has now been repeated properly.**
+The answer is larger than we estimated: **82% of the apparent risk was not risk at all.** What the
+rule would actually discard is **6,714 lines**, not 37,555. **Nothing about your patch or your
+gradings is affected.**
+
+What the repeat also showed is the reason for the new item 7 below. With the dictionary on, the
+largest thing the rule would discard is `Dauerleihe` — German for *permanent loan* — on 286 lines
+that are scanned perfectly correctly. One test inside the rule accounts for **two thirds** of
+everything it would discard, and there is a single setting that narrows it. That is now the open
+engineering question, and it is a question about archaeology as much as about code.
 
 ---
 
@@ -75,23 +81,26 @@ step gives every copy the same category — whichever category the majority of t
 So if the new rule condemns three copies of a word and two of those copies were correct, the two
 correct ones are pulled down as well.
 
-**How big it is across the whole archive.** The earlier answer was based on 5,222 groups. This one
-covers 61,682:
+**How big it is across the whole archive.** This has now been measured three times: on 5,222
+groups, then on 61,682, and now on 43,103 with the dictionary loaded. The third measurement is the
+one to use, because the earlier two counted repeated lines the rule can no longer reach. **The
+answer is the same each time, and the margin is wider at every scale.**
 
-|                                            |                                     |
-|--------------------------------------------|-------------------------------------|
-| groups of repeated lines the step votes on | 61,682                              |
-| of those, already unanimous                | 61,359                              |
-| contested at all                           | 323                                 |
-| decided by a clear majority                | 143                                 |
-| decided by a tie                           | 180                                 |
-| **groups your option 3 would change**      | **0**                               |
-| readable lines the vote pulls down         | 24 (in 16 groups)                   |
-| rubbish lines the vote rescues             | **305** (in 244 groups)             |
-| **net effect**                             | **+281 lines in the step's favour** |
+|                                            |                                    |
+|--------------------------------------------|------------------------------------|
+| groups of repeated lines the step votes on | 43,103                             |
+| of those, already unanimous                | 43,052                             |
+| contested at all                           | 51                                 |
+| decided by a clear majority                | 34                                 |
+| decided by a tie                           | 17                                 |
+| **groups your option 3 would change**      | **0**                              |
+| readable lines the vote pulls down         | 10 (in 8 groups)                   |
+| rubbish lines the vote rescues             | **51** (in 41 groups)              |
+| **net effect**                             | **+41 lines in the step's favour** |
 
-The margin is *wider* at full scale than it was on the sample, where it was 31 rescued against 17
-lost.
+On the first sample the step rescued 31 lines and lost 17. Across the whole archive it rescues five
+for every one it costs. Contested cases are also rarer than anyone expected. 87% of the lines the
+rule reaches appear only once inside their own document, so the step has nothing to vote on.
 
 Ties also cannot hurt you, for a reason worth knowing. When the vote is tied, the code picks the
 first category in alphabetical order, and `Clear` comes before `Noisy`, which comes before `Trash`.
@@ -100,15 +109,16 @@ decision, and it is holding weight — worth remembering if anyone ever renames 
 
 **Your three options, with the full-archive numbers:**
 
-1. **Accept it as it is.** The step rescues about twelve lines for every one it costs.
+1. **Accept it as it is.** The step rescues about five lines for every one it costs.
 2. **Test the eight page-smoothing settings.** They are all controlled by configuration, so this
    costs nothing to try. Still not done.
 3. **Stop a bare majority from pushing a readable line into `Trash`.** Measured reach across both
    collections: **zero groups.** The situation it was written for does not occur.
 
-**We recommend option 1, and we think option 3 can now be dropped** — not because it was a bad
-idea, but because it has been measured against the data it would run on and has nothing to act on.
-**The decision is still yours.** One line is enough.
+**We recommend option 1, and we think option 3 can now be dropped.** Not because it was a bad
+idea. It has simply been measured against the data it would run on, twice, in two different
+configurations, and found nothing to act on either time. **The decision is still yours.** One line
+is enough.
 
 ## 3. Please re-check your 508 lines against the current rule
 
@@ -126,9 +136,20 @@ part of that set, so the number it worsens within your sample cannot be more tha
 sound reasoning, but indirect. It was your finding and your tooling, and a direct figure on the 508
 would close it properly.
 
-## 4. The eight doubled-letter tokens — every automatic test has now failed
+## 4. The eight doubled-letter tokens — no longer urgent, and here is why
 
-This is the item only you can answer, and it is now the **only** approach left.
+> **This item no longer holds anything up.** When the measurement was repeated with the archive's
+> dictionary loaded, **none of the eight spellings appears anywhere in the list of text the rule
+> can reach** — not one row out of 42,853. Three of them (`ssutí`, `ssutě`, `jjámy`) carry Czech
+> accents, and the rule never looks at lines with accents in them, so they could never have been
+> there. The other five are protected by the dictionary, because they appear in far more documents
+> than the safeguard's limit allows.
+>
+> So no labelling decision and no accuracy figure depends on your answer any more. The question
+> below is now about whether the safeguard should exist at all. It is still worth one line from
+> you, and it is no longer blocking anyone.
+
+The rest of this item is as it was written, because the reasoning still stands.
 
 On 2026-09-19 you told us that `ppole` is an abbreviation for *popelnicová pole*, and that the
 other doubled-first-letter examples really are scanning errors. Since then we have tried three ways
@@ -268,7 +289,59 @@ or from the definition.
 README agree with each other, rather than continuing with three descriptions of five categories.
 The same question is § 7.2 of Dana's guide.
 
-## 7. Three smaller items
+## 7. One setting decides most of this, and the choice is archaeological
+
+This item is new, and it is the one we would most like your view on after item 6.
+
+**What the rule is made of.** The shape witness is four separate tests. A line is condemned if any
+one of them fires:
+
+| test                        | what it looks for      | share of the text the rule would discard | how often it agrees with the program's current answer |
+|-----------------------------|------------------------|-----------------------------------------:|------------------------------------------------------:|
+| **three vowels in a row**   | `aue`, `eui`, `oea`    |                                **64.6%** |                                                 79.8% |
+| few different letters       | `OUUIUO`, `Aa/III 116` |                                    19.7% |                                                 80.3% |
+| doubled first letter        | `ssuti`, `vvkop`       |                                     9.0% |                                                 88.3% |
+| the same letter 3× in a row | `sektlll`              |                                     1.2% |                                                 97.9% |
+
+Read the last column as a rough accuracy check. It is the share of each test's firings that land on
+text the program already throws away. A high number therefore means the test is picking out things
+that already look like rubbish. **The three-vowel test is the biggest by far and the least
+accurate.**
+It alone accounts for about 4,300 of the roughly 6,700 lines at stake.
+
+**And it is why correctly scanned words are on the list.** `Dauerleihe` has *aue*. `FEUILLETON`
+has *eui*. `J. Vysoean` has *oea*. Meanwhile the marks the rule was written for — the page stamps
+that read `OUUITN`, `OUOISP`, `OUUIUO` — have four or more vowels in a row.
+
+**So the obvious move is to require four instead of three.** Measured over the full list:
+
+| vowels required | lines the rule would discard that are kept today | change |
+|----------------:|-------------------------------------------------:|-------:|
+|     **3** (now) |                                            6,668 |      — |
+|           **4** |                                            2,891 | −56.6% |
+|               5 |                                            2,436 | −63.5% |
+
+At four, every correctly-read item we can name is spared — `Dauerleihe`, `FEUILLETON.`,
+`J. Vysoean`, `POSTKRANIAINY SKELET` — and the page stamps are still caught, along with `eaual to:`
+(which has *eaua*, four in a row).
+
+**We have not made this change, and we would like you to tell us whether to.** Two reasons for
+caution, stated plainly:
+
+1. **The figures above are an estimate.** They were produced by applying the test's own pattern to
+   the saved text, not by re-running the rule. We will re-run it properly, and we do not expect the
+   numbers to move much, but they may move.
+2. **This is exactly how we went wrong twice before.** The doubled-letter limit in item 4 was
+   chosen because it fitted a handful of examples someone could name. So was an earlier threshold.
+   Neither survived being measured on the whole archive. Choosing four because it spares four words
+   we can name is the same move, so it has to be checked against @DanaKriv's labels first.
+
+**The question for you is not the number.** It is this: **is a run of three vowels evidence of a
+scanning error in this archive?** In ordinary Czech it very nearly is. In an archive that also
+carries German museum terms, French section headings, Latin species names and foreign place names,
+we suspect it is not. You know this material and we do not.
+
+## 8. Three smaller items
 
 **7.1 Is the raw perplexity thread finished?** The 367,208 lines arrived via filesender and we read
 them. If nothing further was intended, we will close that thread.
@@ -310,5 +383,6 @@ later.
 
 ---
 
-Thank you. Item 4 is the one nobody else can answer, and item 6 is the one that would save the most
-rework if it is settled before the labels come back.
+Thank you. Item 6 would save the most rework if it is settled before the labels come back. Item 7
+is the one where your knowledge of the material decides a piece of the program directly. Item 4 has
+stopped being urgent, and still deserves your one line when you have it.
