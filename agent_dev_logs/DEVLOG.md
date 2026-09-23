@@ -876,3 +876,29 @@ lines cannot validate it" comment replaced by the measured status (comment only)
 ticked, 11e's "README weight table" item was already done (`9121c4c`), two broken links fixed.
 Issue log refreshed with comment 61.
 * Suite unchanged — 1,422 passed, 13 skipped, 2 xfailed — and `ruff` clean.
+
+## 2026-09-23
+- **#30** — **@david-spacil answered Q7 and ran the re-check; it exposed a guard that had been gone
+since 2026-09-18 (D45).** Digest § "D45", plan § "2026-09-23".
+* **H5 closes.** `master`, default config (no lexicon), witness on: 326 → 335/508; 16 lines moved,
+11 fixed / 2 broken / 3 wrong either way. Tag and `master` differ on `Frauenzimmerbad` only.
+* **D45 — `cc4990e` deleted both round-2 witness guards.** `_RE_FUSED_GRID_REF` (`S-VIIIb`) and
+`has_expected_lang_diacs()` were added in `9bc218b` and measured in round 2 (14/1, p = 0.00098),
+then deleted that evening by a lexicon-parsing commit; `031fa58` restored the pre-round-2 config
+block the same hour. A stale working copy, not a decision, and no test held either guard. Every run
+from 5f on scored the guard-less witness; S4's 05a-vs-05f comparison crossed the deletion and is
+marked confounded.
+* **Grid guard restored** in `shape_garbage_clauses()`'s line-level veto (witness-local, inert while
+the flag is off), with its history in the comment, and **pinned**: the seven-string series and a
+narrowness test in `tests/test_shape_witness_vocabulary.py`, plus an `S-VIIIb` row in the wiring
+test's keep list. Checked both ways — 9 failures with the guard removed, all green with it.
+Expected on his run: 336/508, `Lokolieace: •VIII,` the only break (Q6's case).
+* **Not restored, open for the maintainer:** the German-diacritic veto (overlaps D44, moves ~239
+corpus lines, needs its cache registered and its own A/B). **Flagged:** the config lexicon block
+`031fa58` put back is wrong in both its versions since W2.
+* Docs: review request § 3 (✅ block with his table, the `S-VIIIb` sentence corrected, Q7 closed in
+§ 9 and the banner), `docs/issue30/README.md` "Still open", `categorization_logic.md` row 5c.
+Issue log refreshed with his comment.
+* Suite on `origin/test` `4ed309a`: 1,441 → **1,449 passed** (the 8 new tests), 13 skipped, 2 xfailed;
+`ruff` clean; `recategorize_from_csv --report-only` over `data_samples/DOC_LINE_CATEG` changes 0
+categories — the flag is off, so nothing moves.

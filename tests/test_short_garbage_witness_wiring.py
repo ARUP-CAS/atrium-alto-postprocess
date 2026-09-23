@@ -96,6 +96,10 @@ _KEEP = [
     ("diapozitiv", 900.00, 0.9700, "ron_Latn"),
     ("II/C", 6.0e7, 0.4000, "ces_Latn"),
     ("1 ks", 5.0e6, 0.5000, "ces_Latn"),
+    # A fused grid reference, gold `Clear`. Its witness-local guard was deleted by
+    # an unrelated commit once (`cc4990e`) and nothing noticed; this row is what
+    # notices now, end to end through the re-scorer.
+    ("S-VIIIb", 850.00, 0.4000, "ces_Latn"),
 ]
 _RESIDUE = [("edelite", 850.00, 0.60, "ces_Latn")]
 

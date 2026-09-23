@@ -169,6 +169,9 @@ Posted after [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues
 and numbered the same way there. Each needs a line; "no opinion" is an answer, and a blank is never
 read as a yes. **Nothing changes in the program until they are answered.**
 
+**Status, 2026-09-23.** Q7 is answered, and the re-check behind it found a lost exemption that is
+now restored (review request § 3). @david-spacil is going through Q1–Q6 with @DanaKriv by e-mail.
+
 | #       | for           | question                                                                                                                                                                | where it is explained                                                                       |
 |---------|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
 | **Q1**  | @DanaKriv     | Do you agree that `Trash` means illegible — legible is `Clear`, decipherable is `Noisy`, usefulness does not count, and `Non-text` is left blank when labelling?        | [guide § 7.2](issue30_annotation_guide.md), [review request § 6](issue30_review_request.md) |
@@ -178,7 +181,7 @@ read as a yes. **Nothing changes in the program until they are answered.**
 | **Q5a** | both          | Which `[allowed]` entries should be switched on — the four confirmed ones, all the candidates, a named subset, or none yet?                                             | "A new file you can edit yourselves", above                                                 |
 | **Q5b** | both          | Should a listed word also be exempt from the new rule's shape tests, so it can never be the reason a line is discarded?                                                 | "A new file you can edit yourselves", above                                                 |
 | **Q6**  | both          | The short-line rule can only answer `Trash`. When it cannot tell decipherable from illegible on 1–3 words, which mistake is better — `Trash` (re-processed) or `Noisy`? | [review request § 9](issue30_review_request.md)                                             |
-| **Q7**  | @david-spacil | Which revision for the re-check of your 508 lines — `master` (our suggestion) or the `v1.5.1-beta` tag?                                                                 | [review request § 3](issue30_review_request.md)                                             |
+| **Q7**  | @david-spacil | ✅ **Answered 2026-09-23: `master`.** Re-check done — 335/508, 11 fixed / 2 broken; one break (`S-VIIIb`) was a lost exemption, now restored.                         | [review request § 3](issue30_review_request.md)                                             |
 
 ---
 

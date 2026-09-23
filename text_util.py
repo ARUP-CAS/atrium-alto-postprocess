@@ -2268,6 +2268,41 @@ _RE_TAXONOMIC_SUFFIX: re.Pattern = re.compile(r"(?:aceae|oideae|eae|iae|aea|oide
 # Below this many letters a suffix match is a coincidence, not a taxon.
 _TAXONOMIC_SUFFIX_MIN_ALPHA: int = 5
 
+# (#30) A grid/context reference whose trailing sub-letter is FUSED to the roman
+# segment: `S-VIIIb`, `K-VIIIc`, `AA-VIIIb`. `is_domain_notation()` already
+# recognises the hyphenated form -- `S-VIII-b` and `B-XII-c` both return True --
+# and the unhyphenated twin differs from it by one character, so this is a
+# near-miss in that predicate rather than a new class. The roman-numeral exemption
+# does not reach it either: `_split_subtokens` yields `VIIIb`, and the fused
+# lowercase letter keeps `_RE_ROMAN_TOKEN` from matching, so `vowel_run` (`III`)
+# and `triple` convict it.
+#
+# Exempted HERE, witness-locally, and NOT by widening `is_domain_notation()`,
+# which is also read by `rule_short_garbage`'s outer guard and by the two
+# perplexity-only routes. Widening it there would change production behaviour for
+# these strings while the witness flag is still false; here it cannot change
+# anything until the flag flips -- the discipline the roman-numeral and taxonomy
+# exemptions follow.
+#
+# Measured on the 822-document corpus: seven distinct strings, one excavation's
+# grid series -- AA-VIIIb, E-VIIIb, F-VIIIb, J-VIIIb, K-VIIIc, L-VIIIb, S-VIIIb --
+# across 7 witnessed lines, 6 of them currently Clear. `S-VIIIb` is annotated
+# `Clear` in tools/gold/sidecars/issue30_gold_2067.csv, and on the gold surface
+# this guard vetoes exactly that line and none of the gold-Trash catches.
+#
+# HISTORY, because this guard has already been lost once. Added 2026-09-18
+# (`9bc218b`) and measured in the round-2 stage-5a re-run; deleted the same
+# evening by `cc4990e`, a lexicon commit whose diff it was not otherwise part of,
+# together with the German-diacritic veto `has_expected_lang_diacs()`. No test
+# pinned either, so nothing noticed until @david-spacil's 508-line re-check on
+# 2026-09-23 found `S-VIIIb` among the witness's two breaks on the default config.
+# With a lexicon configured `viiib` is attested and survives anyway; the shipped
+# config has none, which is why the guard matters. Restored on his report, and
+# now pinned by tests/test_shape_witness_vocabulary.py. The German veto was NOT
+# restored with it: the D44 language split now overlaps it, and it needs its own
+# measurement (30.plan.md D45).
+_RE_FUSED_GRID_REF: re.Pattern = re.compile(r"^[A-Za-z]{1,3}[-/][IVXLCDM]{1,7}[a-z]?$")
+
 
 @functools.lru_cache(maxsize=8)
 def _compile_vowel_run(min_run: int) -> re.Pattern:
@@ -2536,7 +2571,15 @@ def shape_garbage_clauses(text_source: str, lang: str | None = None) -> list[str
     short-circuited on the first hit; this does not, because the report needs the
     full breakdown. The flag ships false, so nothing in production pays for it.
     """
-    if has_cz_diacs(text_source) or is_structured_line(text_source) or is_domain_notation(text_source):
+    # Line-level vetoes. `_RE_FUSED_GRID_REF` is the unhyphenated twin of a shape
+    # `is_domain_notation()` already accepts -- see its comment for why it lives
+    # here and how it was once lost.
+    if (
+        has_cz_diacs(text_source)
+        or is_structured_line(text_source)
+        or is_domain_notation(text_source)
+        or _RE_FUSED_GRID_REF.match(text_source.strip())
+    ):
         return []
 
     found: set[str] = set()

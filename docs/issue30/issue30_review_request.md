@@ -10,6 +10,9 @@ waiting on @DanaKriv.** Your answers are recorded in place, marked ✅.
 > in the issue thread, after [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756),
 > and summarised in [§ 9](#9--opened-by-your-answers--open) below. One is for you alone (which
 > revision to re-check your 508 lines against, § 3); three are for you and @DanaKriv together.
+>
+> ✅ **2026-09-23: yours is answered** — `master`, with the re-check itself done (§ 3). You are
+> taking Q1–Q6 through with @DanaKriv by e-mail.
 
 > ## ✅ Answered — 2026-09-22
 >
@@ -157,6 +160,36 @@ is enough.
 > (§ 9); our suggestion is `master`, which gives back the tag's single three-vowel threshold when
 > `SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS` is set empty.
 
+> ## ✅ Done — 2026-09-23, on `master`, and it found a regression
+>
+> *"Q7: master. We ran the tag as well, so nothing waits on the choice."* Whole documents
+> re-scored with `tools/recategorize_from_csv.py`, witness on, **no lexicon** (the shipped
+> default):
+>
+> | revision                                          | agreement with gold |
+> |---------------------------------------------------|--------------------:|
+> | `4ed309a` witness off                             |             326/508 |
+> | `09c9640` (`v1.5.1-beta`) witness on              |             334/508 |
+> | `4ed309a` witness on                              |             335/508 |
+> | `4ed309a` witness on, `VOWEL_RUN_EXEMPT_LANGS=`   |             334/508 |
+>
+> The tag and `master` differ on one line only — `Frauenzimmerbad", sämtlic Gesellschastsbäder,`,
+> which `master` gets right. On `master` the witness moves **16 lines: 11 fixed, 2 broken, 3 wrong
+> either way**, which confirms the "at most 2" bound directly rather than by set inclusion.
+>
+> 🛑 **One of the two breaks should not have happened.** `S-VIIIb` broke because its exemption was
+> **not in the code**. It was added on 2026-09-18 and deleted the same evening by an unrelated
+> lexicon commit (`cc4990e`), together with a German-diacritic veto; no test held either, so
+> nothing noticed. With a lexicon, `viiib` is attested and the line survives anyway — which is why
+> our stage-8 runs never saw it — but the shipped configuration has none. **The grid-reference
+> exemption is restored and now pinned by tests**, so on the same run `master` should read
+> **336/508, with one break**. The German veto was deliberately not restored with it: the language
+> split now overlaps it, and it needs its own measurement.
+>
+> **The one remaining break is `Lokolieace: •VIII,`** — gold `Noisy`, a damaged `Lokalisace` a
+> reader can still work out. The short-line rule can only answer `Trash`, so this is exactly the
+> case Q6 asks about.
+
 Your measurement was the deciding one, and it was right: 26 lines moved, 12 improved, 12 made
 worse, and every one of the 12 failures contained a Roman numeral.
 
@@ -164,6 +197,9 @@ Since then the rule has gained four exceptions: Roman numerals, Latin family nam
 references such as `S-VIIIb`, and — until 2026-09-22 — the doubled-letter guard described in
 item 4, which has since been removed on your answer. It has now also
 gained a web-address exception, described in item 5.
+
+🛑 *Corrected 2026-09-23: the `S-VIIIb` exception was missing from the code from the evening of
+2026-09-18 until 2026-09-23, although this paragraph listed it — see the ✅ block above.*
 
 On the full set of 2,064 annotated lines the rule now improves 12 and worsens 2. Your 508 lines are
 part of that set, so the number it worsens within your sample cannot be more than 2 — which is
@@ -642,7 +678,7 @@ should change.
 | **Q5a** | both of you | Which `[allowed]` entries should we switch on? The four you confirmed (`ppole`, `ssuti`, `ssutí`, `ssutě`), all the candidates in the file, a named subset, or none yet? Switching on changes stored categories, so we re-score and report before and after.                                                      |
 | **Q5b** | both of you | Should a listed word also be exempt from the new rule's shape tests, so that it can never be the reason a line is discarded?                                                                                                                                                                                      |
 | **Q6**  | both of you | The short-line rule can only answer `Trash`. Under § 6, a short damaged line a person can still work out is `Noisy`, but on 1–3 words the program cannot reliably tell. Which mistake is better — `Trash` (re-processed, nothing deleted) or `Noisy`? Or leave it until the 357 decisions are in.                 |
-| **Q7**  | you         | Which revision for your § 3 re-check — `master` (our suggestion) or the `v1.5.1-beta` tag? See the note under § 3.                                                                                                                                                                                                |
+| **Q7**  | you         | ✅ **Answered 2026-09-23: `master`** — and the re-check is done: 335/508, 11 fixed / 2 broken / 3 wrong either way; one break was a lost exemption, now restored. See § 3.                                                                                                                                         |
 
 ---
 

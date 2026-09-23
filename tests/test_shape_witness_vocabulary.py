@@ -168,6 +168,39 @@ def test_the_exemptions_cost_no_conviction(text):
     assert _has_shape_garbage_evidence(text) is True, f"{text!r} stopped being witnessed"
 
 
+#: One excavation's grid series, the whole of it in the 822-document corpus. The
+#: sub-letter is fused to the roman segment (`S-VIIIb`, not `S-VIII-b`), which is
+#: all that separates it from a shape `is_domain_notation()` already accepts.
+FUSED_GRID_REFS = ["AA-VIIIb", "E-VIIIb", "F-VIIIb", "J-VIIIb", "K-VIIIc", "L-VIIIb", "S-VIIIb"]
+
+
+@pytest.mark.parametrize("text", FUSED_GRID_REFS)
+def test_fused_grid_references_are_not_witnessed(text):
+    """`S-VIIIb` is annotated `Clear` in the gold sidecar.
+
+    PINNED BECAUSE IT WAS LOST ONCE. The guard landed on 2026-09-18 and was
+    deleted the same evening by an unrelated lexicon commit (`cc4990e`); with no
+    test holding it, the suite stayed green and every later run measured the
+    witness without it, until @david-spacil's 508-line re-check on 2026-09-23
+    found `S-VIIIb` among its two breaks. The roman-numeral exemption does not
+    reach this shape: the fused lowercase letter keeps `VIIIb` from matching it.
+    """
+    assert shape_garbage_clauses(text) == [], f"{text!r} is witnessed again: {shape_garbage_clauses(text)}"
+
+
+def test_the_grid_guard_is_the_hyphenless_twin_and_nothing_wider():
+    """The hyphenated form is already notation; the guard must not become an amnesty.
+
+    Anchored at both ends: a find identifier with a trailing number, a stamp and a
+    stutter all stay outside it, so nothing that the witness convicts today loses
+    its conviction to this pattern except the grid shape itself.
+    """
+    assert tu.is_domain_notation("S-VIII-b") is True
+    assert tu._RE_FUSED_GRID_REF.match("S-VIIIb")
+    for text in ["Aa/III 116", "oueussd", "sektlll", "OUUITN", "Lokolieace: •VIII,", "VIIIb"]:
+        assert not tu._RE_FUSED_GRID_REF.match(text), f"{text!r} would be exempted by the grid guard"
+
+
 # ---------------------------------------------------------------------------
 # The vowel-run knob
 # ---------------------------------------------------------------------------
