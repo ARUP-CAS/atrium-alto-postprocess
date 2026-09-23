@@ -140,11 +140,13 @@ def build(
     counts with no double counting -- which is what makes the split safe to read
     and safe to add up again.
 
-    The split is worth carrying because a token strong in ARUP and absent from
-    ARUB is a *collection-specific scanning artefact*, and that is precisely the
-    `ppole` shape: a systematic misread that accrues document frequency like a
-    word because one pre-printed form was scanned many times. A single total
-    cannot show that; two columns can.
+    The split is worth carrying because it shows WHERE a token lives, which a
+    single total cannot. It does not show WHAT the token is. `ppole` is the
+    worked example: 3 ARUP / 226 ARUB documents (stage 08a), because it is one
+    institution's form convention -- the standard abbreviation of *popelnicová
+    pole* (@david-spacil, 2026-09-19), not a misread. A token strong in one
+    collection and absent from the other may be that collection's own vocabulary
+    or its systematic scanning artefact, and the columns cannot tell which.
 
     Memory: one ``set`` of tokens per document, discarded at the end of that
     document, plus the running counters. A 12.7M-line corpus builds in a few
@@ -232,8 +234,9 @@ def write_table(
         if names:
             fh.write(f"# columns: token<TAB>document_frequency<TAB>{'<TAB>'.join(names)}\n")
             fh.write("# The per-collection counts sum to the total: a document belongs to one collection.\n")
-            fh.write("# A token strong in one collection and absent from another is a scanning\n")
-            fh.write("# artefact of that collection, not vocabulary. `ppole` is the worked example.\n")
+            fh.write("# A token strong in one collection and absent from another may be that\n")
+            fh.write("# collection's own convention (`ppole`, an abbreviation) or its systematic\n")
+            fh.write("# scanning artefact. The split shows where a token lives, not which it is.\n")
         else:
             fh.write("# columns: token<TAB>document_frequency\n")
         fh.write("#\n")
@@ -269,9 +272,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "A named collection, repeatable: --collection ARUP=../ARUP/DOC_LINE_CATEG_307 "
             "--collection ARUB=../ARUB/DOC_LINE_CATEG_307. Counts are pooled into one table and "
-            "also reported per collection, which is how a collection-specific scanning artefact "
-            "becomes visible as one. Document frequency is the unit, so the per-collection "
-            "columns sum to the total."
+            "also reported per collection, which is how a collection-specific token becomes "
+            "visible -- a convention or an artefact alike; the split cannot tell which. Document "
+            "frequency is the unit, so the per-collection columns sum to the total."
         ),
     )
     ap.add_argument("-o", "--output", metavar="TSV", help="Where to write the table.")
@@ -413,8 +416,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {token:<32} {count:>10}{split}   {verdict}")
         if len(names) > 1:
             print(
-                "\n  A token attested in ONE collection only is a candidate scanning artefact,\n"
-                "  not vocabulary — that is the `ppole` shape. Read the split, not just the total."
+                "\n  A token attested in ONE collection only may be that collection's convention\n"
+                "  (`ppole` is an abbreviation) or its systematic scanning artefact — the split\n"
+                "  cannot tell which. Read it as where the token lives, not as a verdict."
             )
         return 0
 

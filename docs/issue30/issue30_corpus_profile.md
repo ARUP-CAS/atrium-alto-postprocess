@@ -138,7 +138,8 @@ risk. There is no efficient list left to work down.
 This is worth understanding, because the same thing will happen again.
 
 The rule looks for shapes that usually mean damage. One of them is **three vowels in a row**.
-`Dauerleihe` has *aue*; `FEUILLETON` has *eui*; the Czech name `Vysoean` has *oea*. The dictionary
+`Dauerleihe` has *aue*; `FEUILLETON` has *eui*; the name `Vysoean` has *oea* — though that one is a
+damaged `Vysočan` (@david-spacil, 2026-09-22), so the test catches it rightly. The dictionary
 is supposed to rescue real words from that test — but the dictionary is built from **this
 archive's own text**. It therefore protects whatever this archive says often, and offers nothing
 to a word that is perfectly correct but rare *here*.
@@ -169,6 +170,11 @@ is possible. It is not a setting, though — that language is not currently pass
 the code that makes this decision — so it is a change to be measured rather than switched on. The
 first measurement is simply counting how many of the lines at risk are detected as not Czech.
 
+✅ *Done since, 2026-09-22: the split is built and measured — against the 2,064 labelled lines it
+improves 12 and makes 1 worse, with total mistakes and readable lines lost both down — and it ships
+inside the new rule, which is still switched off. Simply requiring four vowels everywhere was
+measured too, and is not worth doing.*
+
 ## 4. The abbreviation problem has no automatic solution, and we now know that for certain
 
 > **Corrected 2026-09-22.** This section used to call `ssuti`, `ssutí` and `ssutě` scanning errors.
@@ -180,7 +186,8 @@ first measurement is simply counting how many of the lines at risk are detected 
 `ppole` is an OCR-plausible shape (a doubled first letter) that is actually an abbreviation. We
 tried three ways to separate that class from genuine doubled-letter scanning errors like `vvkop`:
 
-1. **How much commoner is the base word?** — `ppole` sits mid-pack among the artefacts. No.
+1. **How much commoner is the base word?** — `ppole` sits mid-pack among the eight doubled-letter
+   tokens. No.
 2. **How many documents does it appear in?** — on 822 documents this separated cleanly (35 against
    8 or fewer). On all 113,100 it collapses to 229 against 195. No.
 3. **Is it concentrated in one collection?** — the idea being that a scanner artefact belongs to
@@ -210,7 +217,8 @@ a formality. At this scale it was the only evidence there was, and it reversed t
 
 We tested a change that would require a line's words to be found in the archive's own vocabulary
 before calling the line good. It finds a lot of genuine rubbish — but it destroys **540 lines of
-perfectly good text for every 212 it fixes**, and it triples the number of good lines lost.
+perfectly good text for every 212 it fixes**, and it multiplies the number of good lines lost 4.5×
+(40 → 180).
 
 The expectation was that this would be a language problem: a Czech-centric dictionary convicting
 the archive's German. **It is not** — 3% of the destroyed lines carry German markers, 55% carry
@@ -357,10 +365,11 @@ against your 2,064 annotated lines gives this:
 
 **The third row is the one worth knowing.** The short-garbage rule is the rule
 this whole issue has been about — the one your patch narrowed in July. It is
-itself responsible for **7 of the 40** readable lines the program currently
-loses. The figure of 40 has been the yardstick for every decision in this issue.
-It turns out that part of it is produced by the very rule we have been trying to
-make safer. It is not a fixed background cost.
+itself responsible for **7 of the 40** readable lines the program lost when this
+was measured (before the web-address change; the baseline is 38 since). The
+figure of 40 has been the yardstick for every decision in this issue. It turns
+out that part of it is produced by the very rule we have been trying to make
+safer. It is not a fixed background cost.
 
 **One caution about the same measurement, because the table it comes from looks
 more decisive than it is.** Seven of the 23 rules score *better* when removed. It
@@ -397,9 +406,11 @@ recommended deleting the feature the project has spent two months building.
   right way without us reading them that way.
 * **The next question is a language question, not a threshold.** The test that accounts for most
   of what the rule would discard looks for three vowels in a row, which is sound Czech and wrong
-  for German and French (§ 3c).
+  for German and French (§ 3c). *It has since been answered that way: the language split is built
+  and measured (12 improved, 1 made worse) and ships switched off with the rule.*
 * **The rule we have been narrowing is part of the cost, not just the fix.** The
-  short-garbage rule destroys 7 of the 40 readable lines the program loses; the
+  short-garbage rule destroys 7 of the 40 readable lines the program lost when
+  this was measured (38 since the web-address change); the
   short-line rule saves 31. Both numbers are new, and neither was available
   before the annotations were scored against the rules individually.
 * **Automatic quality tests built for prose will keep misfiring on this archive.** Its most

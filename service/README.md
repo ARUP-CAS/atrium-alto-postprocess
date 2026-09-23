@@ -101,15 +101,15 @@ are assigned by a fast CPU pre-filter before any model inference. The remaining 
 
 | Label         | Description                                                           | Primary Signal                                                                                    |
 |---------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| `Clear` 🟢    | **High quality.** Ready for downstream NLP.                           | `quality_score ≥ CATEG_NOISY_SCORE_MAX` (0.85), or a low-perplexity / clean-prose override.       |
-| `Noisy` 🟡    | **Usable but degraded.** Minor OCR artefacts, recoverable downstream. | `CATEG_TRASH_SCORE_MAX` (0.55) ≤ `quality_score` < `CATEG_NOISY_SCORE_MAX` (0.85).                |
-| `Trash` 🔴    | **Structurally corrupt.** Not worth downstream processing.            | `quality_score < CATEG_TRASH_SCORE_MAX` (0.55), or a hard override (all-caps/no-vowel, inverted). |
+| `Clear` 🟢    | **High quality.** Ready for downstream NLP.                           | `quality_score ≥ CATEG_NOISY_SCORE_MAX` (0.80), or a low-perplexity override.                     |
+| `Noisy` 🟡    | **Usable but degraded.** Minor OCR artefacts, recoverable downstream. | `CATEG_TRASH_SCORE_MAX` (0.55) ≤ `quality_score` < `CATEG_NOISY_SCORE_MAX` (0.80).                |
+| `Trash` 🔴    | **Structurally corrupt.** Re-process with another OCR / HTR tool.     | `quality_score < CATEG_TRASH_SCORE_MAX` (0.55), or a hard override (all-caps/no-vowel, inverted). |
 | `Non-text` 🔵 | **No meaningful text.** Purely numeric / separator content.           | CPU pre-filter: dates, page numbers, archive/stamp codes, or digit ratio > 40 % on short lines.   |
 | `Empty` ⚪     | **Blank line.** Whitespace only.                                      | `word_count == 0` / whitespace only.                                                              |
 
 > [!NOTE]
-> The thresholds and the full set of overrides (hard-sweep, inverted-scan, low-perplexity-clear, clean-prose
-> promotion, mostly-readable cap, and the document/page post-passes) are documented once in the main
+> The thresholds and the full set of overrides (hard-sweep, inverted-scan, low-perplexity-clear,
+> mostly-readable cap, and the document/page post-passes) are documented once in the main
 > [README → Categorisation Logic](../README.md#categorisation-logic) and are not duplicated here.
 
 > [!IMPORTANT]

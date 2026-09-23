@@ -7,6 +7,62 @@ quoted from a log was recomputed from those artefacts against the committed pred
 
 ---
 
+## 2026-09-23 — D45 and the 508 re-check
+
+**Two guards this document added were deleted the evening they were measured, and every
+witness run from 5f on scored the witness without them.** §4 and §7 below describe
+`_RE_FUSED_GRID_REF` (`S-VIIIb`) and `has_expected_lang_diacs()` (the German-diacritic veto,
+`Frauenzimmerbad`) as being in `text_util.py`. They landed in `9bc218b` (2026-09-18, 08:03) and
+round-2 stage 5a measured them: 14 fixed / 1 broken, p = 0.00098. The same evening `cc4990e`
+(17:14), a lexicon commit, deleted both from a stale working copy together with their veto line,
+and `031fa58` (17:55) put back the pre-round-2 `setup/config.txt` witness block. No test pinned
+either guard, so the suite stayed green and nothing recorded the loss. Two consequences:
+
+* **Every witness run from 5f onward measured the guard-less tree** — 5f, 07d, 08b/08c, 10d–10f,
+  11b. Those figures stand as measurements of that tree. The stage-8-and-later runs never saw
+  `S-VIIIb` break only because they ran with a lexicon, under which `viiib` is attested; 5f,
+  with none, did — it is one of 05f's two extra breaks below.
+* **The 05a-vs-05f comparison crossed the deletion.** 05a had the guards and broke 1 line; 05f did
+  not and broke 3, and its two extra breaks are exactly the two lines the guards vetoed. A4's
+  reading of that pair is confounded (marked there). That the cascade is a precondition still
+  stands, on same-tree evidence: 08c and 10f.
+
+**@david-spacil found it, and his re-check confirms the repair.** His 508 lines, whole documents
+re-scored with `tools/recategorize_from_csv.py`, witness on, no lexicon (the shipped default):
+
+| revision                                         | agreement with gold |
+|--------------------------------------------------|--------------------:|
+| `4ed309a`, witness off                           |             326/508 |
+| `09c9640` (`v1.5.1-beta`), witness on            |             334/508 |
+| `4ed309a`, witness on                            |             335/508 |
+| `4ed309a`, witness on, `VOWEL_RUN_EXEMPT_LANGS=` |             334/508 |
+| **`3b02959`, witness on — grid guard restored**  |         **336/508** |
+
+On `3b02959` the witness moves 15 lines: **11 fixed, 1 broken, 3 wrong either way**. `S-VIIIb` is
+`Clear` again, and `Lokolieace: •VIII,` (gold `Noisy`) is the only break — the
+decipherable-but-damaged case Q6 asks about. With the flag off, 0 of the 508 change against
+`4ed309a`, so the restored guard is inert until the flag flips.
+
+**What changed in the tree.**
+
+* **The grid guard is restored** (`3b02959`), witness-local as before, and **pinned three ways**:
+  the seven-string series in `tests/test_shape_witness_vocabulary.py`, a narrowness test
+  (`Aa/III 116`, `OUUITN` and `Lokolieace: •VIII,` stay outside), and an `S-VIIIb` row in
+  `tests/test_short_garbage_witness_wiring.py`'s end-to-end keep list. The tests fail without it.
+* **The German-diacritic veto is not restored, and stays open** as a maintainer item. D44's
+  language split now covers `Frauenzimmerbad`, but on a `deu` label at 0.359 where the veto
+  rested on the letters themselves; restoring it would change the witness's reach on the ~239
+  corpus lines §4 counts (156 kept today, such as `Grauer, geschlämmter Ton.`). It needs its own
+  gold A/B and exposure pass first.
+* **The config block and the advisory are re-stated from current evidence.** §3's argument and
+  the block `031fa58` restored both leaned on readings of `ppole` that W2 overturned. The rule
+  stays — never arm the witness without a table — and its reason is now corpus exposure: 37,555
+  kept lines at risk with no table against 6,714 with the 113,100-document one (08f → 9b; 9b
+  also carries D33). Gold cannot show that difference: it labels 23 of the ~20k witnessed lines,
+  and there shape-only and armed score alike (round-2 5a 500 errors, 5a-bis 502).
+
+---
+
 ## Stage 10f + stage 11 — the cascade is a precondition, and the split passes (2026-09-22)
 
 **10f — the same flag A/B with `apply_document_postprocessing()` disabled.**
@@ -104,6 +160,11 @@ and 1 break** — errors 503 → 504, `Clear`-loss 38 → 37. It trades a gold-`
 error for a gold-`Trash` one, improving the composition and not the count, **and
 the adoption gate as written rejects any +1 on errors**. The gate is what needs
 the argument, not the split. Contingent on four language labels nobody has read.
+
+> 🛑 **Overturned 2026-09-22 by 11b** (top of this document): the split measured **12 fixes /
+> 1 break**, errors 503 → 502 and `Clear`-loss 38 → 37 — both down, so the gate passes as written.
+> The four labels were not what this paragraph assumed: `deutendes. Alhimiaal` was detected
+> Afrikaans, which is the only reason its fix survived (the Z5 caution).
 
 ---
 
@@ -215,6 +276,17 @@ lines".** Those two lines are §4.
 
 ## 3. The vocabulary veto is not a precondition — and `ppole` is why the old figure said it was
 
+> 🛑 **Superseded 2026-09-23 — `ppole` is real, so at corpus scale this conclusion inverts.** It
+> is the abbreviation of *popelnicová pole* (@david-spacil, 2026-09-19; W2), not an OCR doubling
+> of `pole`. The veto's headline benefit was therefore protecting **vocabulary**, and at corpus
+> scale the table is what keeps the witness off the archive's own words: 37,555 kept lines at risk
+> with no table against 6,714 with the 113,100-document one (08f → 9b), a difference led by
+> `ppole`, `ARCHAIA` and the Latin binomials. What stands is the gold reading — on the 23 gold rows
+> the witness reaches, shape-only and armed score alike (round-2 5a 500 errors, 5a-bis 502) —
+> which is exactly why gold cannot settle the coupling. `setup/config.txt` keeps the rule (never
+> arm the witness without a table) with that reason. Kept below as written, except the `ppole` row
+> of the document-frequency table and the guard's shipping status, both corrected in place.
+
 `setup/config.txt` currently states, in capitals, *"AND DO NOT TURN IT ON WITHOUT A
 LEXICON. These two keys are one decision."* The 2026-09-17 comment gives the reasoning: the
 witness alone confirms 5,107 Trash verdicts and newly convicts 15,217 Clear/Noisy lines
@@ -229,9 +301,9 @@ are one string:
 
 `ppole` is attested at document frequency 35 because a pre-printed form repeats the same
 misread once per document. It de-geminates to `pole` at df 163 — a ratio of 4.66. It is
-damaged text. **The veto's headline benefit was protecting garbage**, and the shipped
-`SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = 4.0` guard is what stopped it between the 09-17
-exposure run and the 09-18 gold run.
+damaged text. **The veto's headline benefit was protecting garbage**, and the then-shipped
+`SHORT_GARBAGE_LEXICON_GEMINATE_RATIO = 4.0` guard (removed 2026-09-22, D40) is what stopped it
+between the 09-17 exposure run and the 09-18 gold run.
 
 Against gold, with that guard in place, the veto's entire measured effect is to give back
 **two true Trash catches — both the line `cuxoaid ,`** — because `cuxoaid` reaches df 4.
@@ -253,13 +325,13 @@ in line with `vowel_run` (33.6%) and better behaved than `low_variety` (41.5%).
 The 09-17 next step was *"rebuild the lexicon over both full collections"* to set the
 threshold. That will not separate these populations, because the confusion is not sparsity:
 
-| token             | df at 822 docs | what it is                                              |
-|-------------------|---------------:|---------------------------------------------------------|
-| `ppole`           |             35 | OCR doubling of `pole` — **attested garbage**           |
-| `cuxoaid`         |              4 | garbage — **attested**, and it costs a gold-Trash catch |
-| `okraie`          |              3 | OCR of `okraje` — **attested garbage**                  |
-| `Naiade`          |              0 | real term — **unattested**                              |
-| `Skelettmaterial` |              2 | real term — **unattested**                              |
+| token             | df at 822 docs | what it is                                                                                     |
+|-------------------|---------------:|------------------------------------------------------------------------------------------------|
+| `ppole`           |             35 | ~~OCR doubling of `pole` — attested garbage~~ 🛑 an abbreviation (W2) — **attested, and real** |
+| `cuxoaid`         |              4 | garbage — **attested**, and it costs a gold-Trash catch                                        |
+| `okraie`          |              3 | OCR of `okraje` — **attested garbage**                                                         |
+| `Naiade`          |              0 | real term — **unattested**                                                                     |
+| `Skelettmaterial` |              2 | real term — **unattested**                                                                     |
 
 A *systematic* OCR error recurs across scans exactly as a word does, so document frequency
 cannot tell them apart, and scaling from 822 to 113,101 documents raises every artefact's
@@ -270,18 +342,20 @@ token is — and that generalises where a threshold does not.
 Two corrections to that guard's own documentation, from re-measuring it on the same table.
 Its load-bearing claim is exactly right: **8 tokens at or above 4× — `ppole`, `oobjekt`,
 `jjámy`, `ssuti`, `vvkop`, `ssutí`, `ssutě`, `llocm` — with a genuinely empty gap from
-2.60× to 4.66×.**
+2.60× to 4.66×.** But "36 below 2×" is 51 when both forms must be attested at `MIN_DF`, and
+66 when the twin is counted at any frequency; 36 matches neither filter. And on this corpus
+the guard's entire reach is one family: of the 11,690 lines where it restores a conviction,
+all 11,690 are `ppole` and its 17 surface forms. It currently does exactly one job. Stage
+5d (added to the runbook) measures whether that job is worth its place.
 
 > 🛑 **Corrected 2026-09-22.** Four of those eight are real language, not damage.
 > @david-spacil: `ppole` is an abbreviation (already known) and **`ssuti` / `ssutí` / `ssutě` are
 > an old way of spelling *suť***. Only `llocm`, `vvkop`, `jjámy` and `oobjekt` are scanning errors.
 > The ratio gap the guard is built on is therefore not a gap between damage and language at all —
 > it separates *doubled-letter shapes* from everything else, and both classes sit above it. He has
-> agreed the guard can be dropped, since the dictionary reaches all eight at full scale. But "36 below 2×" is 51 when both forms must be attested at `MIN_DF`, and
-66 when the twin is counted at any frequency; 36 matches neither filter. And on this corpus
-the guard's entire reach is one family: of the 11,690 lines where it restores a conviction,
-all 11,690 are `ppole` and its 17 surface forms. It currently does exactly one job. Stage
-5d (added to the runbook) measures whether that job is worth its place.
+> agreed the guard can be dropped, since the dictionary reaches all eight at full scale.
+> *(Moved below the paragraph it corrects on 2026-09-23: placed inside it, the quote had swallowed
+> the paragraph's second half.)*
 
 ---
 
@@ -306,7 +380,9 @@ description), 83 currently Trash.
 carries the whole series from one excavation — `AA-VIIIb`, `E-VIIIb`, `F-VIIIb`, `J-VIIIb`,
 `K-VIIIc`, `L-VIIIb`, `S-VIIIb` — 7 lines, 6 of them currently Clear.
 
-Both now have **witness-local** guards in `text_util.py` (§7). Witness-local, not a
+Both now have **witness-local** guards in `text_util.py` (§7). 🛑 *2026-09-23: both were deleted
+by `cc4990e` the evening they landed (D45, top of this document). The grid guard is restored
+(`3b02959`); the German-diacritic veto is not.* Witness-local, not a
 widening of `is_domain_notation()`, because that predicate is also read by
 `rule_short_garbage`'s outer guard and the two perplexity-only routes: changing it there
 would move production behaviour while the flag is still false. Inside the predicate the
@@ -321,6 +397,11 @@ for 162 false-positive candidates (20,324 → 20,078 lines; 5,243 → 5,005 dist
 Trash-recall 36/180, Clear-loss 40.** That beats the shipped labels and does not raise
 Clear-loss, which is `ADOPT-CANDIDATE` on the repository's own gate. The prediction comes
 from the text-only witness; the full stack has to confirm it, and that is one 2.5-hour A/B.
+
+> 🛑 **Measured in round 2 (2026-09-18):** 500 errors, Trash-recall 36/180, `Clear`-loss **41**
+> — 14 fixed / 1 broken, p = 0.00098, the 41st from the modal dedup rather than the witness. That
+> is the only run with both guards in: `cc4990e` deleted them the same evening, and every later
+> run measured the tree without them (D45, top of this document).
 
 ---
 
@@ -395,6 +476,12 @@ the falsified "DO NOT TURN IT ON WITHOUT A LEXICON" block with the gold table an
 numbers against the convict clause; corrects the de-gemination counts and notes the
 one-family reach.
 
+> 🛑 **Both reverted since, 2026-09-18 evening (D45, top of this document).** `cc4990e` deleted
+> the two guards and `031fa58` put back the old config block. The grid guard is restored
+> (`3b02959`); the German veto is not; and the config block was re-stated from current evidence on
+> 2026-09-23 — the rule kept, its reason now corpus exposure rather than this document's gold
+> table.
+
 **`tools/ab_constant_eval.py`** — `mcnemar_exact()` and the paired comparison already
 landed at HEAD; what was missing is the denominator that §1 turns on.
 * `_print_class_supports()` — the gold class supports, once, above the verdicts.
@@ -429,14 +516,18 @@ for seven strings and belongs behind its own parity re-score.
 * **`ppole` "across 22 documents"** → **25** in the witness queue; df 35 corpus-wide.
 * **The "1:3 against → 1.7:1 in favour" table** is scored against `categ`. Against gold the
   ordering reverses on every column, and 90.5% of the veto's credited benefit was one
-  string that belongs in Trash.
+  string that belongs in Trash. 🛑 *2026-09-23: it does not — `ppole` is an abbreviation (W2),
+  so that benefit was the veto protecting a real word. Its df 35 is on the 822-document table;
+  at 113,100 documents it is 229.*
 * **`Trash-recall` denominators**: 180, not 90. A reader reconstructing the paired counts
   from the logs alone can land on either.
 * **`setup/config.txt`'s "36 below 2×"** → 51 (both forms attested at `MIN_DF`) or 66 (twin
   at any frequency).
 * **`30.runbook.md` does not exist in the repository.** It is cited as the authority for
   "do not enable without the measurement" by `text_util.py`, `setup/config.txt` and
-  `tools/build_token_lexicon.py`. Only the job script exists, on the cluster.
+  `tools/build_token_lexicon.py`. Only the job script exists, on the cluster. *2026-09-23: the
+  in-tree pointers now name the #30 cluster job scripts (not tracked) and the plan or findings
+  section that holds each result.*
 * The 09-17 comment noted it was recording *"the second time in this round that
   fixture-level intuition inverted on real data"*. This is the third, and the pattern is
   sharper than "intuition": **every figure scored against `categ` has inverted when gold
@@ -453,6 +544,10 @@ for seven strings and belongs behind its own parity re-score.
    Flipping it also means moving the four `SHORT_GARBAGE_WITNESS_*` constants out of
    `_DELIBERATELY_NOT_TUNABLE` and re-adding `rule_short_garbage_witness` to the two
    ablation lists, in the same commit.
+   🛑 *Ran in round 2 (2026-09-18): `Clear`-loss 41 at Trash-recall 36/180, one line short, and
+   the 41st was the dedup's. The guards were then lost (D45); the gate was later passed on the
+   guard-less tree (08b, 10e: `Clear`-loss unchanged). The flag still ships off, and what it waits
+   on now is annotation and the open questions, not a run.*
 2. **Re-run the whole of stage 5 on current code** (`FORCE=1`, ~15h with 5d and 5e). The
    logs in hand predate the `errors` column, McNemar, and the current adoption gate.
 3. **Annotate the distinct queue.** This is the binding constraint now, not the absence of
@@ -603,6 +698,11 @@ break. Cascade **off** (05f): 14 fixes, **3** breaks, and the baseline Clear-los
 rather than 40. **On this gold set the cascade is protective**, which is the opposite of how
 it has been read.
 
+> 🛑 **Confounded (D45, 2026-09-23).** 05a ran with the two witness guards and 05f without them
+> — `cc4990e` deleted them between the runs — and 05f's two extra breaks are exactly the two lines
+> the guards vetoed. The conclusion that the cascade protects stands on same-tree evidence (08c,
+> 10f), not on this pair.
+
 ## A5. 07d already reports the adoption gate passing
 
 ```
@@ -663,7 +763,8 @@ needs is only the disposition of its own §9 items and its own predictions.
 **The prediction in §9 item 1 was right, and for the wrong reason.** It asked whether `Clear`-loss
 would come back 40. It did — in both arms of a paired A/B, which is a stronger result than the
 question anticipated, because it makes the drift a property of the trees rather than of the
-measurement.
+measurement. 🛑 *2026-09-23 (D45): 08b ran without the two guards §9 item 1 was about, so it is
+not a test of that prediction; the only run with them in, round-2 5a, gave `Clear`-loss 41.*
 
 **And the discipline note at the end of §"What follows" applied to this document's own successor.**
 Stage 8 contains a defect of exactly the kind catalogued here: **08f and 08g were run with the
@@ -672,7 +773,8 @@ ships. The exposure they report, and the 592-decision annotation ask built from 
 population roughly 3.7× larger than the shipped configuration puts at risk — about 73% of it is
 exempt by attestation the moment a table is configured. The proof is in the delivered file rather
 than in a log line: `ppole` is document frequency 229, above the geminate cap, so a lexicon-on
-queue cannot contain it, and it is the largest row in the delivered one.
+queue cannot contain it, and it is the largest row in the delivered one. 🛑 *The cap is gone
+(D40, 2026-09-22); the inference holds without it — at df 229 `ppole` is attested outright.*
 
 Two further findings were made **in the course of reading stage 8, written down as predicate
 defects, and then withdrawn** — the binomial-taxonomy class and, initially, the URL class — because
@@ -696,7 +798,9 @@ disposition of this document's own catalogue.
 **R3 is closed.** All 23 rules are scored against the 2,064-row sidecar. The
 baseline gold `Clear`-loss reads **40**, matching 08b from a separate job with a
 different tool — this document has counted instrument failures for two months
-and can now record the first cross-run agreement.
+and can now record the first cross-run agreement. 🛑 *It is 38 since D33 (10d/10e):
+11c accounts for the shift, two `http://www.arub.cz` rows moving `Trash` → `Noisy`.
+The agreement stands for the tree it was measured on.*
 
 **And this is the eighth instrument-level error of the family catalogued here,
 with a new shape.** The previous seven were a tool computing the wrong number.
@@ -809,7 +913,8 @@ adoption gate turns on. The sidecar carries locators and no text, so the check n
 is cluster-side. The exposure is small — 1,667 `ssuti` lines in 56.6M, and the 822-document gold
 corpus is 0.7% of the collections — which is exactly why it should be ruled out by looking rather
 than by arithmetic. **Recorded as a stage-11 action; until it is done, `Clear`-loss 40 carries an
-unquantified asterisk.**
+unquantified asterisk.** 🛑 *Cleared 2026-09-22: 11a found zero gold rows containing `ssuti`,
+`ssutí` or `ssutě`. The figure itself is 38 since D33 (11c).*
 
 **And a correction to the stage-8 re-run read.** V5 listed `J. Vysoean` and `B/ POSTKRANIAINY SKELET:`
 among the "correctly-read" strings that a higher vowel-run threshold would spare. They are scanning

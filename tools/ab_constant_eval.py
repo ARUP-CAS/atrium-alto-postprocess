@@ -263,7 +263,7 @@ def _print_gold_verdict(rows: List[Dict[str, Any]], gold_column: str, margin: fl
         _print_class_supports({"per_class_support": supports})
     # The reference Clear-loss is the incumbent's: the first trial whose value
     # matches the shipped config, else the first row. `--values false,true` puts
-    # the incumbent first by convention, which is why the runbook says to.
+    # the incumbent first by convention, so always pass the shipped value first.
     base_loss = rows[0]["clear_loss"] if rows else 0
 
     base_errors = rows[0].get("errors") if rows else None

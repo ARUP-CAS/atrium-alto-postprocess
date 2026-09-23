@@ -89,10 +89,15 @@ up as a failing test instead of a quietly mislabelled row.
 ## Classification logic
 
 ```
+fire_count == 0 AND flag-gated and off → INERT (switched off, not dead; not a retire signal)
 fire_count == 0 → DEAD (unreachable; retire candidate)
 fire_count > 0 AND decisive_count == 0 → REDUNDANT-HERE (entanglement; keep)
 decisive_count > 0 → LOAD-BEARING (always keep)
 ```
+
+The first line is checked first, as `_classify()` does: "flag-gated and off" means listed in
+`text_util.CONFIG_GATED_RULES` with its flag false (#30 D35). A gated rule that fires anyway is
+classified by its counts like any other.
 
 
 `REDUNDANT-HERE` means the rule fires but is currently masked by an overlapping
@@ -190,7 +195,8 @@ when it does → keep.
 - High-coverage but non-decisive: fires often but is always masked by an
 earlier rule → REDUNDANT-HERE; keep (entanglement; not safe to delete).
 - Zero coverage: never fires → DEAD → retirement candidate after full-corpus
-confirmation.
+confirmation — unless its flag is off (`text_util.CONFIG_GATED_RULES`), which
+is INERT: re-run with the flag on before reading anything into the zero.
 
 ## Hook points for B1 (gold set — deferred)
 

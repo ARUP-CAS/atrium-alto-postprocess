@@ -228,8 +228,10 @@ def test_raising_the_vowel_run_is_a_measured_trade_in_both_directions():
 
     Documented in the clause and in setup/config.txt: `oueussd` survives, the
     unsuffixed loans stop firing, and `cuxoaid` escapes with no other clause
-    catching it. Whoever raises this constant should be raising it against gold
-    with this cost in view.
+    catching it. It was then raised against gold (stage 10d) and rejected --
+    errors 503 = 503, fixes 2 / breaks 2, p = 1, `Trash`-recall 34 -> 32/180 --
+    so this stays pinned as the record of why, and the D44 language split is
+    the answer rather than a global 4.
     """
     with tu.override_constants({"SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN": 4}):
         assert _has_shape_garbage_evidence("oueussd") is True
@@ -556,26 +558,24 @@ def test_header_lines_are_still_skipped(tmp_path):
 
 
 def test_the_witness_without_a_lexicon_is_reported_as_a_known_bad_configuration():
-    """Measured on the cluster, and it is the single most consequential setting here.
+    """The two settings are one decision, and the reason is corpus exposure.
 
-    Over 1,480,119 in-scope lines the shape witness alone confirms 5,107 existing
-    `Trash` verdicts and newly convicts **15,217** lines the pipeline currently
-    calls `Clear` or `Noisy`. With the vocabulary veto at `min_df` 3 the same
-    witness scores 3,905 against 2,306.
+    Over both full collections the witness with no table would newly convict
+    8,529 strings / 37,555 lines the pipeline currently keeps (stage 08f); with
+    the 113,100-document table it is 5,563 / 6,714 (stage 9b, which also carries
+    D33). What the table spares is led by real words -- `ppole` (an
+    abbreviation), `ARCHAIA`, `Lepus europaeus`, `Triticum monococcum`. Gold
+    cannot show the difference: it labels 23 of the ~20k lines the witness
+    reaches, and there shape-only and armed score alike (round-2 5a 500 errors,
+    5a-bis 502; the no-table 508 re-check goes 326 -> 336).
 
-    That gap READ as 1:3-against becoming 1.7:1-in-favour, and it was quoted here
-    as the reason the two settings are one decision. It is not: 90.5% of the
-    difference is the single token `ppole` -- which is an ABBREVIATION, so the
-    witness was wrong about it (@david-spacil, 2026-09-19), and the veto rescuing
-    it is the veto working -- and both figures are counted
-    against `categ` — the pipeline's own answer — so neither can tell a wrong
-    witness from a wrong pipeline. The COUPLING still holds, because a veto that
-    misfires on 12.9k lines either way is not something to arm blind. The
-    arithmetic no longer argues for it.
+    History: this used to quote 15,217 convictions against 5,107 ("1:3
+    against"), scored against `categ`, and 90.5% of that gap was `ppole`. The
+    coupling survived; that arithmetic did not.
 
-    Advisory rather than a gate: stage 5a of the runbook deliberately measures the
-    shape-only configuration, and refusing it would make that measurement
-    impossible. But nobody should reach it by accident.
+    Advisory rather than a gate: every gold A/B from stage 5a on measures the
+    shape-only configuration on purpose, and refusing it would make those
+    measurements impossible. But nobody should reach it by accident.
     """
     assert tu.uncoupled_witness_warning(witness_enabled=True, lexicon_path="") is not None
     assert tu.uncoupled_witness_warning(witness_enabled=True, lexicon_path="   ") is not None
@@ -619,8 +619,9 @@ def test_the_shipped_configuration_raises_no_advisory():
 # are what the removed guard was calibrated on and what these tests replay.
 
 #: Doubled-initial tokens whose own source word is also attested and commoner.
-#: FOUR of these are scanning damage -- `oobjekt`, `jjámy`, `vvkop`, `llocm` --
-#: and the three `ssut*` forms are an old spelling of `suť`, i.e. real language.
+#: THREE of these are scanning damage -- `oobjekt`, `jjámy`, `vvkop` (the fourth
+#: damaged token, `llocm`, is not in this 822-document fixture) -- and the three
+#: `ssut*` forms are an old spelling of `suť`, i.e. real language.
 #: The removed guard could not tell them apart, and nothing else can either:
 #: ratio, absolute document frequency and per-collection concentration were all
 #: measured and all failed. They are one class to this code now.
@@ -677,7 +678,7 @@ def test_every_attested_token_keeps_its_veto(tmp_path, token):
     This is the contract the de-gemination guard's removal creates (#30 D40), and
     it is the assertion that would fail if anyone re-introduced a carve-out. It
     replaces `test_templated_geminate_artefacts_lose_their_veto`, which asserted
-    exactly the opposite and was right about at most four of the six tokens it
+    exactly the opposite and was right about at most three of the six tokens it
     covered -- the three `ssut*` forms are an old spelling of `suť`, not damage.
 
     The three fixture dicts are listed separately because they record what the

@@ -54,8 +54,10 @@ def btl():
 
 
 #: Real document frequencies from the 822-document build. `pole` 163 against
-#: `ppole` 35 is the ratio the artefact check turns on; `xiii` 87 against `xxiii`
-#: 54 is the Roman-numeral pair that must NOT trip it.
+#: `ppole` 35 is the ratio the twin check turns on -- and `ppole` is an
+#: abbreviation, not an artefact, which is why a twin is evidence rather than a
+#: verdict; `xiii` 87 against `xxiii` 54 is the Roman-numeral pair that must NOT
+#: trip it.
 REAL_DF = {
     "pole": 163,
     "ppole": 35,
@@ -142,7 +144,8 @@ def test_per_collection_counts_sum_to_the_total(btl, tmp_path):
     for token, count in total.items():
         assert count == per["ARUP"].get(token, 0) + per["ARUB"].get(token, 0), token
     assert total["vrstva"] == 3 and per["ARUP"]["vrstva"] == 2 and per["ARUB"]["vrstva"] == 1
-    # The artefact shape: present in one collection, absent from the other.
+    # The collection-specific shape: present in one collection, absent from the
+    # other. A convention (`ppole` is an abbreviation) and an artefact look alike here.
     assert per["ARUP"].get("ppole", 0) == 0 and per["ARUB"]["ppole"] == 2
 
 
@@ -228,13 +231,16 @@ def test_short_tokens_are_not_queried(nb):
 
 
 # ---------------------------------------------------------------------------
-# The `ppole` case: attested, and still an artefact
+# The `ppole` case: attested, real, and it still has a stronger twin
 # ---------------------------------------------------------------------------
 
 
-def test_an_attested_artefact_is_flagged_by_its_stronger_twin(nb):
-    """`ppole` is in the lexicon at 35 because one pre-printed form was scanned 35 times.
+def test_an_attested_abbreviation_still_reports_its_stronger_twin(nb):
+    """`ppole` is in the lexicon at 35 because one institution's forms use it.
 
+    It is the abbreviation of *popelnicová pole* (@david-spacil, 2026-09-19), not
+    a misread, and an abbreviation's base word is always the commoner of the two
+    -- so the twin is reported and it is evidence for a reader, not a verdict.
     `nearest_attested` is silent on it — correctly, it needs no recovery — so
     without `stronger_twin` the single most important row in the queue (11,562
     lines, 57.6% of the population) would carry no evidence at all.
@@ -323,7 +329,7 @@ def test_annotate_adds_evidence_without_touching_the_answer_column(ocr, tmp_path
     by_text = {r["text"]: r for r in rows}
     assert "fragment" in by_text["1 fraament okraie"]["nearest_attested"]
     assert by_text["1 fraament okraie"]["recoverability"] == "1.00"
-    assert "pole" in by_text["ppole"]["nearest_attested"], "the artefact must be flagged"
+    assert "pole" in by_text["ppole"]["nearest_attested"], "the stronger twin must be reported"
     assert by_text["oueussd"]["recoverability"] == "0.00"
     assert by_text["oueussd"]["nearest_attested"] == ""
 
@@ -350,7 +356,7 @@ def test_lookup_names_the_mechanism_in_its_output(ocr, tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "diacritics" in out
-    assert "163x" in out, "the artefact's stronger twin must be visible"
+    assert "163x" in out, "the stronger twin must be visible"
     assert "that call is the archive's" in out, "the tool must not imply it decides the category"
 
 

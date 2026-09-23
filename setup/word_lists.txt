@@ -39,7 +39,7 @@
 #
 # WHAT IT DOES NOT DO, yet: it does not by itself stop the short-line rules from
 # convicting a line. How far a listed word should reach is an open question for
-# @DanaKriv and @david-spacil (issue #30 § 6), and until they answer it this
+# @DanaKriv and @david-spacil (issue #30 Q5b), and until they answer it this
 # section deliberately stops here.
 #
 # THIS IS THE SECTION FOR ORDINARY WORDS the program keeps getting wrong: place
@@ -50,7 +50,8 @@
 # IT SHIPS EMPTY. The candidates below are real — every one is a word this issue
 # has confirmed the program treats wrongly — but switching them on changes stored
 # categories, so uncommenting is a deliberate, measurable act and not a default.
-# Uncomment what this archive wants, then re-score and compare.
+# Uncomment what this archive wants, then re-score and compare. Which ones to
+# switch on is Q5a in issue #30; until it is answered they stay commented out.
 [allowed]
 # ── old and dialect spellings ──
 # ssuti        # old spelling of `suť` (rubble) — @david-spacil, 2026-09-22
@@ -63,9 +64,12 @@
 #              # A convention of ARUB's 2010s forms, not a scanning error.
 #
 # ── German and French the archive actually contains ──
-# These carry native vowel runs. The language split (issue #30 D44) covers them
-# when the language is detected correctly; they are candidates here as well
-# because detection on a one-word line is exactly where it is least reliable.
+# The first four carry a native vowel run (`aue`, `euo`, `eui`). The language
+# split (issue #30 D44) covers those when the language is detected correctly;
+# they are candidates here as well because detection on a one-word line is
+# exactly where it is least reliable. The split does nothing for the rest:
+# `Kaukasus`, `Hallstatthaus` and `Schuhleistenkeilbruchstueck` are convicted
+# on letter variety in every language, and `Forsterhaus` by no shape test.
 # Dauerleihe   # permanent loan — museum term, 286 lines
 # Bauerleihe   # the same term, another reading
 # Neuotting    # Neuötting, Bavarian place name
@@ -78,8 +82,10 @@
 #              # class from rubbish of the same shape (issue #30 D34)
 #
 # ── Latin species and anatomy ──
-# These are protected today only when a corpus frequency table is configured, and
-# no such table ships with this repository.
+# Against the shape tests these are protected only when a corpus frequency table
+# is configured, and no such table ships with this repository -- except the
+# `-aceae` family names at the end, which the taxonomic-suffix exemption spares
+# without one.
 # malakofauna  # mollusc fauna
 # diapozitiv   # slide (photographic)
 # occipitale   # occipital bone

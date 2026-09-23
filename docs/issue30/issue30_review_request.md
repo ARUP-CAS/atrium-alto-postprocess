@@ -9,10 +9,12 @@ waiting on @DanaKriv.** Your answers are recorded in place, marked ✅.
 > few questions we had written down as "for Dana and David" without ever asking. They are now asked
 > in the issue thread, after [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756),
 > and summarised in [§ 9](#9--opened-by-your-answers--open) below. One is for you alone (which
-> revision to re-check your 508 lines against, § 3); three are for you and @DanaKriv together.
+> revision to re-check your 508 lines against, § 3); three — Q4, Q5 (in two parts) and Q6 — are
+> for you and @DanaKriv together.
 >
-> ✅ **2026-09-23: yours is answered** — `master`, with the re-check itself done (§ 3). You are
-> taking Q1–Q6 through with @DanaKriv by e-mail.
+> ✅ **2026-09-23: yours is answered** — `master`, with the re-check itself done and the repair it
+> prompted **confirmed**: 336/508 on `3b02959` (§ 3). You are taking Q1–Q6 through with @DanaKriv
+> by e-mail. One new question is for you alone, and it is optional ([§ 10](#10--new--q8), Q8).
 
 > ## ✅ Answered — 2026-09-22
 >
@@ -51,7 +53,9 @@ that are now kept as good text.
 
 The **shape witness** — the narrower rule meant to clean those up — **passes its acceptance test**
 as of stage 8. Errors fell from 513 to 503, readable lines lost stayed at 40, and the cost measure
-went down. Your Roman-numeral finding is closed and has stayed closed.
+went down. Your Roman-numeral finding is closed and has stayed closed. *(The 40 is 38 since the
+web-address exception in item 5: two correctly scanned `http://www.arub.cz` lines stopped being
+discarded. The rule's effect on it is unchanged — 38 with it off, 38 with it on.)*
 
 The rule is still switched off, and the reason has changed twice. Last week we found that the run
 which measured *how much text the rule would affect* had been made with the vocabulary dictionary
@@ -89,7 +93,9 @@ increase in errors, no increase in cost, and no increase in readable lines lost.
 **And the drift is explained.** The same setting had reported 42, then 41, then 40 readable lines
 lost, and we could never account for it. Both halves of this single run report 40. The differences
 were between three different working versions of the code, not three different answers to one
-question. There is nothing left to investigate.
+question. There is nothing left to investigate. *(It has moved once more since, to 38, and that step
+is explained too: the web-address exception in item 5 stopped two `http://www.arub.cz` lines being
+discarded — see *And now it is settled* in § 7.)*
 
 **No action needed from you here.** It is included because you were asked for an opinion and you
 are owed the outcome.
@@ -166,29 +172,37 @@ is enough.
 > re-scored with `tools/recategorize_from_csv.py`, witness on, **no lexicon** (the shipped
 > default):
 >
-> | revision                                          | agreement with gold |
-> |---------------------------------------------------|--------------------:|
-> | `4ed309a` witness off                             |             326/508 |
-> | `09c9640` (`v1.5.1-beta`) witness on              |             334/508 |
-> | `4ed309a` witness on                              |             335/508 |
-> | `4ed309a` witness on, `VOWEL_RUN_EXEMPT_LANGS=`   |             334/508 |
+> | revision                                        | agreement with gold |
+> |-------------------------------------------------|--------------------:|
+> | `4ed309a` witness off                           |             326/508 |
+> | `09c9640` (`v1.5.1-beta`) witness on            |             334/508 |
+> | `4ed309a` witness on                            |             335/508 |
+> | `4ed309a` witness on, `VOWEL_RUN_EXEMPT_LANGS=` |             334/508 |
+> | **`3b02959` witness on** — exemption restored   |         **336/508** |
 >
-> The tag and `master` differ on one line only — `Frauenzimmerbad", sämtlic Gesellschastsbäder,`,
-> which `master` gets right. On `master` the witness moves **16 lines: 11 fixed, 2 broken, 3 wrong
-> either way**, which confirms the "at most 2" bound directly rather than by set inclusion.
+> On `4ed309a` the tag and `master` differ on one line only — `Frauenzimmerbad", sämtlic
+> Gesellschastsbäder,`, which `master` gets right. On `master` as it then stood (`4ed309a`) the
+> witness moves **16 lines: 11 fixed, 2 broken, 3 wrong either way**, which confirms the "at most 2"
+> bound directly rather than by set inclusion.
 >
 > 🛑 **One of the two breaks should not have happened.** `S-VIIIb` broke because its exemption was
 > **not in the code**. It was added on 2026-09-18 and deleted the same evening by an unrelated
 > lexicon commit (`cc4990e`), together with a German-diacritic veto; no test held either, so
 > nothing noticed. With a lexicon, `viiib` is attested and the line survives anyway — which is why
 > our stage-8 runs never saw it — but the shipped configuration has none. **The grid-reference
-> exemption is restored and now pinned by tests**, so on the same run `master` should read
-> **336/508, with one break**. The German veto was deliberately not restored with it: the language
-> split now overlaps it, and it needs its own measurement.
+> exemption is restored and now pinned by tests**, and on the same run `master` reads **336/508,
+> with one break** — ✅ **confirmed** by you on `3b02959` (below). The German veto was deliberately
+> not restored with it: the language split now overlaps it, and it needs its own measurement.
 >
 > **The one remaining break is `Lokolieace: •VIII,`** — gold `Noisy`, a damaged `Lokalisace` a
 > reader can still work out. The short-line rule can only answer `Trash`, so this is exactly the
 > case Q6 asks about.
+>
+> ✅ **Confirmed 2026-09-23 on `3b02959`:** *"336/508, `S-VIIIb` is now Clear, `Lokolieace: •VIII,` is
+> the only break (15 moved: 11 fixed, 1 broken, 3 wrong either way). With the flag off, there's
+> 0/508 change against `4ed309a`."* So the restored exemption changes nothing until the rule is
+> switched on. The tag (334) and `master` (336) now differ by two lines: `Frauenzimmerbad` (the
+> language split) and `S-VIIIb` (the restored exemption).
 
 Your measurement was the deciding one, and it was right: 26 lines moved, 12 improved, 12 made
 worse, and every one of the 12 failures contained a Roman numeral.
@@ -204,7 +218,7 @@ gained a web-address exception, described in item 5.
 On the full set of 2,064 annotated lines the rule now improves 12 and worsens 2. Your 508 lines are
 part of that set, so the number it worsens within your sample cannot be more than 2 — which is
 sound reasoning, but indirect. It was your finding and your tooling, and a direct figure on the 508
-would close it properly.
+would close it properly. ✅ *It has: 1 break on `3b02959` (the ✅ block above).*
 
 ## 4. The eight doubled-letter tokens — answered, and we had three of them wrong
 
@@ -322,7 +336,7 @@ e-mail: officeauappmost.cz          <- the scan lost the @; the label survived
 
 The program now recognises this shape. It catches all 144, and wrongly catches none of the other
 7,289 lines at risk, nor any of our stored rubbish examples. **No action needed.** It is mentioned
-so that when you re-check the 508 lines in item 3, you know the current shape of the rule.
+because your re-check of the 508 lines in item 3 — now done — ran on this shape of the rule.
 
 **And one problem we have deliberately left unsolved.** `Kaukasus`, `Hallstatthaus` and
 `Schuhleistenkeilbruchstueck` are real words. They appear in too few documents to be recognised by
@@ -339,7 +353,8 @@ The full-archive measurement turned up something that is not a bug, and may matt
 switch itself.
 
 **77% of what the program throws away in this part of the archive has nothing wrong with it** — no
-garbled characters, no strange symbols. Specifically, it currently marks as `Trash`:
+garbled characters, no strange symbols. Specifically, it marked as `Trash` (the two addresses
+have been `Noisy` since the web-address exception in item 5):
 
 * `http://www.arub.cz` — 5,309 lines, scanned perfectly correctly;
 * `e-mail: mhauer@zip-ops.cz`;
@@ -446,6 +461,9 @@ It alone accounts for about 4,300 of the roughly 6,700 lines at stake.
 has *eui*. `J. Vysoean` has *oea*. Meanwhile the marks the rule was written for — the page stamps
 that read `OUUITN`, `OUOISP`, `OUUIUO` — have four or more vowels in a row.
 
+🛑 *`J. Vysoean` is not correctly scanned: it is a damaged `Vysočan` (your correction, 2026-09-22),
+so the test catches it rightly. The same slip is struck through a few lines below.*
+
 **So the obvious move is to require four instead of three.** Measured over the full list:
 
 | vowels required | lines the rule would discard that are kept today | change |
@@ -471,7 +489,8 @@ caught. That is a much weaker case than the one we put to you, and it is the rea
 suggestion is the better one.
 
 **We have not made this change, and we would like you to tell us whether to.** Two reasons for
-caution, stated plainly:
+caution, stated plainly *(📊 measured since, and the change was not made: four instead of three
+fixes 2 lines and breaks 2 against your labels, and finds less rubbish — see the 📊 block below)*:
 
 1. **The figures above are an estimate.** They were produced by applying the test's own pattern to
    the saved text, not by re-running the rule. We will re-run it properly, and we do not expect the
@@ -627,7 +646,8 @@ Stage 6 — an 87-hour measurement of all 23 rules — finished on 2026-09-22.
   number stage 8b reports from a completely separate job using a different tool. That is the first
   time two runs in this issue have independently agreed on anything.
 * **And it produced a number that affects item 2.** Measured rule by rule against your labels,
-  **the short-garbage rule destroys 7 of those 40 readable lines.** The rule your patch narrowed is
+  **the short-garbage rule destroys 7 of those 40 readable lines.** *(40 was the baseline then; it
+  is 38 since the web-address exception in item 5.)* The rule your patch narrowed is
   itself part of the cost the new rule is being judged against. The short-line rule protects 31 and
   the reference-floor rule protects 10. We are not proposing to act on any of this. It changes how
   the number 40 should be read, and 40 is the number this decision has turned on since July.
@@ -661,8 +681,8 @@ later.
 
 Asked in the issue thread after
 [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756),
-and numbered there as Q1–Q7. Q1–Q3 are for @DanaKriv alone and are in her guide; the four below
-involve you. One line each is enough, and "no opinion" is an answer.
+and numbered there as Q1–Q7. Q1–Q3 are for @DanaKriv alone and are in her guide; the five rows
+below involve you (Q5 comes in two parts). One line each is enough, and "no opinion" is an answer.
 
 **A correction first, to comment 61.** It says that listing a word in `setup/word_lists.txt`
 `[allowed]` stops the program discarding it. Today that is only partly true. A listed word stops
@@ -678,7 +698,7 @@ should change.
 | **Q5a** | both of you | Which `[allowed]` entries should we switch on? The four you confirmed (`ppole`, `ssuti`, `ssutí`, `ssutě`), all the candidates in the file, a named subset, or none yet? Switching on changes stored categories, so we re-score and report before and after.                                                      |
 | **Q5b** | both of you | Should a listed word also be exempt from the new rule's shape tests, so that it can never be the reason a line is discarded?                                                                                                                                                                                      |
 | **Q6**  | both of you | The short-line rule can only answer `Trash`. Under § 6, a short damaged line a person can still work out is `Noisy`, but on 1–3 words the program cannot reliably tell. Which mistake is better — `Trash` (re-processed, nothing deleted) or `Noisy`? Or leave it until the 357 decisions are in.                 |
-| **Q7**  | you         | ✅ **Answered 2026-09-23: `master`** — and the re-check is done: 335/508, 11 fixed / 2 broken / 3 wrong either way; one break was a lost exemption, now restored. See § 3.                                                                                                                                         |
+| **Q7**  | you         | ✅ **Answered 2026-09-23: `master`** — and the re-check is done and confirmed: **336/508** on `3b02959`, 15 moved, 11 fixed / 1 broken / 3 wrong either way. It read 335/508 with 2 broken until the lost `S-VIIIb` exemption was restored. See § 3.                                                               |
 
 ---
 
@@ -690,3 +710,24 @@ carefully would have got there first.
 
 Nothing in §§ 1–8 waits on you. What remains there is @DanaKriv's agreement on § 6 and her 357
 decisions — plus the follow-up questions in § 9, which your answers made possible to ask.
+
+## 10. ⏳ New — Q8
+
+**For you, asked 2026-09-23, and optional.** One line is enough, and "don't know" is an answer. It
+switches nothing on: the answer decides whether a measurement is worth running.
+
+**Q8 — In this archive, are `ä`, `ö`, `ü` and `ß` reliable signs of German, or do damaged Czech
+scans produce them** — a Czech `á` read as `ä`, or `ů` as `ü`?
+
+**Why we ask.** A line carrying a Czech accent is never judged by the new rule's shape tests: the
+accent is taken as proof that the line is real text. German letters get no such protection. An
+exception for them was measured on 2026-09-18, then lost together with the `S-VIIIb` one (§ 3),
+and we did not restore it: the language split now covers the one line it was fixing
+(`Frauenzimmerbad", sämtlic Gesellschastsbäder,`), and the exception reaches much further. On the
+822-document corpus your labelled lines come from it would cover **239** of the lines the rule
+reaches, **156** of them kept today — readable German such as `Grauer, geschlämmter Ton.`.
+
+If those letters are reliable here, the exception is worth measuring properly. If damaged Czech
+often produces them, it would shelter rubbish and we would drop it.
+
+→ *almost always German* / *often misread Czech* / *don't know*

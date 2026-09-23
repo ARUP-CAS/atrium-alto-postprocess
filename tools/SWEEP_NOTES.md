@@ -3,12 +3,12 @@
 Two offline tools live here. Both read the per-line `DOC_LINE_CATEG` CSVs as
 **immutable ground truth** and write any revised CSVs to a separate directory.
 
-| Tool                        | Purpose                                                                                                                                                                                                                                                                                                                          |
-|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `recategorize_from_csv.py`  | Faithful offline re-scorer + evaluator. Re-runs categorisation from the frozen `perplex` / `orig_lang_score` / `text` signals under a chosen constant set.                                                                                                                                                                       |
-| `const_importance_sweep.py` | Samples the tunable constants, scores each with the re-scorer, and reports which constants drive a chosen objective (RF / Optuna+fANOVA / Morris / Sobol).                                                                                                                                                                       |
-| `importance_consensus.py`   | Cross-backend consensus tool. Loads importance JSONs from different backends and identifies robust parameters that consistently rank in the top-K.                                                                                                                                                                               |
-| `rule_coverage_report.py`   | Rule-fire coverage instrumentation. Runs the production categorisation engine over a dataset and counts how many times each structural rule and per-line penalty actually executes. A rule with a fire count of 0 across all documents is provably dead code and can be permanently retired without requiring human gold labels. |
+| Tool                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `recategorize_from_csv.py`  | Faithful offline re-scorer + evaluator. Re-runs categorisation from the frozen `perplex` / `orig_lang_score` / `text` signals under a chosen constant set.                                                                                                                                                                                                                                                                                                                        |
+| `const_importance_sweep.py` | Samples the tunable constants, scores each with the re-scorer, and reports which constants drive a chosen objective (RF / Optuna+fANOVA / Morris / Sobol).                                                                                                                                                                                                                                                                                                                        |
+| `importance_consensus.py`   | Cross-backend consensus tool. Loads importance JSONs from different backends and identifies robust parameters that consistently rank in the top-K.                                                                                                                                                                                                                                                                                                                                |
+| `rule_coverage_report.py`   | Rule-fire coverage instrumentation. Runs the production categorisation engine over a dataset and counts how many times each structural rule and per-line penalty actually executes. A rule with a fire count of 0 across all documents is provably dead code and can be permanently retired without requiring human gold labels — unless its fire site is gated by a flag that ships off (`text_util.CONFIG_GATED_RULES`), which the report classifies INERT, not DEAD (#30 D35). |
 
 ## One engine, not two
 
@@ -37,6 +37,13 @@ The easiest way to execute the full parameter optimization suite (Coverage, RF, 
 ```
 
 ## Current figures — rule coverage regenerated 2026-09-09
+
+> 🛑 **Superseded 2026-09-22 by stage 6** (#30): the 87-hour sweep scored all 23 rules on the
+> 822-document corpus against the 2,064-row gold sidecar. Its delivered summary read two rules
+> DEAD — `rule_mid_uppercase` and `rule_short_garbage_witness` — and the second is switched off,
+> not dead, so it now classifies INERT (D35). Readings in `agent_dev_logs/digests/30.digest.md`
+> § "Stage 6 read against its own delivery" (U0–U8). The table below is the 2,171-line reading
+> and is kept as such.
 
 Run on `test` @ `4017a76` over **19 documents / 2,171 lines (1,471 scored)** — the
 same corpus as the stale log below, so the two are directly comparable. This is
@@ -93,6 +100,7 @@ worth recording because every driver in `tools/` reads flips as damage.
 | `rule_zero_alpha`            |          1 |    0.0007 |        1 |          0 | LOAD-BEARING   |
 
 **Summary: 16 LOAD-BEARING · 3 REDUNDANT-HERE · 3 DEAD** (n_lines=2,171, n_scored=1,471, 22 rules)
+🛑 *Superseded by stage 6 (above): on the 822-document corpus only `rule_mid_uppercase` reads DEAD.*
 
 DEAD: `rule_bigram_run`, `rule_mid_uppercase`, `rule_vowelless`
 REDUNDANT-HERE: `rule_domain_notation`, `rule_fragment_tokens`, `rule_inverted`

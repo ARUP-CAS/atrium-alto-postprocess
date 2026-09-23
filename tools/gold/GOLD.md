@@ -182,11 +182,15 @@ layout, it is a filesystem full of fragments.
 > run against. The sidecar's very first key, `CTX192400709,1,47`, names a file in
 > it.
 >
-> What is genuinely unverified is the **per-line** match rate: documents are
-> 816/816, but whether each `(file, page_num, line_num)` resolves has never been
-> run. That is the pre-flight in `30.runbook.md`, it takes seconds, and it is the
-> one number nobody has. "Needs the delivered batch" should not be written in
-> this repository again without checking that directory first.
+> What was still unverified when this was written was the **per-line** match
+> rate: documents were 816/816, but whether each `(file, page_num, line_num)`
+> resolves had never been run. **It has run since** — `recategorize_from_csv.py
+> --gold-preflight`, the first stage of the #30 cluster job (2026-09-17; the job
+> scripts are not tracked in this repository): **2,064 of 2,067 keys resolve**,
+> no document absent, three locator drifts, all three annotated `Clear`
+> (`docs/issue30/issue30_gold_ab_findings.md` § 1). "Needs the delivered batch"
+> should not be written in this repository again without checking that directory
+> first.
 
 The rule it exists to serve is still enforced, just at a different moment:
 because the sidecar carries no `categ` of its own, it can only be scored after

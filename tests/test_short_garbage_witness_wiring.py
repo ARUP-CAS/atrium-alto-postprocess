@@ -117,9 +117,11 @@ def flag_on():
 def test_wiring_is_inert_while_the_flag_is_off(flag_off):
     """The default build must be byte-identical to the pre-D15 behaviour.
 
-    Wiring and enabling are separate commits on purpose: the flag must not be
-    flipped until the witness is measured against a gold set, and until then a
-    contributor upgrading must see no category move at all.
+    Wiring and enabling are separate commits on purpose. The witness has since
+    been measured against gold -- stage 10e passes the adoption gate, and
+    @david-spacil's re-score of the 508 reads 326 -> 336 -- and it still ships
+    off, pending the annotation ask. Until it flips, a contributor upgrading must
+    see no category move at all.
     """
     for text, _ppl, _ls, _lang in _GARBAGE + _KEEP + _RESIDUE:
         assert flag_off[text] == "Clear", f"{text!r} moved with the flag off: {flag_off[text]}"

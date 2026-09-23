@@ -230,21 +230,29 @@ ISOLATED_CHAR_MIN_TOKENS    = 3
 # (tools/gold/sidecars/issue30_gold_2067.csv), 2026-09-22: WITH the document
 # smoothing it passes the adoption gate (errors 513 -> 503, Clear-loss 38 -> 38,
 # p = 0.013; 503 -> 502 / 38 -> 37 with the vowel-run language split below);
-# per line, smoothing off, it FAILS it (Clear-loss 53 -> 54). Still off: it waits
+# per line, smoothing off, it FAILS it (Clear-loss 53 -> 54). Those gold runs
+# predate the grid-guard restore (#30 D45, 2026-09-23); @david-spacil's re-score
+# of his 508 lines on `3b02959`, which has it, confirms the direction: 326 -> 336
+# agreement, one break (`Lokolieace: •VIII,`). Still off: it waits
 # on @DanaKriv's annotation of the lines it would newly discard and her agreement
 # on what `Trash` means. The in-tree sample corpus (15 lines) cannot validate it.
 # See agent_dev_logs/plans/30.plan.md and docs/issue30/README.md.
 #
-# AND DO NOT TURN IT ON WITHOUT A LEXICON. These two keys are one decision.
-# Measured on the cluster over 1,480,119 in-scope lines (2026-09-17): the shape
-# witness ALONE confirms 5,107 existing Trash verdicts and newly convicts 15,217
-# lines currently called Clear or Noisy -- 1:3 against. With the vocabulary veto
-# below at MIN_DF 3 the same witness scores 3,905 against 2,306, i.e. 1.7:1 in
-# favour. The veto is not a refinement of the witness; it is the difference
-# between a narrowing worth arming and one that trashes three readable lines for
-# every garbage line it catches. text_util prints an advisory if you set this
-# without SHORT_GARBAGE_LEXICON_PATH -- advisory, because 30.runbook.md step 5a
-# measures the shape-only configuration deliberately.
+# AND DO NOT TURN IT ON WITHOUT A LEXICON. These two keys are one decision, and
+# the reason is corpus exposure, not gold. Over both full collections the witness
+# alone would newly convict 8,529 strings / 37,555 lines the pipeline currently
+# keeps (stage 08f); with the 113,100-document table it is 5,563 / 6,714 (stage
+# 9b, which also carries D33), an 82.1% drop, and what the table spares is led by
+# real words -- `ppole`, `ARCHAIA`, `Lepus europaeus`, `Triticum monococcum`.
+# Gold cannot show the difference: it labels 23 of the ~20k lines the witness
+# reaches, and there shape-only and armed score alike (round-2 5a 500 errors,
+# 5a-bis 502; the no-table 508 re-check goes 326 -> 336). No table ships in this
+# repository -- build one with tools/build_token_lexicon.py (see below).
+# (History: this block used to quote 15,217 convictions against 5,107, "1:3
+# against", scored against `categ`; 90.5% of that gap was `ppole`.)
+# text_util prints an advisory if you set this without SHORT_GARBAGE_LEXICON_PATH
+# -- advisory, not fatal, because the shape-only configuration is measured on
+# purpose (every gold A/B from stage 5a on, and the 508 re-check).
 SHORT_GARBAGE_WITNESS_ENABLE            = false
 # (#30) The hand-maintained word lists. THIS IS THE FILE FOR PEOPLE WHO KNOW THE
 # MATERIAL: units, reference labels, section headings, and -- the section that did
@@ -258,7 +266,11 @@ SHORT_GARBAGE_WITNESS_ENABLE            = false
 # `ppole`, the taxonomy) lived only in the test suite, and the one mechanism meant
 # to cover it -- SHORT_GARBAGE_LEXICON_PATH, a corpus frequency table -- ships
 # EMPTY and no such table exists anywhere in this repository. So in the shipped
-# configuration there was no open-class protection at all.
+# configuration there was no open-class protection at all. The `[allowed]` section
+# that fills the gap ships with every entry COMMENTED OUT (which to switch on is
+# Q5a), and an entry reaches the quality score only: the witness's shape tests
+# still read a listed word, so a mixed line can be convicted on it alone (whether
+# they should skip it is Q5b, open).
 #
 # Every section in that file is a VETO: it can stop a conviction, never create
 # one. Relative paths resolve against text_util.py, not the working directory.
@@ -306,7 +318,9 @@ SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA  = 8
 # 3 is the shipped behaviour. The trade at 4 is measured and asymmetric: `oueussd`
 # (`oueu`) stays convicted, `cuxoaid` (`oai`) escapes with no other clause
 # catching it, and the `Naiade` / `Beuern` / `Oueste` loan false positives stop
-# firing. Let the sweep decide against gold rather than settling it by reading.
+# firing. Settled against gold (stage 10d, 2026-09-22): a global 4 is REJECTED --
+# errors 503 = 503, Clear-loss 38 = 38, fixes 2 / breaks 2, p = 1, Trash-recall
+# 34 -> 32/180. It buys nothing and costs recall; the D44 split below is the answer.
 SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN     = 3
 # (#30 D44) The vowel-run clause is a fact about CZECH phonotactics, not about
 # scanning: Czech has no triphthongs, so three vowels in a row is good evidence of
@@ -342,7 +356,9 @@ SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT   = 4
 # EMPTY PATH = inert. With no table the predicate is byte-identical to the
 # shape-only version, which is the shipped state -- and, per the note on
 # SHORT_GARBAGE_WITNESS_ENABLE above, the state that must not be combined with
-# an armed witness.
+# an armed witness: 37,555 kept lines at risk without a table, 6,714 with the
+# 113,100-document one. No table ships in this repository; that one was built
+# on the cluster.
 SHORT_GARBAGE_LEXICON_PATH              =
 # A token must appear in at least this many DISTINCT documents to count as
 # attested. Document frequency, not line frequency: OCR noise repeats within the
@@ -357,8 +373,11 @@ SHORT_GARBAGE_LEXICON_PATH              =
 # On the 822-document table (2026-09-17) the veto's effect is flat between 2 and
 # 10, and 2 is marginally best; 3 is kept as the shipped value because the
 # threshold should be set on a table built over BOTH FULL COLLECTIONS, which that
-# one is 0.7% of. At 3 on that table the CONVICT clause below misjudges 5 of 31
-# pinned vocabulary fixtures, which is why it ships false.
+# one is 0.7% of. That full table exists now (113,100 documents, 2026-09-18), and
+# the gold A/B of 2 against 3 (stage 05e) differs by one row, not significant
+# (p = 1) -- so 3 stays, on the fixture evidence. At 3 on the 822-document table
+# the CONVICT clause below misjudges 5 of 31 pinned vocabulary fixtures, which is
+# why it ships false.
 SHORT_GARBAGE_LEXICON_MIN_DF            = 3
 # (#30 D40) SHORT_GARBAGE_LEXICON_GEMINATE_RATIO and _GEMINATE_MAX_DF stood here
 # until 2026-09-22. They were the de-gemination guard: a pair of thresholds that
@@ -391,19 +410,25 @@ SHORT_GARBAGE_LEXICON_MIN_DF            = 3
 # the flag's value on its first call and the A/B's second arm was handed the first
 # arm's answer. Fixed 2026-09-20 by `_CACHES_FROM_FLAG` in override_constants();
 # 07b needs re-running before this constant's effect is known either way.
+# RE-RUN as 08d (2026-09-21), with the fix in: a decisive REJECT on gold -- 212
+# fixes against 540 breaks, Clear-loss 40 -> 180 (p ~ 7.8e-34), i.e. 13.8% of
+# all gold Clear destroyed. It stays false.
 QUALITY_VOCABULARY_ENABLE               = false
 # (#30 D27) Strip bullet and marker glyphs (♦ ✓ ■ • …) alongside punctuation. The
 # built table ends in `♦zkoumaná`, `✓stopy`, `•nevelká`: a marker fused to a real
 # word, which corrupts the lexicon at build time and hides the real word at
 # lookup time. Extends _STRIP_CHARS at its definition so the builder and the
 # predicate cannot drift. SHIPS FALSE: it changes tokenisation for every line.
+# Measured on gold as 08e (2026-09-21, 07c re-run once the flag could arm): a
+# genuine null -- 5 fixes / 5 breaks, p = 1. Nothing argues for turning it on.
 STRIP_SYMBOL_GLYPHS                     = false
 # When true, absence from the table becomes EVIDENCE rather than the presence of
 # a token becoming an exemption -- i.e. an unattested token convicts. This is the
 # only clause of the witness that can ADD a conviction, so it carries its own key
 # and ships false. "Unattested" is not "not a word": rare vocabulary, personal
-# names and a table built too narrowly all land here. Measure before enabling;
-# see 30.runbook.md.
+# names and a table built too narrowly all land here. Measured on gold as stage
+# 5c and REJECTED: +44 Trash catches for Clear-loss 42 -> 63
+# (docs/issue30/issue30_gold_ab_findings.md § 6).
 SHORT_GARBAGE_LEXICON_CONVICT           = false
 SYM_LET_DIG_NONTEXT         = true
 MOSTLY_READABLE_VALID_MIN   = 0.85

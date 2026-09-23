@@ -247,7 +247,8 @@ def score_line(
     # set and a lexicon is configured, in which case this call is exactly what it
     # has always been. Armed, `valid_word_ratio` stops being a shape proxy and
     # becomes a real vocabulary measure -- and moves quality_score on every line,
-    # which is why it ships off and stage 07b measures it first.
+    # which is why it ships off. Measured on gold as 08d (07b's valid re-run): a
+    # decisive REJECT, 212 fixes against 540 breaks, `Clear`-loss 40 -> 180.
     valid_ratio = compute_valid_ratio(text_content, quality_word_set())
 
     structured_flag = is_structured_line(text_content)

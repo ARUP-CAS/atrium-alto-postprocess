@@ -618,7 +618,7 @@ quality score, the categorisation gates/rescues, and the four document-level pos
 passes — lives in **[docs/categorization_logic.md](docs/categorization_logic.md)**.
 
 > [!IMPORTANT]
-> **Known accuracy limitation since `v1.4.7-beta` (issue [#30](https://github.com/ufal/atrium-alto-postprocess/issues/30)).**
+> **Known accuracy limitation since `v1.5.0-beta` (issue [#30](https://github.com/ufal/atrium-alto-postprocess/issues/30)).**
 > `rule_short_garbage` no longer convicts short diacritic-free lines on shape alone. Measured over
 > both collections (113,101 documents / 71.8M lines) the change **promoted 367,208 lines and demoted
 > none**, dropping `Trash` by 247,252 lines (−8.68%), and human grading of 484 promoted lines scored

@@ -33,6 +33,9 @@
 > more (Q4–Q6) are for you and @david-spacil together — what a web address should be, which words
 > the new `[allowed]` list should protect, and what the short-line rule should answer when it cannot
 > tell. [`README.md`](README.md) lists them all under "Still open".
+>
+> ⏳ **2026-09-23:** @david-spacil is going through Q1–Q6 with you by e-mail. Once you have answers,
+> a one-line summary of them in the issue thread keeps the record in one place.
 
 ---
 

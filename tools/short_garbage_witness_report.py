@@ -8,32 +8,36 @@ WHY THIS EXISTS
 `_has_shape_garbage_evidence()` ships behind `SHORT_GARBAGE_WITNESS_ENABLE`
 (default false). Since PR #48 merged it IS wired -- read by the short-line
 garbage gate as a second disjunct -- but the flag is still off, so it cannot
-change any outcome until someone turns it on. Two consequences, both verified:
+change any outcome until someone turns it on.
 
-  * turning the flag on changes **no category** — a full
-    `tools/recategorize_from_csv.py` run over `data_samples/DOC_LINE_CATEG`
-    reports `total lines changed category: 0` with the flag off *and* on;
-  * the four `SHORT_GARBAGE_WITNESS_*` constants are deliberately absent from
-    `TUNABLE_CONSTANTS` (see `_DELIBERATELY_NOT_TUNABLE` in
-    `tests/test_recategorize_parity.py`), so `--override` rejects them.
+It can be exercised end to end, and has been. `tools/ab_constant_eval.py
+--const SHORT_GARBAGE_WITNESS_ENABLE --values false,true` scores the flag
+against the gold sidecar (#30 stages 08b and 10e), and
+`tools/recategorize_from_csv.py` re-scores with the flag set through the config
+file or `ATRIUM_TEXT_UTILS_SHORT_GARBAGE_WITNESS_ENABLE` -- not through
+`--override`, which still rejects every `SHORT_GARBAGE_WITNESS_*` key (see
+`_DELIBERATELY_NOT_TUNABLE` in `tests/test_recategorize_parity.py`). That is
+how @david-spacil re-scored his 508 lines. But gold reaches only 23 of the ~20k
+lines the witness fires on in the 822-document corpus, and the in-tree sample
+corpus cannot help either: of its 15 lines exactly 2 reach the route's
+text-only entry condition, both already `Trash`, so flipping the flag there
+changes 0 categories.
 
-So the predicate cannot be exercised end-to-end yet, and the in-tree sample
-corpus could not validate it anyway: of its 15 lines, exactly 2 reach the
-route's text-only entry condition, both already `Trash`, with no rare-vocabulary
-line among them to expose a false positive.
-
-This tool closes that gap for the part that does not need a call site. It
-answers, over any collection you already have on disk: **which lines would the
-witness reach, and what does the pipeline currently call them?** That is the
-measurement the flag is gated on ("do not turn this on before measuring it
-against annotated lines"), and it needs no GPU, no FastText and no re-scoring.
+This tool answers the other half, over any collection you already have on
+disk: **which lines would the witness reach, and what does the pipeline
+currently call them?** That is the exposure the annotation ask is built from,
+and it needs no GPU, no FastText and no re-scoring.
 
 WHAT IT DELIBERATELY DOES NOT DO
 --------------------------------
 It does **not** re-score, and it does **not** reconstruct any signal. Every
-column it computes is a pure function of the line's text: the three vetoes
+column it computes is a function of the line's text -- the three vetoes
 (`has_cz_diacs`, `is_structured_line`, `is_domain_notation`), the witness, and
-which of the witness's four clauses fired. The signal-dependent terms of the
+which of the witness's clauses fired -- plus, for the vowel-run clause alone,
+the row's stored raw language label. That label is read verbatim from
+`original_lang`, the same value production hands the witness since #30 D44; it
+is an input, not a reconstruction. `--lines` input has no language, so there
+every line gets the general threshold. The signal-dependent terms of the
 route's condition — `lang_score`, `rot_ratio`, `gibberish_present`,
 `weird_ratio` — are **not** re-derived here, because the stored CSV columns are
 not the values the rules see (`lang_score` in the CSV is the `remap_lang` cap;
@@ -111,23 +115,32 @@ import text_util as tu  # noqa: E402
 _CLAUSE_ORDER = tu.SHAPE_GARBAGE_CLAUSES
 
 
-def clauses_for_line(text: str) -> list[str]:
+def clauses_for_line(text: str, lang: str | None = None) -> list[str]:
     """Clauses fired across a line's sub-tokens, in fixed order.
 
     A thin alias for `text_util.shape_garbage_clauses`, kept because this
     module's CLI, tests and `--examples` output all name it.
     """
-    return tu.shape_garbage_clauses(text)
+    return tu.shape_garbage_clauses(text, lang)
 
 
-def classify_line(text: str, word_count: int | None = None) -> dict:
-    """Text-only verdicts for one line. No scoring, no signal reconstruction."""
+def classify_line(text: str, word_count: int | None = None, lang: str | None = None) -> dict:
+    """Text-only verdicts for one line. No scoring, no signal reconstruction.
+
+    ``lang`` is the row's RAW FastText label (`original_lang`), passed to the
+    witness exactly as `classify_TEXT.score_line` passes it (#30 D44): 3 vowels
+    convict outside `SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS`, 4 inside it.
+    ``None`` means unknown and gets the general threshold -- production's own
+    default, so a row with no language is judged as strictly as the gate would.
+    Without this the report convicted `Dauerleihe` on German rows the gate
+    spares, overstating the exposure the split removes.
+    """
     wc = len(text.split()) if word_count is None else word_count
     diacs = tu.has_cz_diacs(text)
     structured = tu.is_structured_line(text)
     notation = tu.is_domain_notation(text)
-    witness = tu._has_shape_garbage_evidence(text)
-    clauses = clauses_for_line(text)
+    witness = tu._has_shape_garbage_evidence(text, lang)
+    clauses = clauses_for_line(text, lang)
 
     # Structurally guaranteed now that both come from `shape_garbage_clauses`,
     # and kept as the tripwire if anyone reintroduces a second implementation.
@@ -329,19 +342,21 @@ def _vote(counts: Counter) -> tuple[str, str]:
 def _write_by_group(path: Path | None, witnessed_rows: list) -> None:
     """The modal dedup's blast radius, in the unit the dedup actually votes in.
 
-    (#30 stage 8, H6.) Issue #30 has argued for weeks that **per-line precision
+    (#30 stage 8, H6.) Issue #30 argued for weeks that **per-line precision
     does not bound Clear-loss**, because `apply_document_postprocessing()`
     rewrites every occurrence of a repeated string in a document to that
     string's modal category -- so convicting a few occurrences can flip the vote
-    and carry a correct one down with it. The mechanism is real. Its SIZE has
-    never been measured, and the decision it is supposed to inform (stop a bare
-    plurality demoting `Clear` -> `Trash`?) is a production-wide change.
+    and carry a correct one down with it. The mechanism is real. Its SIZE was
+    argued from rather than measured until this flag, and the decision it
+    informed (stop a bare plurality demoting `Clear` -> `Trash`?) would have been
+    a production-wide change.
 
     This reports it. The unit is the **(document, string) group**, because that
     is what `groupby("text")` inside one document's frame votes on, and the
-    witness is a pure function of the line's text -- so within a group it
-    convicts ALL or NONE. It cannot create a split; it can only move a group
-    that was already split, or move a unanimous group wholesale.
+    witness is a function of the line's text and of the raw language label
+    FastText derives from that same text -- so within a group it convicts ALL
+    or NONE. It cannot create a split; it can only move a group that was
+    already split, or move a unanimous group wholesale.
 
     Two numbers matter and neither is the group count:
 
@@ -350,10 +365,14 @@ def _write_by_group(path: Path | None, witnessed_rows: list) -> None:
       * **groups whose vote lands off `Trash` while some member is `Trash`** --
         the lines it rescues.
 
-    On the 822-document queue those were 5 groups / 17 Clear lines against 17
+    On the 822-document queue those were 4 groups / 17 Clear lines against 17
     groups / 31 Trash lines: the cascade is NET PROTECTIVE on this population,
-    which is the opposite of how the mechanism has been read. Whether that
-    survives at collection scale is what this flag exists to answer.
+    which is the opposite of how the mechanism had been read. It survives at
+    collection scale, measured with this flag over both archives: 24 Clear
+    lines destroyed against 305 Trash rescued with no table (stage 08f, net
+    +281), 10 against 51 with the 113,100-document table (9b/9d, net +41). A
+    bare-plurality rule would change 0 groups either way, and H6 closed on
+    option 1: keep the vote as it is.
 
     ONE LIMIT, STATED HERE BECAUSE IT IS EASY TO FORGET. `categ` in a delivered
     `DOC_LINE_CATEG` CSV is POST-cascade: the vote has already run. A group the
@@ -513,8 +532,8 @@ def main(argv: list[str] | None = None) -> int:
             "Report the modal dedup's blast radius in (document, string) groups -- the unit "
             "apply_document_postprocessing() actually votes in -- and write the contested groups "
             "to PATH. Give the flag with no PATH for the summary only. This is the corpus-wide "
-            "denominator issue #30's dedup decision (H6) has never had: the mechanism is argued "
-            "from, the size is not measured."
+            "denominator issue #30's dedup decision (H6) was taken on: over both archives the "
+            "vote rescues more Trash lines than it destroys Clear ones (stages 08f and 9d)."
         ),
     )
     parser.add_argument(
@@ -574,7 +593,10 @@ def main(argv: list[str] | None = None) -> int:
 
     for doc, text, wc, categ, lang in source:
         total += 1
-        verdict = classify_line(text, wc)
+        # (#30 D44) The row's raw language, as production passes it; "?" (no
+        # `original_lang`, or --lines input) means unknown and gets the general
+        # vowel-run threshold, which is what the gate does with an unknown label.
+        verdict = classify_line(text, wc, None if lang == "?" else lang)
         in_scope = args.all_lengths or verdict["route_eligible"]
         if not in_scope:
             continue
@@ -598,6 +620,21 @@ def main(argv: list[str] | None = None) -> int:
         f"VARIETY_MAX={tu.SHORT_GARBAGE_WITNESS_VARIETY_MAX} "
         f"TRIPLE_MAX_ALPHA={tu.SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA} "
         f"VOWEL_RUN_MIN={tu.SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN}"
+    )
+    # (#30 D44) The language split's two constants reach the log for the reason
+    # the D42 note below gives for VOWEL_RUN_MIN: they steer the clause that
+    # carries most of the exposure, so a run's own log has to say which values
+    # produced it. --lines input has no language at all, and that changes what
+    # the numbers mean, so it is said on the same line.
+    exempt_langs = ",".join(sorted(tu.SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS))
+    print(
+        f"vowel-run language split: VOWEL_RUN_EXEMPT_LANGS={exempt_langs or '(empty: one global threshold)'} "
+        f"VOWEL_RUN_MIN_EXEMPT={tu.SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN_EXEMPT}  "
+        + (
+            "(--lines input has no language: every line gets VOWEL_RUN_MIN)"
+            if args.lines
+            else "(language from each row's raw `original_lang`; a row without one gets VOWEL_RUN_MIN)"
+        )
     )
     # (#30 D42) The lexicon line prints WHETHER OR NOT a table is configured, and
     # VOWEL_RUN_MIN joins the constants line above. Both are here for one reason.

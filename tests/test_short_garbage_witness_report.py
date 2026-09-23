@@ -12,7 +12,10 @@ measure its exposure before the flag is flipped. Two properties are worth pinnin
     across the whole #30 fixture population rather than one line at a time;
   * the report must not become a second scoring path. `test_no_signal_reconstruction`
     is the guard: the same class of drift that
-    `tests/test_scoring_single_source.py` pins for the three real scorers.
+    `tests/test_scoring_single_source.py` pins for the three real scorers;
+  * and it must hand the witness the same INPUTS production does. Since #30 D44
+    that includes the row's raw language, and a report that dropped it judged
+    every German row by the Czech threshold -- see the D44 section below.
 """
 
 from __future__ import annotations
@@ -353,8 +356,9 @@ def test_by_group_refuses_plain_lines_input(tmp_path):
 def test_a_group_is_all_or_nothing_for_the_witness(tmp_path):
     """The property the whole group analysis rests on.
 
-    The witness is a pure function of the line's text, so within a
-    (document, string) group it convicts every member or none. It therefore
+    The witness is a function of the line's text and of the raw language label
+    FastText derives from that same text, so within a (document, string) group
+    it convicts every member or none. It therefore
     cannot CREATE a split — only move a group that was already split, or move a
     unanimous one wholesale. If that ever stops being true, the blast-radius
     figures stop meaning what they say.
@@ -362,6 +366,52 @@ def test_a_group_is_all_or_nothing_for_the_witness(tmp_path):
     for text in ("oueussd", "sektlll", "malakofauna", "vrstva"):
         verdicts = {R.classify_line(text, 1)["witness"] for _ in range(3)}
         assert len(verdicts) == 1, f"{text!r} must classify identically every time"
+
+
+# ---------------------------------------------------------------------------
+# (#30 D44) The report must tell the witness what production tells it.
+#
+# Production passes each row's raw `original_lang` to the witness, so the
+# vowel-run clause needs 4 vowels in `deu`/`fra` and 3 everywhere else. Until
+# 2026-09-23 the report passed no language, so every row got the strict
+# threshold: it convicted `Dauerleihe` on German rows the gate spares, and
+# overstated exactly the exposure the split removes. The fourth harness
+# divergence in this repository was a copied implementation; this was the same
+# shape one argument over.
+# ---------------------------------------------------------------------------
+
+
+def test_classify_line_passes_the_language_to_the_witness():
+    assert R.classify_line("Dauerleihe", 1, "ces_Latn")["witness"]
+    assert not R.classify_line("Dauerleihe", 1, "deu_Latn")["witness"]
+    # Unknown is strict, as it is in the gate -- never an exemption.
+    assert R.classify_line("Dauerleihe", 1)["witness"]
+    # Still delegation, not a copy, on the language path too.
+    assert R.clauses_for_line("Dauerleihe", "deu_Latn") == tu.shape_garbage_clauses("Dauerleihe", "deu_Latn")
+
+
+def test_a_csv_row_is_judged_in_its_own_detected_language(tmp_path):
+    src = tmp_path / "CTX000000000.csv"
+    with src.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["file", "page_num", "line_num", "categ", "text", "word_count", "original_lang"])
+        writer.writerow(["CTX000000000", "1", "1", "Clear", "Dauerleihe", "1", "ces_Latn"])
+        writer.writerow(["CTX000000000", "1", "2", "Clear", "Dauerleihe", "1", "deu_Latn"])
+        writer.writerow(["CTX000000000", "1", "3", "Clear", "Dauerleihe", "1", ""])
+
+    out = tmp_path / "candidates.csv"
+    assert R.main([str(src), "--out", str(out)]) == 0
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert [(r["line_num"], r["clauses"]) for r in rows] == [("1", "vowel_run"), ("3", "vowel_run")], (
+        "the Czech row and the row with no language are witnessed; the German row is not"
+    )
+
+    # The split is the config's, not the report's: emptying the exempt list
+    # gives back one global threshold here exactly as it does in the gate.
+    with tu.override_constants({"SHORT_GARBAGE_WITNESS_VOWEL_RUN_EXEMPT_LANGS": frozenset()}):
+        assert R.main([str(src), "--out", str(out)]) == 0
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert [r["line_num"] for r in rows] == ["1", "2", "3"]
 
 
 def test_input_dir_repeats_to_read_both_archives(tmp_path):
@@ -442,13 +492,17 @@ def _banner(capsys, argv):
 def test_the_banner_names_every_witness_constant_the_predicate_reads(capsys, tmp_path):
     """Every `SHORT_GARBAGE_WITNESS_*` the clause body reads must reach the log.
 
+    Directly, or through `_vowel_run_min_for()`: that helper is where the D44
+    split's two constants are read, and the clause body only calls it, so a scan
+    of the body alone would let them steer the numbers without being printed.
+
     `SHORT_GARBAGE_WITNESS_ENABLE` is excluded: it has its own line, and the
     report states there that it does not affect the result.
     """
     import inspect
     import re as _re
 
-    source = inspect.getsource(tu.shape_garbage_clauses)
+    source = inspect.getsource(tu.shape_garbage_clauses) + inspect.getsource(tu._vowel_run_min_for)
     read_by_predicate = {
         name
         for name in _re.findall(r"\bSHORT_GARBAGE_WITNESS_[A-Z_]+\b", source)
@@ -483,3 +537,14 @@ def test_the_banner_reports_the_lexicon_whether_or_not_one_is_configured(capsys,
         out = _banner(capsys, ["--lines", str(probe)])
     assert str(table) in out
     assert "113,100 documents" in out, "the provenance line is the whole point of naming the path"
+
+
+def test_the_banner_says_when_the_input_has_no_language(capsys, tmp_path):
+    """`--lines` input carries no language, so every line meets the strict threshold.
+
+    That changes what the vowel-run numbers mean, so the log says it rather than
+    leaving a reader to infer it (D42's lesson, one constant over).
+    """
+    probe = tmp_path / "probe.txt"
+    probe.write_text("Dauerleihe\n", encoding="utf-8")
+    assert "--lines input has no language" in _banner(capsys, ["--lines", str(probe)])

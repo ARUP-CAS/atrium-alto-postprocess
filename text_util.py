@@ -584,8 +584,10 @@ SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA = _get_int("TEXT_UTILS", "SHORT_GARBAGE_W
 # detect_fused_words() feeds `fused_ratio` in the quality score and the
 # `fused_words` CSV column, so the two knobs steering each other meant the only
 # clause that discriminates on the #30 population could not be tuned without
-# moving scores on every line in the corpus. See the vowel-run clause for the
-# measured trade at 3 vs 4.
+# moving scores on every line in the corpus. The trade at 3 vs 4 is measured on
+# gold (stage 10d): errors 503 = 503, `Clear`-loss 38 = 38, fixes 2 / breaks 2,
+# p = 1, `Trash`-recall 34 -> 32/180. A global 4 buys nothing and costs recall,
+# so this stays 3 and the D44 split below is the answer.
 SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN = _get_int("TEXT_UTILS", "SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN", FUSED_VOWEL_RUN_MIN)
 # (#30 D44) The vowel-run clause is a fact about CZECH PHONOTACTICS, not about
 # scanning. Czech has no triphthongs, so three vowels in a row is good evidence of
@@ -693,8 +695,10 @@ _SYMBOL_GLYPHS = "♦✓■□●○•▪▫★☆†‡§¶–—―‹›«»
 # it is the only part of the witness that can ADD a conviction, so it is gated
 # separately and ships false. Double-gated in practice: it is read only when
 # SHORT_GARBAGE_WITNESS_ENABLE is also true, and only when a table is configured.
-# Do not enable without the measurement in 30.runbook.md -- an unattested token is
-# not the same thing as a non-word, and rare real vocabulary is the failure mode.
+# Measured on gold as stage 5c and REJECTED: +44 `Trash` catches for +21 `Clear`
+# losses, `Clear`-loss 42 -> 63 (docs/issue30/issue30_gold_ab_findings.md § 6). An
+# unattested token is not the same thing as a non-word, and rare real vocabulary
+# is the failure mode.
 SHORT_GARBAGE_LEXICON_CONVICT = _get_str("TEXT_UTILS", "SHORT_GARBAGE_LEXICON_CONVICT", "false").strip().lower() in (
     "true",
     "1",
@@ -1799,8 +1803,9 @@ def determine_category(
             # suspension of the rule rather than a narrowing of it. That is the
             # accepted debt: roughly 26,000 garbage lines reach `Clear`.
             #
-            # `_has_shape_garbage_evidence()` is the narrowing. It is a pure
-            # function of the text and it separates the half that IS separable
+            # `_has_shape_garbage_evidence()` is the narrowing. It is a function
+            # of the text -- plus, since D44, the raw language label for the
+            # vowel-run clause -- and it separates the half that IS separable
             # (`oueussd` from `malakofauna`); the phonotactically legal residue
             # (`edelite`) still needs a lexicon and is out of scope by design.
             #
@@ -2186,8 +2191,12 @@ def _has_strong_garbage_evidence(
 # which they cannot: `edelite` is phonotactically legal and stays out of reach.
 # That residue is the part of #30 that genuinely needs a lexicon (D14).
 #
-# What is REUSED from detect_fused_words(): _RE_FUSED_VOWEL_RUN, by reference,
-# so the FUSED_VOWEL_RUN_MIN config key steers both.
+# What is REUSED from detect_fused_words(): the vowel-run test and its vowel
+# class, and nothing shared any more. It used to be _RE_FUSED_VOWEL_RUN by
+# reference, so FUSED_VOWEL_RUN_MIN steered both; the witness now compiles its
+# own (_compile_vowel_run), and the run length comes from
+# SHORT_GARBAGE_WITNESS_VOWEL_RUN_MIN and the D44 language split
+# (_vowel_run_min_for). FUSED_VOWEL_RUN_MIN only supplies the default.
 #
 # What is deliberately NOT reused, and why -- each of these was measured, and
 # each has a test naming the counterexample:
@@ -2237,6 +2246,14 @@ def _has_strong_garbage_evidence(
 # clears. That exemption is a narrowing, not a green light: the 508 have NOT been
 # re-scored against it (that needs the delivered batch, which is not in the
 # tree), so the flag stays false.
+#
+# UPDATE 2026-09-23 -- the gold A/B exists now. On the 2,064-row sidecar the flag
+# passes the adoption gate (stage 10e: errors 513 -> 503, `Clear`-loss unchanged,
+# p = 0.013; with the D44 split, 12 fixes / 1 break), and @david-spacil's re-score
+# of the 508 on `3b02959` reads 326 -> 336 with one break. The flag still ships
+# false: those labels reach 23 of the ~20k lines the witness fires on, so it now
+# waits on the annotation ask (docs/issue30/census.csv + sample.csv) and the open
+# questions in docs/issue30/README.md, not on code.
 #
 # The annotations themselves are now here -- tools/gold/sidecars/, joined onto a
 # delivered batch with `--gold-sidecar`; see tools/gold/GOLD.md, including its
@@ -2405,27 +2422,35 @@ def uncoupled_witness_warning(
     witness_enabled: bool | None = None,
     lexicon_path: str | None = None,
 ) -> str | None:
-    """The shape witness armed with no vocabulary table is a measured bad setting.
+    """The shape witness armed with no vocabulary table: reach it on purpose or not at all.
 
     Returns the advisory text, or ``None`` when the configuration is fine.
 
-    Measured on the cluster over 1,480,119 in-scope lines (2026-09-17). The shape
-    witness ALONE confirms 5,107 existing ``Trash`` verdicts and newly convicts
-    **15,217** lines the pipeline currently calls ``Clear`` or ``Noisy`` -- 1 : 3
-    against. The same witness with the vocabulary veto at ``min_df`` 3 scores
-    3,905 against 2,306, i.e. 1.7 : 1 in favour. An 85% cut in false-positive
-    exposure for 24% of the confirmations.
+    The reason is CORPUS EXPOSURE, measured over both full collections (#30). With
+    no table the witness would newly convict **8,529 strings / 37,555 lines** the
+    pipeline currently keeps as ``Clear`` or ``Noisy`` (stage 08f). With the
+    113,100-document table ``tools/build_token_lexicon.py`` builds, that falls to
+    **5,563 / 6,714** (stage 9b), an 82.1% drop in lines. What the table spares is
+    led by real words, not by damage: ``ppole`` (an abbreviation), ``ARCHAIA`` (the
+    excavator's name), ``Lepus europaeus``, ``Triticum monococcum``. Caveat: 9b ran
+    after D33 took URL and e-mail citations out of the witness's scope, so the
+    82.1% is the table and D33 together, not the table alone.
 
-    So the veto is not a refinement of the witness. It is the difference between
-    a narrowing worth arming and one that trashes three lines of readable text for
-    every garbage line it catches. The two keys are effectively one decision and
-    nothing in the config says so.
+    Gold cannot show this, and should not be read as if it could. The 2,064-row
+    sidecar labels 23 of the ~20k lines the witness reaches in the 822-document
+    gold corpus, and on those shape-only and table-armed score alike: round-2
+    stage 5a gave 500 errors, 5a-bis (with a table) 502, and @david-spacil's
+    508-line re-check with no table went 326 -> 336 (2026-09-23).
+
+    History: until 2026-09-23 this quoted 15,217 convictions against 5,107
+    confirmations ("1:3 against"), scored against ``categ`` rather than gold, and
+    90.5% of that gap was ``ppole``. The coupling survived; that arithmetic did not.
 
     ADVISORY, NOT A GATE -- deliberately, and in the same spirit as the
-    ``atrium_vocab`` consistency check at the top of this module. Step 5a of
-    ``30.runbook.md`` measures the shape-only configuration on purpose, and a
-    refusal would make that measurement impossible. What must not happen is
-    someone reaching it by accident.
+    ``atrium_vocab`` consistency check at the top of this module. The shape-only
+    configuration is measured on purpose -- every gold A/B from stage 5a on, and
+    the 508 re-check -- and a refusal would make those measurements impossible.
+    What must not happen is someone reaching it by accident.
     """
     if witness_enabled is None:
         witness_enabled = SHORT_GARBAGE_WITNESS_ENABLE
@@ -2435,11 +2460,11 @@ def uncoupled_witness_warning(
         return None
     return (
         "SHORT_GARBAGE_WITNESS_ENABLE is true with no SHORT_GARBAGE_LEXICON_PATH. "
-        "Measured on 1.48M in-scope lines, the shape witness without the vocabulary "
-        "veto convicts 15,217 currently-Clear/Noisy lines against 5,107 confirmations "
-        "(1:3 against); with the veto it is 2,306 against 3,905 (1.7:1 in favour). "
-        "Build a table with tools/build_token_lexicon.py unless you are deliberately "
-        "measuring the shape-only configuration."
+        "Over both collections the witness would then newly convict 37,555 lines the "
+        "pipeline currently keeps; a 113,100-document table cuts that to 6,714, and "
+        "what it spares is led by real words (ppole, ARCHAIA, Lepus europaeus). "
+        "Unless you are deliberately measuring the shape-only configuration, build a "
+        "table with tools/build_token_lexicon.py."
     )
 
 
@@ -2669,7 +2694,8 @@ def shape_garbage_clauses(text_source: str, lang: str | None = None) -> list[str
             # Off by default and gated on its own key, because "unattested" is
             # not "not a word": a genuinely rare term, a personal name, or a
             # token the table was simply built too narrowly to contain all land
-            # here. That is a measurement, not a reading -- see 30.runbook.md.
+            # here. That is a measurement, not a reading: stage 5c on gold,
+            # `Clear`-loss 42 -> 63, rejected (issue30_gold_ab_findings.md § 6).
             if (
                 SHORT_GARBAGE_LEXICON_CONVICT
                 and token_lexicon()
@@ -2699,9 +2725,12 @@ def shape_garbage_clauses(text_source: str, lang: str | None = None) -> list[str
             if len(letters) <= SHORT_GARBAGE_WITNESS_TRIPLE_MAX_ALPHA and _RE_TRIPLE_ALPHA_RUN.search(core):
                 found.add("triple")
 
-            # A doubled CONSONANT in first position: `Tthts`, `rragment`. No
-            # European orthography opens a word that way; a bare `^(.)\1` would
-            # also take `Aachen`, which several do.
+            # A doubled CONSONANT in first position: `Tthts`, `rragment`. Rare in
+            # European orthography but NOT impossible: abbreviations and old
+            # spellings open that way -- `ppole` (*popelnicová pole*) and `ssuti`
+            # (old *suť*) are real words this clause convicts (#30 W2). Only an
+            # attesting table spares them today; an `[allowed]` entry does not
+            # reach this function (Q5b). A bare `^(.)\1` would also take `Aachen`.
             if _RE_INITIAL_CONSONANT_GEMINATE.match(core):
                 found.add("initial_geminate")
 
@@ -3378,10 +3407,13 @@ def quality_word_set() -> "frozenset | None":
     okraie`` is "1 fragment okraje" and every token of it is unattested in its
     damaged form -- so the armed signal punishes recoverable text as hard as
     garbage. `tools/ocr_neighbours.recoverability` draws the distinction this
-    lacks, and runbook stage 07b measures whether that gap actually costs
-    anything before a neighbour index is built into production. Adding the
-    complexity first and checking afterwards is how this issue acquired three
-    instrument-level errors.
+    lacks. Stage 07b was meant to measure what the gap costs and was void -- this
+    function's own cache froze the flag, and D28 fixed the class. Its re-run,
+    08d, measured the armed flag as a decisive REJECT on gold: 212 fixes against
+    540 breaks, `Clear`-loss 40 -> 180. So the flag stays false, and no neighbour
+    index goes into production on the idea alone. Adding the complexity first
+    and checking afterwards is how this issue acquired three instrument-level
+    errors.
     """
     if not QUALITY_VOCABULARY_ENABLE:
         return None

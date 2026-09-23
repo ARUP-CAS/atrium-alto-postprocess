@@ -1,5 +1,5 @@
 # 📓 atrium-alto-postprocess — agent_dev_logs/DEVLOG.md (timeline index)
-> _OCR/ALTO post-processing + line categorization. 7 open issues (#2, #3, #4, #23, #30, #31, #37); #5/#6 closed. **v1.5.1-beta** released 2026-09-22 at `09c9640`; `test` and `master` are both at `0c30517`, carrying the post-tag #30 work as `5b27900` (docs, D40, the tie-break, D43, D44) and `0c30517` (the word lists). Next tag needs the version bump in `CITATION.cff` + `setup/para_config.txt`._
+> _OCR/ALTO post-processing + line categorization. 7 open issues (#2, #3, #4, #23, #30, #31, #37); #5/#6 closed. **v1.5.1-beta** released 2026-09-22 at `09c9640`; `master` is at `3b02959` and `test` at `68fcbcb` (the same tree plus an issue-log refresh), carrying the post-tag #30 work as `5b27900` (docs, D40, the tie-break, D43, D44), `0c30517` (the word lists) and `3b02959` (D45, the grid guard restored). Next tag needs the version bump in `CITATION.cff` + `setup/para_config.txt`._
 > _Per-issue detail: `digests/{id}.digest.md` · `plans/{id}.plan.md` · `issues/` exports (source of truth). Cross-repo/hub history lives in `ufal/atrium-project/agent_dev_logs/DEVLOG.md` (deduplicated out of this file)._
 
 ## 2026-03-13
@@ -902,3 +902,46 @@ Issue log refreshed with his comment.
 * Suite on `origin/test` `4ed309a`: 1,441 → **1,449 passed** (the 8 new tests), 13 skipped, 2 xfailed;
 `ruff` clean; `recategorize_from_csv --report-only` over `data_samples/DOC_LINE_CATEG` changes 0
 categories — the flag is off, so nothing moves.
+
+## 2026-09-23 (second entry)
+- **#30** — **@david-spacil confirmed the repair: 336/508 on `3b02959`** (11:05 UTC). `S-VIIIb` is
+`Clear` again and `Lokolieace: •VIII,` is the only break (15 moved: 11 fixed, 1 broken, 3 wrong
+either way); with the flag off, 0/508 change against `4ed309a`, so the restored guard is inert until
+the flag flips. H5 and Q7 are closed for good. He is taking Q1–Q6 through with @DanaKriv by e-mail.
+* **Then a sync of the tree to the settled answers — text, plus one report fix; no behaviour
+change.** No flag, threshold, `[allowed]` entry or config value moved: every `KEY = value` line of
+`setup/config.txt` and every entry of `setup/word_lists.txt` is byte-identical, and
+`recategorize_from_csv --report-only` over `data_samples/DOC_LINE_CATEG` still moves 0 categories.
+* **The coupling advisory, re-stated.** `uncoupled_witness_warning()` (docstring and stderr text) and
+the `setup/config.txt` witness block keep the rule — never arm the witness without a table, advisory
+only — but its reason is now corpus exposure: 37,555 kept lines at risk with no table against 6,714
+with the 113,100-document one (08f → 9b; 9b also carries D33), and what the table spares is led by
+`ppole`, `ARCHAIA` and the Latin binomials. The retracted 1:3 / 1.7:1 figures (scored against
+`categ`, 90.5% of the gap `ppole`) survive as one marked history line.
+* **Config comments** brought up to 08d (vocabulary signal: reject), 08e (glyph stripping: null), 10d
+(global vowel run 4: rejected), 05e (`MIN_DF` stays 3) and 5c (convict clause: rejected), with the
+gold runs noted as predating the grid-guard restore and `[allowed]` noted as commented out and not
+reaching the shape tests (Q5b).
+* **Parity fix — the one code change.** `tools/short_garbage_witness_report.py` now passes each row's
+raw `original_lang` to the witness, as `classify_TEXT.score_line` has since D44 (`"?"` → the strict
+threshold, production's default), and its banner prints `VOWEL_RUN_EXEMPT_LANGS=` /
+`VOWEL_RUN_MIN_EXEMPT=` plus a no-language note for `--lines`. Before, every row got the Czech
+threshold, so German rows the gate spares (`Dauerleihe`) counted as exposure. New tests: a CSV
+judged per row language, the banner guard now also scanning `_vowel_run_min_for()`, and the
+`--lines` note — all fail on the old tool.
+* **`ppole` is an abbreviation everywhere now** — the per-collection note `build_token_lexicon.py`
+writes into every table header, its docstring and CLI note, `ocr_neighbours.py`'s CLI note (which
+contradicted its own docstring), and `tests/test_ocr_neighbours.py` (a test renamed, no assertion
+weakened). Dangling `30.runbook.md` pointers repointed in code, config and `tools/gold/GOLD.md`.
+* **Docs.** `issue30_gold_ab_findings.md`: a D45 top section and 🛑 markers where D45, W2, D33 and
+11a/11b overturned it, and its § 3 blockquote no longer swallows the paragraph it corrects. Review
+request: the `3b02959` row, "should read" → confirmed, the question counts fixed, § 10 (Q8).
+`docs/issue30/README.md`: Q7 at 336, a Q8 row. `RULE_COVERAGE.md` / `SWEEP_NOTES.md`: the INERT
+class. `service/README.md`: the `Clear` threshold is 0.80, not 0.85. Root `README.md`: the #30
+limitation dates from `v1.5.0-beta` (PR #48 merged 15:37 UTC, after `v1.4.7-beta` at 09:34).
+`CONTRIBUTING.md`: an `unreleased` row for the post-tag work.
+* **New, optional question — Q8 (plan H14):** are `ä`/`ö`/`ü`/`ß` reliable signs of German in this
+archive, or does damaged Czech produce them? It decides whether the German-diacritic veto D45 left
+out (~239 witnessed lines on the gold corpus, 156 kept today) is worth its own measurement.
+* Suite 1,449 → **1,452 passed**, 13 skipped, 2 xfailed; `ruff check` and `ruff format --check`
+clean; `check_version` agrees. Committed locally, not pushed.

@@ -37,7 +37,8 @@ worth reading before you begin.
 reading even so: two of the answers correct things this folder used to state as fact — three
 doubled-letter spellings turn out to be an old spelling of *suť* rather than scanning errors, and two
 strings we described as correctly scanned are not. **⏳ § 9 is new**: the follow-up questions your
-answers made possible to ask, also listed under "Still open" below.
+answers made possible to ask, also listed under "Still open" below. **⏳ § 10 (2026-09-23)** adds
+one more, Q8, for @david-spacil alone and optional.
 
 **3. Reference, when you need it**
 [`annotation_ask_README.md`](annotation_ask_README.md) — how the two request files are built and
@@ -163,25 +164,28 @@ also open** — Q5 (a) below.
 
 ---
 
-## ⏳ Still open — asked in the issue thread on 2026-09-22
+## ⏳ Still open — asked in the issue thread on 2026-09-22 (Q8: 2026-09-23)
 
 Posted after [comment 61](https://github.com/ufal/atrium-alto-postprocess/issues/30#issuecomment-5783543756)
 and numbered the same way there. Each needs a line; "no opinion" is an answer, and a blank is never
 read as a yes. **Nothing changes in the program until they are answered.**
 
 **Status, 2026-09-23.** Q7 is answered, and the re-check behind it found a lost exemption that is
-now restored (review request § 3). @david-spacil is going through Q1–Q6 with @DanaKriv by e-mail.
+now restored — ✅ **confirmed** on `3b02959`: 336/508, with `Lokolieace: •VIII,` the only break
+(review request § 3). @david-spacil is going through Q1–Q6 with @DanaKriv by e-mail. Q8 is new, for
+@david-spacil alone, and optional.
 
-| #       | for           | question                                                                                                                                                                | where it is explained                                                                       |
-|---------|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| **Q1**  | @DanaKriv     | Do you agree that `Trash` means illegible — legible is `Clear`, decipherable is `Noisy`, usefulness does not count, and `Non-text` is left blank when labelling?        | [guide § 7.2](issue30_annotation_guide.md), [review request § 6](issue30_review_request.md) |
-| **Q2**  | @DanaKriv     | Is the de-duplication trade acceptable — 10 readable lines pulled down, 51 rubbish lines rescued? @david-spacil chose to keep the step.                                 | [guide § 7.1](issue30_annotation_guide.md)                                                  |
-| **Q3**  | @DanaKriv     | The 357 decisions (`census.csv`, `sample.csv`, `frame.json`) — roughly when might a first batch come? Partial returns are welcome.                                      | [guide](issue30_annotation_guide.md)                                                        |
-| **Q4**  | both          | Once Q1 is agreed: should **every** recognised web or e-mail address be `Clear`, or `Noisy`? The program cannot tell a damaged address from a correct one.              | [review request § 9](issue30_review_request.md)                                             |
-| **Q5a** | both          | Which `[allowed]` entries should be switched on — the four confirmed ones, all the candidates, a named subset, or none yet?                                             | "A new file you can edit yourselves", above                                                 |
-| **Q5b** | both          | Should a listed word also be exempt from the new rule's shape tests, so it can never be the reason a line is discarded?                                                 | "A new file you can edit yourselves", above                                                 |
-| **Q6**  | both          | The short-line rule can only answer `Trash`. When it cannot tell decipherable from illegible on 1–3 words, which mistake is better — `Trash` (re-processed) or `Noisy`? | [review request § 9](issue30_review_request.md)                                             |
-| **Q7**  | @david-spacil | ✅ **Answered 2026-09-23: `master`.** Re-check done — 335/508, 11 fixed / 2 broken; one break (`S-VIIIb`) was a lost exemption, now restored.                         | [review request § 3](issue30_review_request.md)                                             |
+| #       | for           | question                                                                                                                                                                                                                                                                    | where it is explained                                                                       |
+|---------|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| **Q1**  | @DanaKriv     | Do you agree that `Trash` means illegible — legible is `Clear`, decipherable is `Noisy`, usefulness does not count, and `Non-text` is left blank when labelling?                                                                                                            | [guide § 7.2](issue30_annotation_guide.md), [review request § 6](issue30_review_request.md) |
+| **Q2**  | @DanaKriv     | Is the de-duplication trade acceptable — 10 readable lines pulled down, 51 rubbish lines rescued? @david-spacil chose to keep the step.                                                                                                                                     | [guide § 7.1](issue30_annotation_guide.md)                                                  |
+| **Q3**  | @DanaKriv     | The 357 decisions (`census.csv`, `sample.csv`, `frame.json`) — roughly when might a first batch come? Partial returns are welcome.                                                                                                                                          | [guide](issue30_annotation_guide.md)                                                        |
+| **Q4**  | both          | Once Q1 is agreed: should **every** recognised web or e-mail address be `Clear`, or `Noisy`? The program cannot tell a damaged address from a correct one.                                                                                                                  | [review request § 9](issue30_review_request.md)                                             |
+| **Q5a** | both          | Which `[allowed]` entries should be switched on — the four confirmed ones, all the candidates, a named subset, or none yet?                                                                                                                                                 | "A new file you can edit yourselves", above                                                 |
+| **Q5b** | both          | Should a listed word also be exempt from the new rule's shape tests, so it can never be the reason a line is discarded?                                                                                                                                                     | "A new file you can edit yourselves", above                                                 |
+| **Q6**  | both          | The short-line rule can only answer `Trash`. When it cannot tell decipherable from illegible on 1–3 words, which mistake is better — `Trash` (re-processed) or `Noisy`?                                                                                                     | [review request § 9](issue30_review_request.md)                                             |
+| **Q7**  | @david-spacil | ✅ **Answered 2026-09-23: `master`.** Re-check done and confirmed — **336/508** on `3b02959`, 11 fixed / 1 broken / 3 wrong either way, once the lost `S-VIIIb` exemption was restored (335/508 before).                                                                     | [review request § 3](issue30_review_request.md)                                             |
+| **Q8**  | @david-spacil | ⏳ *Asked 2026-09-23, optional.* In this archive, are `ä`, `ö`, `ü` and `ß` reliable signs of German, or do damaged Czech scans produce them (`á` read as `ä`, `ů` as `ü`)? The answer decides whether a German-letter exemption is worth measuring; it switches nothing on. | [review request § 10](issue30_review_request.md)                                            |
 
 ---
 

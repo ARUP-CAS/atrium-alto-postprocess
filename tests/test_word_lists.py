@@ -12,8 +12,10 @@ keeps mis-convicting — `Dauerleihe`, `Kaukasus`, `Schuhleistenkeilbruchstueck`
 where no archivist will ever find it. And the one mechanism meant to cover
 open-class words, `SHORT_GARBAGE_LEXICON_PATH`, ships EMPTY with no frequency
 table anywhere in the repository. So the shipped configuration had no open-class
-protection at all, and the file is that missing layer rather than a duplicate of
-an existing one.
+protection at all. The file's `[allowed]` section is where that layer goes, not a
+duplicate of an existing one -- but it is not the layer yet: every entry ships
+commented out (which to switch on is Q5a), and an entry reaches the quality score
+only, not the witness's shape tests (whether it should is Q5b).
 
 WHAT IS PINNED HERE. Mostly that the migration is a NO-OP: each list read from
 the file must equal the literal that was compiled into `text_util.py` before it.
